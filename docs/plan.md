@@ -149,6 +149,14 @@
   - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/open_poll_wait.cpp -o test/open_poll_wait_check.exe`，再运行 `./test/open_poll_wait_check.exe`。依赖 nlohmann/json。
   - 范围：完成独立非终态处理策略；未接入 HTTP 查询、60 秒调度或可靠存盘，也不处理成功/取消终态。调用方须串行提交返回记录并继续查询原 ID，终态交由成交证据模块核实。未访问交易所，未验证 Linux；集成仍由 M02、M03 和 M07 剩余待办覆盖。
 
+### M12 平仓拒绝、取消与后续恢复（已完成子项）
+
+- [x] 新平仓被明确拒绝后保留原任务、错误与旧意图，恢复 required（独立状态恢复模块）。
+  - 实现：[close_rejection.hpp](../src/close_rejection.hpp) 的 `recover_rejected_close` 在完整 v1 快照中唯一匹配 rejected 平仓意图与 publishing 任务，核对 task_id、target_key 和空交易所 ID。保留 task_id、来源、撤换关联、旧请求及拒绝响应，记录 last_rejected_intent_id 与错误；清除当前发布关联，将旧持仓和计算移入 rejected_attempt_context，恢复 required / check_position。相同恢复可重复执行，不允许复活 active、unknown、canceled_unfulfilled 或覆盖后续发布尝试。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线样例、完整对象比较及非法输入方式，[close_rejection.cpp](../checks/close_rejection.cpp) 的 188 项检查通过；已有 publish_recovery 的 136 项检查回归通过。覆盖多空、错误与历史保留、未知量 null、大整数 revision、JSON 往返、恢复幂等性、错误关联、重复 ID、缺少拒绝证据及不允许重试的状态。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/close_rejection.cpp -o test/close_rejection_check.exe`，再运行 `./test/close_rejection_check.exe`。依赖 nlohmann/json。
+  - 范围：调用方须先核实旧单已停，并将可靠的明确拒绝分类为 rejected；此模块不从响应字段自行推断拒绝，不把超时当作拒绝。不递增 revision、不写磁盘、不发送请求；状态调度恢复原 task_id、重新查询计算和新意图创建仍待接入。未访问交易所，未验证 Linux。
+
 ## 四、没做
 
 以下任务均待实施或核实。建议按 M01–M10 建立核心流程，结合 M11–M13 完善恢复与交互，再完成 M14–M15 交付验收。
@@ -241,7 +249,8 @@
 
 ### M12 平仓拒绝、取消与后续恢复
 
-- [ ] 旧平仓已停、新发布被明确拒绝时，任务保留或恢复 required，保存错误，下一轮状态调度恢复原 task_id。
+- 明确拒绝后恢复 required、保留任务及错误的独立策略已移至“三、做完”的 M12 条目。
+- [ ] 将明确拒绝恢复策略接入旧平仓停止核实、HTTP 结果分类和可靠提交，下一轮状态调度恢复原 task_id。
 - [ ] 重试重新查询持仓、计算和验证，保留旧意图，为新尝试记录新意图；仍按 prepared、dispatching 顺序可靠提交。
 - [ ] 条件不足保留原因，结果不明先对账；已成功发布、后来取消的平仓单核实后归档，未满足需求记 `canceled_unfulfilled`，不自动补发。
 - [ ] `canceled_unfulfilled` 只有后续新的合格开仓来源才可再次触发总持仓平仓安排。
