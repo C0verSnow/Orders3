@@ -85,6 +85,12 @@
 
 ### M09 平仓计算与请求校验（已完成子项）
 
+- [x] trigger_price 缺失或非正时保留任务与阻塞原因，不用原信号价替代；按规范不额外调整价格步长。
+  - 实现：[close_task_price.hpp](../src/close_task_price.hpp) 的 `with_close_task_price` 按任务 covered_source_record_ids 匹配来源，复用精确价格计算器。来源缺失、价格缺失、非正或非法时返回保留任务 ID、来源和撤换关联的副本，state=blocked、last_error 记录字段与原因，并清除失效 calculation；不读取 signal_price，不调整 tick size。补齐数据后可使用同一任务重新计算，成功仅进入 checking_position，不授权发布。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线样例、完整对象比较和非法输入方式，[close_task_price.cpp](../checks/close_task_price.cpp) 的 55 项检查通过；原有 close_price 的 1038 项检查通过。覆盖异常价格、缺失来源、JSON 往返保留任务、修复恢复、多空结果、来源顺序、重复来源及在途任务拒绝。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/close_task_price.cpp -o test/close_task_price_check.exe`，再运行 `./test/close_task_price_check.exe`。依赖 nlohmann/json。
+  - 范围：完成价格计算阶段的可持久化任务更新；调用方须先核实来源身份、持仓方向与模式、旧平仓处理结果，并可靠保存返回任务。已有发布意图或平仓 ID 的任务必须先走对账，不在此重算。尚未接入调度与磁盘提交，未访问交易所，未验证 Linux。
+
 - [x] 用原文样例核对：多仓激活价 `104.13`、amount `-10`；对应空仓激活价 `95.93`、amount `10`。实际生产计算以 4.md 为准。
   - 实现与核对：[close_price.cpp](../checks/close_price.cpp) 按 4.md W4 和 5.md 的原文样例，使用 E=100、V=1000、M=10、S=±10 及两位小数的来源 trigger_price，将实际价格计算结果传入请求构造器。独立写明预期完整 HTTP 描述，核对 method、path、query、价格、数量、is_gte、reduce_only、追踪参数和账户模式，并验证 JSON 序列化往返。
   - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线样例与完整对象比较方式，运行该检查，1038 项检查全部通过（含本次新增的 4 项完整请求及序列化检查）。
@@ -185,7 +191,7 @@
 - 同一持仓快照字段校验子项已移至“三、做完”的 M09 条目。
 - 多空精确公式计算子项已移至“三、做完”的 M09 条目。
 - 覆盖来源精度与 ROUND_HALF_UP 取整子项已移至“三、做完”的 M09 条目。
-- [ ] trigger_price 缺失或非正时保留任务与阻塞原因，不用原信号价替代；按规范不额外调整价格步长。
+- trigger_price 异常时保留任务与阻塞原因子项已移至“三、做完”的 M09 条目。
 - 平仓数量、方向和追踪请求配置子项已移至“三、做完”的 M09 条目。
 - 原文多空样例核对子项已移至“三、做完”的 M09 条目。
 
