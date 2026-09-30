@@ -121,6 +121,14 @@
   - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/close_snapshot.cpp -o test/close_snapshot_check.exe`，再运行 `./test/close_snapshot_check.exe`。依赖 nlohmann/json。
   - 范围：仅完成标准化快照的独立校验；调用方须先唯一匹配合约、方向和账户模式，并将交易所原始数值无损标准化。未接入持仓查询、公式计算、任务调度或存盘；S=0 返回校验错误，不据此自动完成任务。未访问交易所，未验证 Linux。
 
+### M11 创建结果不明与重启对账（已完成子项）
+
+- [x] 实现发送结果不明与重启恢复的独立状态策略：发送超时或无可靠回执时转为 unknown，恢复 dispatching 为 unknown，并禁止这些意图直接重发创建。
+  - 实现：[publish_recovery.hpp](../src/publish_recovery.hpp) 提供 `mark_publish_unknown`、`recover_publish_intents` 和 `may_begin_publish`。恢复整份 v1 存储中的开仓/平仓发布意图，保留确切请求、回执、原错误、稳定 ID、任务关联及其他集合；恢复错误单独保存为 recovery_error，retryable=false、next_action=reconcile。仅 prepared 允许进入首次发送准备；dispatching/unknown/acknowledged/rejected 均不允许直接发送。非法状态、关联标识及重复 intent_id 拒绝处理，输入保持不变。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线样例、完整对象比较和非法输入测试方式，[publish_recovery.cpp](../checks/publish_recovery.cpp) 的 136 项检查通过，覆盖两种发布操作、超时/连接中断/无可靠回执、五种意图状态、恢复幂等性、JSON 往返、大整数及非法输入。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/publish_recovery.cpp -o test/publish_recovery_check.exe`，再运行 `./test/publish_recovery_check.exe`。依赖 nlohmann/json。
+  - 范围：完成独立恢复状态策略，不是完整启动恢复流程；调用方仍须接入传输结果分类、启动加载、可靠提交及发送入口。该函数不写文件、不递增 revision、不修改关联任务状态；发送前仍须可靠提交 dispatching。未实现 list/detail/Position 对账，未访问交易所，未验证 Linux。
+
 ## 四、没做
 
 以下任务均待实施或核实。建议按 M01–M10 建立核心流程，结合 M11–M13 完善恢复与交互，再完成 M14–M15 交付验收。
@@ -205,7 +213,8 @@
 
 ### M11 创建结果不明与重启对账
 
-- [ ] 发送后超时、无可靠回执或 dispatching 时崩溃，按 unknown 恢复，禁止直接重发创建请求。
+- 发送结果不明与重启恢复的独立状态策略已移至“三、做完”的 M11 条目。
+- [ ] 将 unknown 状态策略接入 HTTP 发送结果分类、启动恢复与可靠提交，并在实际发送入口执行禁止直接重发检查。
 - [ ] 通过 list 找候选、detail 确认、Position 核对；只有唯一且证据一致才能找回交易所 ID，第一页未找到或仓位未变不能证明未发送。
 - [ ] 找回后沿用原 record_id、意图及任务完成关联，避免重复下单。
 - [ ] unknown 响应保留错误、意图和 reconcile 下一步；`retryable=false` 只禁止直接重发创建，仍可继续只读核实。
