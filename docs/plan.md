@@ -73,6 +73,12 @@
 
 ### M09 平仓计算与请求校验（已完成子项）
 
+- [x] 取全部覆盖来源 `trigger_price` 的最大小数位数，包含字符串尾零，使用 `ROUND_HALF_UP`；原始结果及取整后价格均须为正。
+  - 实现：[close_price.hpp](../src/close_price.hpp) 的 `calculate_close_price` 接收同一持仓快照、方向和全部覆盖来源记录，逐一校验正十进制字符串 trigger_price，取最大小数位数，复用精确公式并用字符串长除法及余数比较实现 ROUND_HALF_UP，返回保留 scale 位尾零的激活价。拒绝空来源、非法价格和取整后零值，不回退到信号价、不调整价格步长、不修改输入。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线样例与非法输入测试方式，[close_price.cpp](../checks/close_price.cpp) 的 1034 项检查通过，覆盖多来源顺序及尾零、整数精度、半值进位及跨整数进位、独立整数参考值、超过 double 精确范围的大数、402 位小数、非法输入和输入不变性。公式与请求构造回归分别通过 418、124 项检查；多空样例衔接请求后激活价分别为 104.13、95.93，amount 分别为 -10、10。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/close_price.cpp -o test/close_price_check.exe`，再运行 `./test/close_price_check.exe`。依赖 nlohmann/json，无新增第三方依赖。
+  - 范围：仅完成独立计算、来源价格校验与取整；调用方须解析全部 covered_source_record_ids 并核实来源和持仓身份。错误通过 CloseSnapshotError.field 返回，任务保留、阻塞原因持久化及调度接入仍待实现；未访问交易所，未验证 Linux。
+
 - [x] 多仓 `V_adjusted=V`，空仓 `V_adjusted=-V`，保留 V 原符号；`target_raw=E×(1+3.1×M/V_adjusted)`，多仓再乘 1.01，空仓再乘 0.99。
   - 实现：[close_formula.hpp](../src/close_formula.hpp) 的 `calculate_close_formula` 复用同一持仓快照校验，使用十进制字符串整数运算计算精确有理数，不经过浮点数、不取 V 的绝对值。返回原快照、保留精度的 `value_adjusted` 及 `target_raw` / `target` 的分子分母；分母为正，分数不要求约分，循环小数也不截断。非正结果抛出字段为 target_raw 的 `CloseSnapshotError`，输入保持不变。
   - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线样例与非法输入测试方式，[close_formula.cpp](../checks/close_formula.cpp) 的 418 项检查通过，覆盖多空与 V 正负的四种组合、独立整数公式对照、零保证金、非正结果、十进制尾零、超过 double 精确范围的大数、400 位小数及非法输入；原有 close_snapshot 的 153 项检查回归通过。规范样例得到精确结果：多仓 104.131、空仓 95.931。
@@ -160,7 +166,7 @@
 
 - 同一持仓快照字段校验子项已移至“三、做完”的 M09 条目。
 - 多空精确公式计算子项已移至“三、做完”的 M09 条目。
-- [ ] 取全部覆盖来源 `trigger_price` 的最大小数位数，包含字符串尾零，使用 `ROUND_HALF_UP`；原始结果及取整后价格均须为正。
+- 覆盖来源精度与 ROUND_HALF_UP 取整子项已移至“三、做完”的 M09 条目。
 - [ ] trigger_price 缺失或非正时保留任务与阻塞原因，不用原信号价替代；按规范不额外调整价格步长。
 - 平仓数量、方向和追踪请求配置子项已移至“三、做完”的 M09 条目。
 - [ ] 用原文样例核对：多仓激活价 `104.13`、amount `-10`；对应空仓激活价 `95.93`、amount `10`。实际生产计算以 4.md 为准。
