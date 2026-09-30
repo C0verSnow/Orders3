@@ -49,6 +49,12 @@
 
 ### M02 本地存储与原子提交（已完成子项）
 
+- [x] 记录转组时保持唯一归属；平仓结束后保留开仓历史，供七天去重和来源追溯。
+  - 实现：[order_groups.hpp](../src/order_groups.hpp) 的 `validate_order_groups` 检查五类订单的非空字符串 record_id、全局唯一归属及 tag 一致性；`move_order_record` 返回转组后的完整存储副本，保留稳定 ID 和全部记录字段。支持 raw → pending open、pending open → finished open、pending close → finished close；raw 替代及平仓取消/撤换可携带非空 archive_reason 转入 terminal_history。开仓归档限定三类规范终态，平仓完成仅接受 success；禁止移出 finished open 历史，不删除平仓来源及其他恢复集合。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线正常样例、完整对象比较及非法输入测试方式，[order_groups.cpp](../checks/order_groups.cpp) 的 79 项检查通过；存储结构回归通过，61 组非法文档全部拒绝。覆盖五组重复 ID、非法 ID/tag、错误来源、重复转组、非法迁移及终态、取消归档、平仓后完整历史保留、未知成交量 null 和 JSON 往返。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/order_groups.cpp -o test/order_groups_check.exe`，再运行 `./test/order_groups_check.exe`。依赖 nlohmann/json。
+  - 范围：完成内存转组及归属校验；调用方仍须核实交易所终态/取消/替代证据，并将返回快照与意图、任务更新一起串行可靠提交。本函数不递增 revision、不写磁盘、不验证全部业务字段，尚未接入调度；未访问交易所，未验证 Linux。
+
 - [x] 实现 `orderlist.js` 严格 JSON 结构：最外层为单对象数组，保留 `schema_version`、`revision`、`last timestamp`。
   - 实现：[storage_schema.hpp](../src/storage_schema.hpp) 提供 `make_empty_store`、`validate_store`、`parse_store`，按照 4.md 第 6 节生成 v1 骨架；版本限定为 1，revision 与 last timestamp 为非负 int64 范围 JSON 整数，初值为 0，五类订单分组与五类恢复集合必须为数组。拒绝旧格式、重复对象键、注释、尾随内容、缺字段和非法类型，不自动用空数据替代输入。
   - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线正常与非法输入测试方式，运行 [storage_schema.cpp](../checks/storage_schema.cpp)。空骨架、含记录数据、int64 最大 revision 与超过 double 精确范围的时间整数无损往返通过，61 组非法文档全部拒绝。
@@ -126,7 +132,7 @@
 - 严格 JSON 存储结构子项已移至“三、做完”的 M02 条目。
 - [ ] 保存五类分组：`raw orders`、`pending open orders`、`finished open orders`、`pending close orders`、`finished close orders`。
 - [ ] 保存 `batches`、`publish_intents`、`close_tasks`、`terminal_history`、`workflow_runs`。
-- [ ] 记录转组时保持唯一归属；平仓结束后保留开仓历史，供七天去重和来源追溯。
+- 记录唯一归属与转组保留历史子项已移至“三、做完”的 M02 条目；磁盘原子提交仍由下列待办覆盖。
 - [ ] 每次可靠提交检查并更新 `revision`；交易所 ID、意图状态、订单转组等关联变更一起保存。
 - [ ] 文件损坏不以空文件覆盖；存盘失败停止后续改变交易所状态的请求，恢复后先对账。恢复依据是存储文件，日志不能替代。
 
