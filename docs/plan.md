@@ -71,6 +71,12 @@
 
 ### M05 七天去重（已完成子项）
 
+- [x] 时间缺失、为零或在未来时保留已确认历史和平仓需求，阻断同目标新开仓；平仓证据和计算字段齐全时继续安排（已核实离线模块组合）。
+  - 实现核实：现有 `with_dedupe_time` 保留终态、未知成交量及 close_assignment，异常时间写为 null；`check_open_dedupe` 对同目标返回 deferred / FINISH_TIME_INVALID。`with_close_task_price` 独立检查平仓计算字段，时间异常不阻止有效计算及 `make_close_request` 构造，价格缺失仍保留任务并阻塞。无需修改现有生产模块。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线样例与完整对象比较方式，新增 [dedupe_close_independence.cpp](../checks/dedupe_close_independence.cpp)，312 项检查通过。覆盖 LONG / SHORT、success / partial_canceled、时间缺失/零/未来、不同目标不受阻、历史及任务保留、严格 JSON 往返、总持仓平仓请求和缺失价格反例。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/dedupe_close_independence.cpp -o test/dedupe_close_independence_check.exe`，再运行 `./test/dedupe_close_independence_check.exe`。依赖 nlohmann/json。
+  - 范围：测试输入预设已独立核实来源终态、成交证据及 Position 身份；不由持仓推断单笔成交。完成独立模块组合的行为核实，未接入调度、真实查询、发送和磁盘提交；这些工作仍由 M02、M03、M07–M10 待办覆盖。未访问交易所，未验证 Linux。
+
 - [x] 从 detail 的 `data.order.finish_time` 计算，保存原值、单位及转换后的毫秒时间到可持久化记录；满 `604800000` 毫秒才允许同目标新开仓。
   - 实现：[dedupe_time.hpp](../src/dedupe_time.hpp) 的 `with_dedupe_time` 返回保留原记录字段的副本，将字段路径、`raw_value`、单位写入 `dedupe_time_source`，按明确的 seconds 契约转换为 int64 毫秒，不经过浮点数、不猜测单位。缺失、零、未来、非法类型或格式、溢出和不符契约的单位均将 `dedupe_at_ms` 置 null，交由现有去重函数阻断；保留终态和平仓需求，不回退到其他时间字段。
   - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线样例与非法输入测试方式，[dedupe_time.cpp](../checks/dedupe_time.cpp) 的 162 项检查通过，覆盖 success / partial_canceled、原值与单位保存、v1 存储 JSON 序列化往返后去重、七天前与恰满七天、异常输入、前导零及 int64 乘法边界。
@@ -170,7 +176,7 @@
 
 - 按合约和方向分别去重子项已移至“三、做完”的 M05 条目。
 - detail 时间转换与来源记录子项已移至“三、做完”的 M05 条目；文件可靠提交仍由 M02 待办覆盖。
-- [ ] 时间缺失、为零或在未来时保留已确认历史和平仓需求，阻断同目标新开仓；平仓证据和计算字段齐全时继续安排。
+- 时间异常时去重与平仓独立处理子项已移至“三、做完”的 M05 条目，完成范围为离线模块组合核实；调度与真实接口接入仍待完成。
 
 ### M06 开仓意图与发布
 
