@@ -141,6 +141,14 @@
   - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/publish_recovery.cpp -o test/publish_recovery_check.exe`，再运行 `./test/publish_recovery_check.exe`。依赖 nlohmann/json。
   - 范围：完成独立恢复状态策略，不是完整启动恢复流程；调用方仍须接入传输结果分类、启动加载、可靠提交及发送入口。该函数不写文件、不递增 revision、不修改关联任务状态；发送前仍须可靠提交 dispatching。未实现 list/detail/Position 对账，未访问交易所，未验证 Linux。
 
+### M07 开仓查询、成交证据与归档（已完成子项）
+
+- [x] detail 状态 1 / 2 继续等待，状态 3 部分成交继续查询至结束，暂不发布平仓（独立状态处理模块）。
+  - 实现：[open_poll_wait.hpp](../src/open_poll_wait.hpp) 的 `with_open_poll_wait` 校验 pending 开仓记录及 detail 的 code、字符串 ID、合约、amount 方向、cross / dual_plus 模式和状态码一致性；1 / 2 / 3 分别记录 waiting_activation / tracking / partial，next_action=poll。保留订单 ID、原信号、独立数量证据、未知值 null 和 not_eligible 平仓需求；partial_observed 保存曾部分成交的事实。异常响应保留原记录证据并进入 reconciling，4 / 5 和未知状态交由后续终态核实，不凭 finished 字段认定成交。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线样例、对象比较和非法输入测试方式，[open_poll_wait.cpp](../checks/open_poll_wait.cpp) 的 2074 项检查通过。覆盖多空、三种非终态、部分成交后查询失败、独立成交量保留、大整数字符串 ID、v1 存储往返、身份/模式/状态不符、缺字段及非法响应类型。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/open_poll_wait.cpp -o test/open_poll_wait_check.exe`，再运行 `./test/open_poll_wait_check.exe`。依赖 nlohmann/json。
+  - 范围：完成独立非终态处理策略；未接入 HTTP 查询、60 秒调度或可靠存盘，也不处理成功/取消终态。调用方须串行提交返回记录并继续查询原 ID，终态交由成交证据模块核实。未访问交易所，未验证 Linux；集成仍由 M02、M03 和 M07 剩余待办覆盖。
+
 ## 四、没做
 
 以下任务均待实施或核实。建议按 M01–M10 建立核心流程，结合 M11–M13 完善恢复与交互，再完成 M14–M15 交付验收。
@@ -194,7 +202,7 @@
 
 ### M07 开仓查询、成交证据与归档
 
-- [ ] detail 状态 1 / 2 继续等待，状态 3 部分成交继续查询至结束，暂不发布平仓。
+- detail 1 / 2 / 3 非终态处理子项已移至“三、做完”的 M07 条目；真实查询、调度与提交仍待接入。
 - [ ] 校验成功终态、身份及模式，保存 `trigger_price`、时间来源和历史，生成待平仓需求；没有独立证据的单笔成交量仍记 `null`。
 - [ ] 状态 5 区分 canceled_no_fill 与 partial_canceled；后者启动去重并安排平仓。
 - [ ] 取消单成交不明时保留待核实，不把已有持仓当作本单成交证据；证据充分性按具体操作判断。
