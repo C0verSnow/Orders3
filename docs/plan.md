@@ -14,7 +14,7 @@
 
 | 做完：有完成依据 | 没做：待实施或待核实 |
 | --- | --- |
-| 已有 5.md 流程说明和教学 JSON；已整理本四象限计划；已完成 M04 信号解析与校验子项。 | 下列 M01–M15 剩余实施与验收任务。核查后按实际进度迁移。 |
+| 已有 5.md 流程说明和教学 JSON；已整理本四象限计划；已完成 M04 信号解析与校验、M01 停止接口 ID 转换及 M02 严格 JSON 存储结构子项。 | 下列 M01–M15 剩余实施与验收任务。核查后按实际进度迁移。 |
 
 ## 一、想做
 
@@ -33,6 +33,22 @@
 - [x] 已有 [5.md](5.md)：程序行为、十步教学 JSON 工作流、数据传递、存储变化、计算规则及异常处理说明。完成范围仅限文档，不代表功能已实现。
 - [x] 将 5.md 整理为本四象限计划，保留原始说明和规范链接。
 
+### M01 数据模型与接口边界（已完成子项）
+
+- [x] 交易所原始字段遵循自身类型约定；停止接口 `body.id` 为 JSON 整数，适配器做范围校验和无损转换，不经浮点数中转。
+  - 实现：[stop_request.hpp](../src/stop_request.hpp) 的 `orders3::make_stop_request` 接收本地字符串 ID，生成 4.md 第 5.3 节的 HTTP 请求描述；本地 ID 不修改。适配器支持范围明确限定为 `1..9223372036854775807`，不宣称这是交易所最大值；允许前导零，拒绝非字符串、零、符号、空白、小数、指数及溢出。错误通过 `StopRequestError::as_json()` 提供 code、field 和 retryable。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests` 的离线请求契约和非法输入测试方式，运行 [stop_request.cpp](../checks/stop_request.cpp)。规范请求样例、最小值、超过 double 精确范围的 `9007199254740993`、int64 最大值及序列化往返通过，21 组非法输入全部拒绝。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/stop_request.cpp -o test/stop_request_check.exe`，再运行 `./test/stop_request_check.exe`。依赖 nlohmann/json。
+  - 范围：仅完成停止请求构造与 ID 转换；尚未接入 HTTP 发送、停止后核实或调度流程，未访问网络或交易所，未验证 Linux。
+
+### M02 本地存储与原子提交（已完成子项）
+
+- [x] 实现 `orderlist.js` 严格 JSON 结构：最外层为单对象数组，保留 `schema_version`、`revision`、`last timestamp`。
+  - 实现：[storage_schema.hpp](../src/storage_schema.hpp) 提供 `make_empty_store`、`validate_store`、`parse_store`，按照 4.md 第 6 节生成 v1 骨架；版本限定为 1，revision 与 last timestamp 为非负 int64 范围 JSON 整数，初值为 0，五类订单分组与五类恢复集合必须为数组。拒绝旧格式、重复对象键、注释、尾随内容、缺字段和非法类型，不自动用空数据替代输入。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线正常与非法输入测试方式，运行 [storage_schema.cpp](../checks/storage_schema.cpp)。空骨架、含记录数据、int64 最大 revision 与超过 double 精确范围的时间整数无损往返通过，61 组非法文档全部拒绝。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/storage_schema.cpp -o test/storage_schema_check.exe`，再运行 `./test/storage_schema_check.exe`。依赖 nlohmann/json。
+  - 范围：仅完成存储外层结构及内存解析校验；未实现记录内部业务校验、文件读写、原子提交、旧数据迁移或启动接入。现有旧格式 `orderlist.js` 保持原样，不能直接通过 v1 校验；未访问交易所，未验证 Linux。
+
 ### M04 信号刷新、批次与延迟处理（已完成子项）
 
 - [x] 解析合约、方向、价格、数量和批次时间，检查信号完整性与重复目标。
@@ -49,13 +65,13 @@
 
 - [ ] 区分本地 request / response、交易所 HTTP 请求响应及持久化记录；只发送 HTTP 描述中的 body，`body=null` 表示不发送请求体。
 - [ ] 本地订单 ID、价格、金额和数量使用字符串，时间使用 UTC 毫秒整数，未知值用 `null`；初始 `last timestamp=0` 表示尚未消费批次。
-- [ ] 交易所原始字段遵循自身类型约定；停止接口 `body.id` 为 JSON 整数，适配器做范围校验和无损转换，不经浮点数中转。
+- 停止接口 ID 转换子项已移至“三、做完”的 M01 条目。
 - [ ] 明确 `batch_id`、`record_id`、`request_id`、`intent_id`、`task_id` 与交易所订单 ID 的关联；按 `target_key=合约:方向` 串行修改。
 - [ ] 沿用单账户、USDT、`cross`、`dual_plus` 范围；教学字段 `steps`、`pass_to_next`、`store_effect` 不直接进入生产协议。
 
 ### M02 本地存储与原子提交
 
-- [ ] 实现 `orderlist.js` 严格 JSON 结构：最外层为单对象数组，保留 `schema_version`、`revision`、`last timestamp`。
+- 严格 JSON 存储结构子项已移至“三、做完”的 M02 条目。
 - [ ] 保存五类分组：`raw orders`、`pending open orders`、`finished open orders`、`pending close orders`、`finished close orders`。
 - [ ] 保存 `batches`、`publish_intents`、`close_tasks`、`terminal_history`、`workflow_runs`。
 - [ ] 记录转组时保持唯一归属；平仓结束后保留开仓历史，供七天去重和来源追溯。
