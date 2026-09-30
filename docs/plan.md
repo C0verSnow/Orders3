@@ -35,6 +35,12 @@
 
 ### M01 数据模型与接口边界（已完成子项）
 
+- [x] 区分本地 request / response、交易所 HTTP 请求响应及持久化记录；只发送 HTTP 描述中的 body，`body=null` 表示不发送请求体。
+  - 实现：[http_request.hpp](../src/http_request.hpp) 的 `prepare_http_request` 只接收 method/path/query/body 四字段 HTTP 描述，拒绝本地请求、响应、存储对象及混入的额外字段，返回独立 `PreparedHttpRequest`。body 对象仅序列化一次为 `body_bytes`，null 返回 `has_body=false` 和空字节串；GET 必须无 body。方法限定当前契约的 GET/POST，路径和已编码查询串通过检查后原样保留，拒绝非法 body 类型、浮点数和非法 UTF-8，错误含 code、field、retryable。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线正常样例与非法输入测试方式，[http_request.cpp](../checks/http_request.cpp) 的 92 项检查通过，覆盖现有停止及平仓构造器、超出 double 精确范围的 ID、null 与空对象区别、查询串顺序和编码、包装隔离、非法描述和输入不变性。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/http_request.cpp -o test/http_request_check.exe`，再运行 `./test/http_request_check.exe`。依赖 nlohmann/json。
+  - 范围：完成独立 HTTP 序列化边界；尚未接入签名、libcurl 发送或响应解析。后续传输层必须使用同一 body_bytes 签名和发送，并遵守 has_body；未访问交易所，未验证 Linux。
+
 - [x] 交易所原始字段遵循自身类型约定；停止接口 `body.id` 为 JSON 整数，适配器做范围校验和无损转换，不经浮点数中转。
   - 实现：[stop_request.hpp](../src/stop_request.hpp) 的 `orders3::make_stop_request` 接收本地字符串 ID，生成 4.md 第 5.3 节的 HTTP 请求描述；本地 ID 不修改。适配器支持范围明确限定为 `1..9223372036854775807`，不宣称这是交易所最大值；允许前导零，拒绝非字符串、零、符号、空白、小数、指数及溢出。错误通过 `StopRequestError::as_json()` 提供 code、field 和 retryable。
   - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests` 的离线请求契约和非法输入测试方式，运行 [stop_request.cpp](../checks/stop_request.cpp)。规范请求样例、最小值、超过 double 精确范围的 `9007199254740993`、int64 最大值及序列化往返通过，21 组非法输入全部拒绝。
@@ -109,7 +115,7 @@
 
 ### M01 数据模型与接口边界
 
-- [ ] 区分本地 request / response、交易所 HTTP 请求响应及持久化记录；只发送 HTTP 描述中的 body，`body=null` 表示不发送请求体。
+- HTTP 描述与本地包装隔离、body 序列化子项已移至“三、做完”的 M01 条目。
 - [ ] 本地订单 ID、价格、金额和数量使用字符串，时间使用 UTC 毫秒整数，未知值用 `null`；初始 `last timestamp=0` 表示尚未消费批次。
 - 停止接口 ID 转换子项已移至“三、做完”的 M01 条目。
 - [ ] 明确 `batch_id`、`record_id`、`request_id`、`intent_id`、`task_id` 与交易所订单 ID 的关联；按 `target_key=合约:方向` 串行修改。
