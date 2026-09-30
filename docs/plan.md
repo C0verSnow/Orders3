@@ -71,6 +71,14 @@
   - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/open_dedupe.cpp -o test/open_dedupe_check.exe`，再运行 `./test/open_dedupe_check.exe`。依赖 nlohmann/json。
   - 范围：仅完成独立去重判定，输入终态须由调用方先核实；尚未接入信号刷新、发布前检查、detail 时间转换与来源持久化、平仓调度或存盘。其余 M05 子项保留待办；未访问网络或交易所，未验证 Linux。
 
+### M09 平仓计算与请求校验（已完成子项）
+
+- [x] 使用同一持仓快照中的 E（entry_price）、V（value）、M（initial_margin）、S（size）；要求 E>0、V≠0、M≥0、S≠0 且方向正确。
+  - 实现：[close_snapshot.hpp](../src/close_snapshot.hpp) 的 `validate_close_snapshot` 从单个已标准化 Position 对象读取四个十进制字符串，返回保留原始字符、精度和 V 符号的快照；逐位判断正负及零值，不经过浮点数。LONG 要求 S>0，SHORT 要求 S<0；缺字段、非字符串、非法十进制格式及不满足约束的值抛出携带字段名的 `CloseSnapshotError`，输入保持不变。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线正常与非法输入测试方式，[close_snapshot.cpp](../checks/close_snapshot.cpp) 的 153 项检查通过，覆盖多空方向、正负 V、零保证金、负零、缺字段、非法类型与格式、超出 double 精确范围及极小十进制数、尾零保留、JSON 往返及输入不变性。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/close_snapshot.cpp -o test/close_snapshot_check.exe`，再运行 `./test/close_snapshot_check.exe`。依赖 nlohmann/json。
+  - 范围：仅完成标准化快照的独立校验；调用方须先唯一匹配合约、方向和账户模式，并将交易所原始数值无损标准化。未接入持仓查询、公式计算、任务调度或存盘；S=0 返回校验错误，不据此自动完成任务。未访问交易所，未验证 Linux。
+
 ## 四、没做
 
 以下任务均待实施或核实。建议按 M01–M10 建立核心流程，结合 M11–M13 完善恢复与交互，再完成 M14–M15 交付验收。
@@ -138,7 +146,7 @@
 
 ### M09 平仓计算与请求校验
 
-- [ ] 使用同一持仓快照中的 E（entry_price）、V（value）、M（initial_margin）、S（size）；要求 E>0、V≠0、M≥0、S≠0 且方向正确。
+- 同一持仓快照字段校验子项已移至“三、做完”的 M09 条目。
 - [ ] 多仓 `V_adjusted=V`，空仓 `V_adjusted=-V`，保留 V 原符号；`target_raw=E×(1+3.1×M/V_adjusted)`，多仓再乘 1.01，空仓再乘 0.99。
 - [ ] 取全部覆盖来源 `trigger_price` 的最大小数位数，包含字符串尾零，使用 `ROUND_HALF_UP`；原始结果及取整后价格均须为正。
 - [ ] trigger_price 缺失或非正时保留任务与阻塞原因，不用原信号价替代；按规范不额外调整价格步长。
