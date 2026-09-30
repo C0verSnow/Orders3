@@ -14,7 +14,7 @@
 
 | 做完：有完成依据 | 没做：待实施或待核实 |
 | --- | --- |
-| 已有 5.md 流程说明和教学 JSON；已整理本四象限计划；已完成 M04 信号解析与校验、M01 停止接口 ID 转换及 M02 严格 JSON 存储结构子项。 | 下列 M01–M15 剩余实施与验收任务。核查后按实际进度迁移。 |
+| 已有 5.md 流程说明和教学 JSON；已整理本四象限计划；已完成 M04 信号解析与校验、M01 停止接口 ID 转换、M02 严格 JSON 存储结构及 M05 按合约方向去重判定子项。 | 下列 M01–M15 剩余实施与验收任务。核查后按实际进度迁移。 |
 
 ## 一、想做
 
@@ -57,6 +57,20 @@
   - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/signal_parser.cpp -lcurl -o test/signal_parser_check.exe`，再运行 `./test/signal_parser_check.exe`。依赖 libcurl 与 nlohmann/json；Linux 可使用同一命令。
   - 范围：仅完成解析校验，未完成 M04 的停止旧单、批次消费、延迟处理及替代流程；尚未验证 Linux、发布包或 GHCR。
 
+### M05 七天去重（已完成子项）
+
+- [x] 从 detail 的 `data.order.finish_time` 计算，保存原值、单位及转换后的毫秒时间到可持久化记录；满 `604800000` 毫秒才允许同目标新开仓。
+  - 实现：[dedupe_time.hpp](../src/dedupe_time.hpp) 的 `with_dedupe_time` 返回保留原记录字段的副本，将字段路径、`raw_value`、单位写入 `dedupe_time_source`，按明确的 seconds 契约转换为 int64 毫秒，不经过浮点数、不猜测单位。缺失、零、未来、非法类型或格式、溢出和不符契约的单位均将 `dedupe_at_ms` 置 null，交由现有去重函数阻断；保留终态和平仓需求，不回退到其他时间字段。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线样例与非法输入测试方式，[dedupe_time.cpp](../checks/dedupe_time.cpp) 的 162 项检查通过，覆盖 success / partial_canceled、原值与单位保存、v1 存储 JSON 序列化往返后去重、七天前与恰满七天、异常输入、前导零及 int64 乘法边界。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/dedupe_time.cpp -o test/dedupe_time_check.exe`，再运行 `./test/dedupe_time_check.exe`。依赖 nlohmann/json。
+  - 范围：完成时间适配、可持久化记录与现有去重判定的离线衔接；调用方须先核实 detail 身份与终态。尚未接入 HTTP 查询、调度及文件原子提交，不代表已经完成磁盘持久化；未访问交易所，未验证 Linux。
+
+- [x] 按合约和方向分别去重，成功开仓及部分成交后取消的历史进入去重，确认零成交取消不进入。
+  - 实现：[open_dedupe.hpp](../src/open_dedupe.hpp) 的 `check_open_dedupe` 读取已标准化的开仓历史，按 `Contract` 与 `position_side` 匹配；`success` 和 `partial_canceled` 在七天内返回 skipped / DEDUPE_7D，恰满 `604800000` 毫秒放行，`canceled_no_fill` 不参与。缺失、零、未来或非法时间返回 deferred / FINISH_TIME_INVALID，未知终态返回 deferred / EXECUTION_INCOMPLETE；多条历史中的待核实优先，不受记录顺序影响。函数只读，不删除历史或修改平仓需求。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线正常与非法输入测试方式，运行 [open_dedupe.cpp](../checks/open_dedupe.cpp)。41 项判定及 5 项非法输入测试通过，覆盖两类成交终态、零成交取消、七天前后边界、多空和合约隔离、多条历史、异常时间、int64 边界及输入不变性。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/open_dedupe.cpp -o test/open_dedupe_check.exe`，再运行 `./test/open_dedupe_check.exe`。依赖 nlohmann/json。
+  - 范围：仅完成独立去重判定，输入终态须由调用方先核实；尚未接入信号刷新、发布前检查、detail 时间转换与来源持久化、平仓调度或存盘。其余 M05 子项保留待办；未访问网络或交易所，未验证 Linux。
+
 ## 四、没做
 
 以下任务均待实施或核实。建议按 M01–M10 建立核心流程，结合 M11–M13 完善恢复与交互，再完成 M14–M15 交付验收。
@@ -96,8 +110,8 @@
 
 ### M05 七天去重
 
-- [ ] 按合约和方向分别去重，成功开仓及部分成交后取消的历史进入去重，确认零成交取消不进入。
-- [ ] 从 detail 的 `data.order.finish_time` 计算，持久化原值、单位及转换后的毫秒时间；满 `604800000` 毫秒才允许同目标新开仓。
+- 按合约和方向分别去重子项已移至“三、做完”的 M05 条目。
+- detail 时间转换与来源记录子项已移至“三、做完”的 M05 条目；文件可靠提交仍由 M02 待办覆盖。
 - [ ] 时间缺失、为零或在未来时保留已确认历史和平仓需求，阻断同目标新开仓；平仓证据和计算字段齐全时继续安排。
 
 ### M06 开仓意图与发布
