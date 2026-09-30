@@ -73,6 +73,12 @@
 
 ### M09 平仓计算与请求校验（已完成子项）
 
+- [x] 用原文样例核对：多仓激活价 `104.13`、amount `-10`；对应空仓激活价 `95.93`、amount `10`。实际生产计算以 4.md 为准。
+  - 实现与核对：[close_price.cpp](../checks/close_price.cpp) 按 4.md W4 和 5.md 的原文样例，使用 E=100、V=1000、M=10、S=±10 及两位小数的来源 trigger_price，将实际价格计算结果传入请求构造器。独立写明预期完整 HTTP 描述，核对 method、path、query、价格、数量、is_gte、reduce_only、追踪参数和账户模式，并验证 JSON 序列化往返。
+  - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线样例与完整对象比较方式，运行该检查，1038 项检查全部通过（含本次新增的 4 项完整请求及序列化检查）。
+  - 复现（项目根目录，先确保 `test` 目录存在）：`g++ -std=c++17 -Wall -Wextra -Werror checks/close_price.cpp -o test/close_price_check.exe`，再运行 `./test/close_price_check.exe`。依赖 nlohmann/json。
+  - 范围：完成原文多空样例的离线计算与请求核对；未访问交易所，不证明示例合约接受该价格，未验证 Linux 或实际下单。
+
 - [x] 取全部覆盖来源 `trigger_price` 的最大小数位数，包含字符串尾零，使用 `ROUND_HALF_UP`；原始结果及取整后价格均须为正。
   - 实现：[close_price.hpp](../src/close_price.hpp) 的 `calculate_close_price` 接收同一持仓快照、方向和全部覆盖来源记录，逐一校验正十进制字符串 trigger_price，取最大小数位数，复用精确公式并用字符串长除法及余数比较实现 ROUND_HALF_UP，返回保留 scale 位尾零的激活价。拒绝空来源、非法价格和取整后零值，不回退到信号价、不调整价格步长、不修改输入。
   - 验证：2026-09-30，Windows / MinGW g++，参考 `docs/test/orders2/tests/test_getorder.py` 的离线样例与非法输入测试方式，[close_price.cpp](../checks/close_price.cpp) 的 1034 项检查通过，覆盖多来源顺序及尾零、整数精度、半值进位及跨整数进位、独立整数参考值、超过 double 精确范围的大数、402 位小数、非法输入和输入不变性。公式与请求构造回归分别通过 418、124 项检查；多空样例衔接请求后激活价分别为 104.13、95.93，amount 分别为 -10、10。
@@ -169,7 +175,7 @@
 - 覆盖来源精度与 ROUND_HALF_UP 取整子项已移至“三、做完”的 M09 条目。
 - [ ] trigger_price 缺失或非正时保留任务与阻塞原因，不用原信号价替代；按规范不额外调整价格步长。
 - 平仓数量、方向和追踪请求配置子项已移至“三、做完”的 M09 条目。
-- [ ] 用原文样例核对：多仓激活价 `104.13`、amount `-10`；对应空仓激活价 `95.93`、amount `10`。实际生产计算以 4.md 为准。
+- 原文多空样例核对子项已移至“三、做完”的 M09 条目。
 
 ### M10 平仓发布、查询与完成
 

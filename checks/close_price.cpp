@@ -25,9 +25,25 @@ int main() {
         const auto side = short_side ? "SHORT" : "LONG";
         const auto price = orders3::calculate_close_price(p, side, sources("100.00"));
         require(price == (short_side ? "95.93" : "104.13"));
-        const auto body = orders3::make_close_request("BTC_USDT", side, p, price)["body"];
+        const auto request = orders3::make_close_request("BTC_USDT", side, p, price);
+        const auto body = request["body"];
         require(body["activation_price"] == price);
         require(body["amount"] == (short_side ? "10" : "-10"));
+        // Independent literal contract from docs/4.md W4 and docs/5.md:
+        // verify the calculated price reaches the complete HTTP descriptor.
+        const json expected_request{
+            {"method", "POST"},
+            {"path", "/futures/usdt/autoorder/v1/trail/create"},
+            {"query", ""},
+            {"body", {{"contract", "BTC_USDT"},
+                      {"amount", short_side ? "10" : "-10"},
+                      {"reduce_only", true},
+                      {"activation_price", short_side ? "95.93" : "104.13"},
+                      {"is_gte", !short_side}, {"price_type", 3},
+                      {"price_offset", "1%"}, {"text", "apiv4"},
+                      {"pos_margin_mode", "cross"}, {"position_mode", "dual_plus"}}}};
+        require(request == expected_request);
+        require(json::parse(request.dump()) == expected_request);
     }
     json all = json::array({{{"trigger_price", "1.0"}}, {{"trigger_price", "2.0000"}}, {{"trigger_price", "3"}}});
     const auto before = all.dump();
