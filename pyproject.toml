@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "orders-dashboard"
+version = "0.1.0"
+description = "Local SQLite dashboard for fetched order records"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["requests>=2.32,<3", "python-dotenv>=1.0,<2"]
+
+[project.scripts]
+orders-dashboard = "orders_dashboard.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+orders_dashboard = ["web/*.html", "web/*.css", "web/*.js", "web/*.svg"]
