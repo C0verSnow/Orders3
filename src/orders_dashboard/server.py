@@ -5,6 +5,7 @@ import json
 import os
 import socket
 import sqlite3
+from configparser import Error as ConfigError
 from urllib.parse import urlparse
 
 
@@ -49,6 +50,8 @@ def make_handler(dashboard):
             try:
                 if path == "/api/data":
                     self.send_json(200, dashboard.snapshot())
+                elif path == "/api/schedule":
+                    self.send_json(200, dashboard.scheduler.snapshot() if dashboard.scheduler else None)
                 elif path == "/api/download":
                     if not dashboard.output.exists():
                         self.send_json(404, {"error": "尚未生成数据库，请先重新抓取"})
@@ -63,13 +66,32 @@ def make_handler(dashboard):
                 self.send_json(500, {"error": f"读取失败：{error}"})
 
         def do_POST(self):
-            if urlparse(self.path).path != "/api/refresh":
+            path = urlparse(self.path).path
+            if path not in {"/api/refresh", "/api/schedule"}:
                 self.send_json(404, {"error": "未找到资源"})
                 return
             # Browser mutations must originate from this local page.
             expected_origin = f"http://127.0.0.1:{self.server.server_port}"
             if self.headers.get("Origin") != expected_origin:
-                self.send_json(403, {"error": "请从本地页面发起刷新"})
+                self.send_json(403, {"error": "请从本地页面发起操作"})
+                return
+            if path == "/api/schedule":
+                if dashboard.scheduler is None:
+                    self.send_json(503, {"error": "定时服务尚未启动"})
+                    return
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if not 0 < length <= 4096:
+                        raise ValueError("配置请求大小必须在 1 到 4096 字节之间")
+                    self.connection.settimeout(5)
+                    payload = json.loads(self.rfile.read(length))
+                    if not isinstance(payload, dict) or set(payload) != {"enabled", "cron"}:
+                        raise ValueError("请提供 enabled 和 cron 两个配置字段")
+                    self.send_json(200, dashboard.scheduler.configure(payload["enabled"], payload["cron"]))
+                except (ValueError, UnicodeError) as error:
+                    self.send_json(400, {"error": str(error)})
+                except (OSError, ConfigError) as error:
+                    self.send_json(500, {"error": f"保存配置失败：{error}"})
                 return
             if not dashboard.refresh():
                 self.send_json(409, {"error": "正在抓取，请稍后再试"})

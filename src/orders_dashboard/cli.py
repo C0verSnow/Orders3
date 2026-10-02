@@ -4,9 +4,10 @@ from pathlib import Path
 import sys
 import webbrowser
 
-from .config import default_output, validate_output
+from .config import default_output, load_schedule, validate_output
 from .dashboard import Dashboard
 from .server import LocalHTTPServer, make_handler
+from .scheduler import RefreshScheduler
 
 
 def main(argv=None):
@@ -24,6 +25,7 @@ def main(argv=None):
         parser.error("--cached 与 --fetch-only 不能同时使用")
     try:
         output = validate_output(args.output)
+        schedule = load_schedule()
     except ValueError as error:
         parser.error(str(error))
     dashboard = Dashboard(output)
@@ -32,10 +34,15 @@ def main(argv=None):
         if dashboard.error:
             return 1
         return 1 if any("error" in item for item in dashboard.snapshot()["items"]) else 0
+    scheduler = RefreshScheduler(dashboard, schedule)
+    dashboard.scheduler = scheduler
     try:
         with LocalHTTPServer(("127.0.0.1", args.port), make_handler(dashboard)) as server:
             if not args.cached:
                 dashboard.refresh()
+            if schedule.enabled:
+                scheduler.next_run = scheduler.next_after(schedule, scheduler.clock())
+            scheduler.start()
             address = f"http://127.0.0.1:{server.server_port}"
             print(f"本地网页：{address}  （Ctrl+C 停止）", flush=True)
             if not args.no_browser:
@@ -49,4 +56,6 @@ def main(argv=None):
         return 1
     except KeyboardInterrupt:
         print("\n本地服务已停止")
+    finally:
+        scheduler.stop()
     return 0

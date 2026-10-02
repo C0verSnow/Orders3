@@ -18,6 +18,7 @@ class Dashboard:
         self.output = validate_output(output)
         self.lock = threading.Lock()
         self.error = None
+        self.scheduler = None
 
     def snapshot(self):
         items = []
@@ -40,7 +41,9 @@ class Dashboard:
             if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
                 raise ValueError("数据文件应为对象数组")
             updated_at = datetime.fromtimestamp(self.output.stat().st_mtime, timezone.utc).isoformat()
-        return {"items": items, "orders": order_rows, "updated_at": updated_at, "error": self.error}
+        return {"items": items, "orders": order_rows, "updated_at": updated_at,
+                "error": self.error, "refreshing": self.lock.locked(),
+                "schedule": self.scheduler.snapshot() if self.scheduler else None}
 
     def refresh(self):
         if not self.lock.acquire(blocking=False):

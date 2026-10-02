@@ -3,6 +3,7 @@ __pycache__/
 *.exe
 *.tmp
 .env
+/config
 .venv/
 build/
 dist/

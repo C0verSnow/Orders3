@@ -13,6 +13,8 @@ import requests
 
 from orders_dashboard import dashboard as orders
 from orders_dashboard.server import LocalHTTPServer, make_handler
+from orders_dashboard.config import ScheduleConfig, load_schedule
+from orders_dashboard.scheduler import RefreshScheduler
 
 
 class DashboardTests(unittest.TestCase):
@@ -31,9 +33,10 @@ class DashboardTests(unittest.TestCase):
         self.thread.join()
         self.directory.cleanup()
 
-    def request(self, path, method="GET", origin=None):
+    def request(self, path, method="GET", origin=None, data=None):
         headers = {"Origin": origin} if origin else {}
-        request = Request(self.address + path, method=method, headers=headers)
+        request = Request(self.address + path, method=method, headers=headers,
+                          data=json.dumps(data).encode("utf-8") if data is not None else None)
         try:
             response = urlopen(request, timeout=5)
         except HTTPError as error:
@@ -175,6 +178,35 @@ class DashboardTests(unittest.TestCase):
         with self.assertRaises(OSError):
             LocalHTTPServer(("127.0.0.1", self.server.server_port),
                                    make_handler(self.dashboard))
+
+    def test_schedule_api_saves_and_exposes_live_configuration(self):
+        path = Path(self.directory.name) / "config"
+        self.dashboard.scheduler = RefreshScheduler(self.dashboard, ScheduleConfig(), config_path=path)
+        payload = {"enabled": False, "cron": "0 9 * * 1-5"}
+        status, _, body = self.request("/api/schedule", "POST", self.address, payload)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["cron"], payload["cron"])
+        self.assertIsNone(json.loads(body)["next_run"])
+        self.assertEqual(load_schedule(path), ScheduleConfig(False, payload["cron"]))
+        for endpoint in ["/api/schedule", "/api/data"]:
+            status, _, body = self.request(endpoint)
+            self.assertEqual(status, 200)
+            result = json.loads(body)
+            schedule = result["schedule"] if endpoint == "/api/data" else result
+            self.assertFalse(schedule["enabled"])
+            self.assertEqual(schedule["cron"], payload["cron"])
+
+    def test_schedule_api_origin_validation_and_invalid_expression(self):
+        path = Path(self.directory.name) / "config"
+        self.dashboard.scheduler = RefreshScheduler(self.dashboard, ScheduleConfig(), config_path=path)
+        for origin in [None, "https://example.com"]:
+            self.assertEqual(self.request("/api/schedule", "POST", origin,
+                                         {"enabled": True, "cron": "* * * * *"})[0], 403)
+        for payload in [{"enabled": True, "cron": "bad"}, {"enabled": "true", "cron": "* * * * *"},
+                        [], {"enabled": True}]:
+            self.assertEqual(self.request("/api/schedule", "POST", self.address, payload)[0], 400)
+        self.assertFalse(path.exists())
+        self.assertEqual(self.dashboard.scheduler.config, ScheduleConfig())
 
 
 if __name__ == "__main__":

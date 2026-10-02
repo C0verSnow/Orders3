@@ -33,12 +33,13 @@ static std::string quote_argument(const std::string& value) {
 }
 #endif
 
-// Python fetches the data and hosts the local dashboard.
-int main(int argc, char* argv[]) {
+// Python reads root/config, runs Cron refreshes and exposes configuration to the UI.
+// Calling frequency() without arguments starts the configured dashboard.
+int frequency(int argc = 0, char* argv[] = nullptr) {
     try {
         namespace fs = std::filesystem;
         fs::path script = fs::absolute(fs::path(__FILE__)).parent_path().parent_path() / "scripts" / "run.py";
-        if (!fs::exists(script)) {
+        if (!fs::exists(script) && argc > 0 && argv != nullptr) {
             script = fs::absolute(fs::path(argv[0])).parent_path().parent_path() / "scripts" / "run.py";
         }
         if (!fs::exists(script)) {
@@ -93,4 +94,8 @@ int main(int argc, char* argv[]) {
         std::cerr << error.what() << '\n';
         return 1;
     }
+}
+
+int main(int argc, char* argv[]) {
+    return frequency(argc, argv);
 }

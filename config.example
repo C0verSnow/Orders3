@@ -1,0 +1,6 @@
+# Copy to config in the repository root. UI saves take effect immediately.
+# Manual file edits take effect after restart. Uses the server's local timezone.
+# Five fields: minute hour day month weekday (0 or 7 = Sunday).
+[schedule]
+enabled = true
+cron = */15 * * * *
