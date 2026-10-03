@@ -29,6 +29,10 @@ jobs:
           arch: win64_msvc2022_64
           modules: 'qtwebengine qtwebchannel qtpositioning qthttpserver qtwebsockets'
           cache: true
+      - name: Set up MSVC and redistributable runtime paths
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - name: Compile dynamically linked C++ application and tests
         run: |
           cmake -S . -B build/native -A x64 -DBUILD_TESTING=ON
@@ -38,21 +42,14 @@ jobs:
       - name: Run native regression tests
         run: ./scripts/test.ps1
       - name: Assemble native release directory
-        run: |
-          cmake --install build/native --config Release --prefix dist/orders-windows-x64
-          if ($LASTEXITCODE -ne 0) { throw "CMake install failed" }
-          windeployqt --release --compiler-runtime dist/orders-windows-x64/bin/orders.exe
-          if ($LASTEXITCODE -ne 0) { throw "Qt deployment failed" }
-          Copy-Item README.md dist/orders-windows-x64/
-          Copy-Item docs/third-party.md dist/orders-windows-x64/
-          $licenseDirectory = Join-Path $env:QT_ROOT_DIR "licenses"
-          if (Test-Path -LiteralPath $licenseDirectory) {
-            Copy-Item -LiteralPath $licenseDirectory -Destination dist/orders-windows-x64/licenses -Recurse
-          }
-      - name: Check packaged application outside checkout
-        run: ./scripts/smoke.ps1 -Executable dist/orders-windows-x64/bin/orders.exe
+        run: ./scripts/package-windows.ps1
       - name: Create Windows archive
         run: Compress-Archive -Path dist/orders-windows-x64 -DestinationPath dist/orders-windows-x64.zip
+      - name: Check extracted archive without the Qt development environment
+        run: |
+          $archiveCheck = Join-Path $env:RUNNER_TEMP ("orders-archive-" + [guid]::NewGuid())
+          Expand-Archive -LiteralPath dist/orders-windows-x64.zip -DestinationPath $archiveCheck
+          ./scripts/smoke.ps1 -Executable (Join-Path $archiveCheck "orders-windows-x64/bin/orders.exe")
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: native-windows-x64
@@ -133,7 +130,23 @@ jobs:
           set -euo pipefail
           docker run -d --name orders-ci -p 127.0.0.1:8090:8090 orders-dashboard:ci --host 0.0.0.0 --port 8090 --no-browser --cached
           trap 'docker logs orders-ci; docker rm -f orders-ci' EXIT
-          curl --fail --silent --show-error --retry 30 --retry-delay 1 --retry-connrefused http://127.0.0.1:8090/ > /tmp/orders-page.html
+          # Docker can reset connections before the HTTP event loop is ready.
+          ready=false
+          for attempt in {1..60}; do
+            if [[ "$(docker inspect --format '{{.State.Running}}' orders-ci)" != true ]]; then
+              echo "Container exited before HTTP readiness" >&2
+              exit 1
+            fi
+            if curl --fail --silent --show-error --connect-timeout 1 --max-time 2 http://127.0.0.1:8090/ > /tmp/orders-page.html; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != true ]]; then
+            echo "Container did not become ready" >&2
+            exit 1
+          fi
           grep -qi '<html' /tmp/orders-page.html
           for route in style.css app.js logo.svg api/data api/orders; do
             curl --fail --silent --show-error "http://127.0.0.1:8090/$route" > /dev/null

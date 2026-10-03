@@ -6,8 +6,21 @@ New-Item -ItemType Directory -Path $taskTemporary | Out-Null
 $oldData = $env:ORDERS_DATA_DIR
 $oldConfig = $env:ORDERS_CONFIG_PATH
 $oldOrigin = $env:ORDERS_ALLOWED_ORIGIN
+$isolatedVariables = @(
+    "PATH", "QT_ROOT_DIR", "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH",
+    "QML2_IMPORT_PATH", "QML_IMPORT_PATH", "QTWEBENGINEPROCESS_PATH",
+    "QTWEBENGINE_RESOURCES_PATH", "QTWEBENGINE_LOCALES_PATH"
+)
+$oldEnvironment = @{}
+foreach ($name in $isolatedVariables) {
+    $oldEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+}
 $process = $null
 try {
+    foreach ($name in $isolatedVariables) {
+        [Environment]::SetEnvironmentVariable($name, $null, "Process")
+    }
+    $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
     $env:ORDERS_DATA_DIR = $taskTemporary
     $env:ORDERS_CONFIG_PATH = Join-Path $taskTemporary "config"
     $env:ORDERS_ALLOWED_ORIGIN = "http://127.0.0.1:8090"
@@ -17,7 +30,7 @@ try {
     $origin = "http://127.0.0.1:8090"
     $ready = $false
     for ($attempt = 0; $attempt -lt 100; $attempt++) {
-        if ($process.HasExited) { throw "Application exited before readiness" }
+        if ($process.HasExited) { throw "Application exited before readiness (exit code $($process.ExitCode))" }
         try {
             $data = Invoke-RestMethod "$origin/api/data"
             $ready = $true
@@ -59,5 +72,8 @@ try {
     $env:ORDERS_DATA_DIR = $oldData
     $env:ORDERS_CONFIG_PATH = $oldConfig
     $env:ORDERS_ALLOWED_ORIGIN = $oldOrigin
+    foreach ($name in $isolatedVariables) {
+        [Environment]::SetEnvironmentVariable($name, $oldEnvironment[$name], "Process")
+    }
     # Leave the tiny temporary directory available for diagnosing CI failures.
 }
