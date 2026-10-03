@@ -99,16 +99,19 @@ CMake 是唯一构建入口。测试覆盖 Cron、字符串精度、事务回滚
 
 ## CI 与发布
 
-`.github/workflows/build.yml` 在 Windows 和 Linux 编译 C++、执行测试并组装运行库。普通推送和 PR 直接上传程序文件夹：Windows 下载为 `orders-windows-x64.zip`，Linux 下载为 `orders-linux-x64.zip`，各自包含同名目录，不再嵌套第二层压缩包。Linux 构建附件 ZIP 解压后需要在程序目录执行 `chmod +x bin/orders`；正式 Release 的 `.tar.gz` 保留可执行权限。`v*` 标签在两端及容器检查通过后发布：
+`.github/workflows/build.yml` 在 Windows 和 Linux 编译 C++、执行测试并组装运行库。所有推送和 PR 都上传 Actions 构建附件：Windows 下载为 `orders-windows-x64.zip`，Linux 下载为 `orders-linux-x64.zip`，各自包含同名目录，不再嵌套第二层压缩包。Linux 构建附件 ZIP 解压后需要在程序目录执行 `chmod +x bin/orders`；Release 的 `.tar.gz` 保留可执行权限。每次推送 `master`（或在 `master` 手动运行工作流）在两端及容器检查通过后，自动创建 `build-<运行 ID>-<重跑次数>` 预发布版本；`v*` 标签继续发布对应版本，带 `-` 的版本标签标记为预发布。PR 和其他分支只做检查。发布内容：
 
 - `orders-windows-x64.zip`
 - `orders-linux-x64.tar.gz`
 - `SHA256SUMS.txt`
-- 原有 GHCR 容器镜像
+- `container-image.txt`：GHCR 镜像标签与不可变 digest，Release 说明也附有拉取命令
+- GHCR 容器镜像，与 Release 使用相同的版本标签，并附加 `sha-<提交短哈希>` 标签
+
+程序下载位于 [Releases](https://github.com/huan00000/orders3/releases)，容器镜像位于 [Packages](https://github.com/huan00000/orders3/packages)。`master` 发布更新镜像的 `master`、`latest` 标签；不带 `-` 的正式 `v*` 版本也更新 `latest`。自动构建的 Release 标记为预发布，不取代正式 Release 的 Latest 标记。
 
 程序动态链接 Qt 和项目核心库 `orders_core`；Windows 使用动态 MSVC 运行库（`/MD`）。Windows 的 `scripts/package-windows.ps1` 同时扫描 exe 和 `orders_core.dll`，收集 Qt SQL / Concurrent、SQLite 插件及 WebEngine 资源，并从 MSVC 官方 Redist 目录复制 x64 运行库到 exe 旁。打包阶段检查必要文件，CI 解压实际 ZIP 后清除 Qt 开发环境和开发工具 PATH，再检查网页与接口，避免构建机上的 DLL 掩盖漏打包。Linux 发布包将 `liborders_core.so` 放在 `lib` 目录，并打包 Qt 插件与递归依赖，保留系统 glibc 依赖。包内包含多个文件，不能只复制 exe 或裸程序。
 
-容器 CI 在启动后轮询 HTTP 就绪状态，处理端口映射建立期间的连接拒绝或重置；容器提前退出或始终未就绪会失败并输出容器日志。`v*` 标签通过检查后才推送 GHCR。
+容器 CI 在启动后轮询 HTTP 就绪状态，处理端口映射建立期间的连接拒绝或重置；容器提前退出或始终未就绪会失败并输出容器日志。`master` 或 `v*` 标签通过检查后才推送 GHCR，镜像推送成功后才发布 Release。
 
 ## 容器
 

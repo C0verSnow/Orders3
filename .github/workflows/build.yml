@@ -12,9 +12,38 @@ permissions:
 
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
+  publication:
+    name: Determine publication version
+    runs-on: ubuntu-24.04
+    outputs:
+      enabled: ${{ steps.version.outputs.enabled }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Select release and image version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" != pull_request && "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            if [[ "${GITHUB_REF#refs/tags/}" == *-* ]]; then
+              echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            fi
+          elif [[ "$GITHUB_EVENT_NAME" != pull_request && "$GITHUB_REF" == refs/heads/master ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "tag=build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
   windows:
     name: Windows x64 C++ application
     runs-on: windows-2022
@@ -92,12 +121,15 @@ jobs:
 
   container:
     name: Native Linux container / GHCR
-    needs: [windows, linux]
+    needs: [publication, windows, linux]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
       packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -115,8 +147,9 @@ jobs:
         with:
           images: ${{ steps.image.outputs.name }}
           tags: |
-            type=ref,event=tag
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+            type=raw,value=${{ needs.publication.outputs.tag }},enable=${{ needs.publication.outputs.enabled == 'true' }}
+            type=raw,value=master,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=latest,enable=${{ needs.publication.outputs.enabled == 'true' && (github.ref == 'refs/heads/master' || needs.publication.outputs.prerelease == 'false') }}
             type=sha
           flavor: latest=false
       - name: Build image for verification
@@ -158,14 +191,15 @@ jobs:
           curl --fail --silent --show-error -H 'Origin: http://127.0.0.1:8090' -H 'Content-Type: application/json' --data '{"enabled":false,"cron":"*/15 * * * *"}' http://127.0.0.1:8090/api/schedule
           docker exec orders-ci test -f /data/config
       - name: Log in to GHCR
-        if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
+        if: needs.publication.outputs.enabled == 'true'
         uses: docker/login-action@v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Push versioned image to GitHub Packages
-        if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
+        id: push
+        if: needs.publication.outputs.enabled == 'true'
         uses: docker/build-push-action@v7.4.0
         with:
           context: .
@@ -177,8 +211,8 @@ jobs:
 
   release:
     name: Publish native application archives
-    needs: [windows, linux, container]
-    if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
+    needs: [publication, windows, linux, container]
+    if: needs.publication.outputs.enabled == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -194,7 +228,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.publication.outputs.tag }}
+          PRERELEASE: ${{ needs.publication.outputs.prerelease }}
+          IMAGE_NAME: ${{ needs.container.outputs.image }}
+          IMAGE_DIGEST: ${{ needs.container.outputs.digest }}
         run: |
           set -euo pipefail
           cd release
@@ -205,12 +242,20 @@ jobs:
           tar -C orders-linux-x64 -czf orders-linux-x64.tar.gz orders-linux-x64
           test -s orders-windows-x64.zip
           test -s orders-linux-x64.tar.gz
-          sha256sum orders-windows-x64.zip orders-linux-x64.tar.gz > SHA256SUMS.txt
+          test -n "$IMAGE_DIGEST"
+          printf '%s\n' "$IMAGE_NAME:$RELEASE_TAG" "$IMAGE_NAME@$IMAGE_DIGEST" > container-image.txt
+          printf 'Container image: `%s:%s`\n\nPull this exact image:\n```sh\ndocker pull %s@%s\n```\n' "$IMAGE_NAME" "$RELEASE_TAG" "$IMAGE_NAME" "$IMAGE_DIGEST" > release-notes.md
+          sha256sum orders-windows-x64.zip orders-linux-x64.tar.gz container-image.txt > SHA256SUMS.txt
           if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
             release_options=()
-            if [[ "$RELEASE_TAG" == *-* ]]; then
-              release_options+=(--prerelease)
+            if [[ "$PRERELEASE" == true ]]; then
+              release_options+=(--prerelease --latest=false)
             fi
-            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes "${release_options[@]}"
+            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+              release_options+=(--verify-tag)
+            else
+              release_options+=(--target "$GITHUB_SHA")
+            fi
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --notes-file release-notes.md "${release_options[@]}"
           fi
-          gh release upload "$RELEASE_TAG" orders-windows-x64.zip orders-linux-x64.tar.gz SHA256SUMS.txt --clobber
+          gh release upload "$RELEASE_TAG" orders-windows-x64.zip orders-linux-x64.tar.gz container-image.txt SHA256SUMS.txt --clobber
