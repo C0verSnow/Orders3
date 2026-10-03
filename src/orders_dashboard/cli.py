@@ -1,8 +1,11 @@
 """Command-line entry point."""
 import argparse
 from pathlib import Path
+import sqlite3
 import sys
 import webbrowser
+
+import requests
 
 from .config import default_output, load_schedule, validate_output
 from .dashboard import Dashboard
@@ -13,18 +16,30 @@ from .scheduler import RefreshScheduler
 def main(argv=None):
     parser = argparse.ArgumentParser(description="抓取 URL 数据并启动本地展示网页")
     parser.add_argument("output", nargs="?", type=Path,
-                        default=default_output())
-    parser.add_argument("--port", type=int, default=8080, help="本地网页端口，默认 8080")
+                        default=None)
+    parser.add_argument("--list", action="store_true", help="获取 Gate 跟踪订单并保存到 data/orderslist.db")
+    parser.add_argument("--port", type=int, default=0, help="本地网页端口，默认自动分配；0 表示自动分配")
     parser.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     parser.add_argument("--cached", action="store_true", help="启动时直接展示已有数据")
     parser.add_argument("--fetch-only", action="store_true", help="仅抓取并保存 SQLite 数据库，不启动网页")
     args = parser.parse_args(argv)
-    if not 1 <= args.port <= 65535:
-        parser.error("端口必须在 1 到 65535 之间")
+    if not 0 <= args.port <= 65535:
+        parser.error("端口必须在 0 到 65535 之间；0 表示自动分配")
     if args.cached and args.fetch_only:
         parser.error("--cached 与 --fetch-only 不能同时使用")
+    if args.list:
+        if args.cached:
+            parser.error("--list 与 --cached 不能同时使用")
+        from .trailing import refresh_orders
+        try:
+            output, count = refresh_orders(args.output)
+        except (ValueError, OSError, requests.RequestException, sqlite3.Error) as error:
+            print(f"获取订单列表失败：{error}", file=sys.stderr)
+            return 1
+        print(f"已保存 {count} 条订单：{output}")
+        return 0
     try:
-        output = validate_output(args.output)
+        output = validate_output(args.output if args.output is not None else default_output())
         schedule = load_schedule()
     except ValueError as error:
         parser.error(str(error))

@@ -12,7 +12,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m orders_dashboard --cached
 ```
 
-默认地址为 `http://127.0.0.1:8080`。`--cached` 展示已有缓存；去掉该参数会在启动时抓取远程来源。Ctrl+C 停止服务。
+默认由系统自动分配空闲端口，并自动打开浏览器；实际地址会显示在终端中，例如 `http://127.0.0.1:53124`。无需传入端口参数；`--port 8090` 可手动指定端口，`--port 0` 表示自动分配。`--cached` 展示已有缓存；去掉该参数会在启动时抓取远程来源。Ctrl+C 停止服务。
 
 无需安装本项目时，可先 `python -m pip install -r requirements.txt`，再执行 `python scripts/run.py --cached`。
 
@@ -36,7 +36,11 @@ src/orders_dashboard/
   server.py       本地 API 与静态资源白名单
   cli.py          参数解析与启动流程
   web/            HTML、CSS、JavaScript、SVG
-native/           可选 C++ 启动器
+native/
+  launcher.cpp    程序入口，只调用统一启动接口
+  launcher.hpp    启动接口 orders::launch 声明
+  main.cpp        集中实现参数调度、Python 进程调用及功能函数
+  main.hpp        功能接口 orders::frequency / orders::list 声明
 scripts/          启动、构建与测试脚本
 tests/            自动化回归测试
 docs/             数据格式、迁移说明及旧文档
@@ -73,10 +77,14 @@ cron = */15 * * * *
 ```powershell
 .\scripts\build.ps1
 $env:PYTHON = (Resolve-Path .\.venv\Scripts\python.exe).Path
-.\build\orders.exe --cached
+.\build\orders.exe
 ```
 
+直接运行 `.\build\orders.exe` 即可自动分配空闲端口、启动网页并打开浏览器，无需参数。启动时默认抓取远程来源；如需直接展示缓存，可执行 `.\build\orders.exe --cached`。
+
 也可执行 `cmake -S . -B build` 和 `cmake --build build --config Release`。启动器透传全部参数并返回 Python 的退出码，运行时需要保留本仓库目录结构和 Python 依赖。仅复制可执行文件不能独立运行。
+
+`orders::list()` 通过现有 Python 运行时读取 Gate 跟踪订单。先在根目录 `.env` 配置 `API_KEY`、`API_SECRET`（环境变量优先），再执行 `build/orders.exe --list` 或 `python scripts/run.py --list`。默认保存到根目录 `data/orderslist.db` 的 `orders` 表，仅包含 `id`、`contract`、`amount`、`trigger_price`、`reduce_only`、`original_status` 和响应的毫秒 `timestamp`。每次成功获取后事务替换订单快照；请求、解析或写入失败会返回非零退出码，并保留已有订单。此列表命令执行一次后退出，不启动网页；可用位置参数指定其他 SQLite 输出路径。
 
 ## 验证
 
