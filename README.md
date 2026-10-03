@@ -1,6 +1,6 @@
 # 本地订单数据看板
 
-C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 默认打开系统浏览器。程序从 Supabase 读取来源 URL、抓取内容并保存到 SQLite，同时提供 Gate 跟踪订单、搜索筛选、手动刷新、Cron 定时抓取和数据库下载。
+C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 和 macOS 默认打开系统浏览器。程序从 Supabase 读取来源 URL、抓取内容并保存到 SQLite，同时提供 Gate 跟踪订单、搜索筛选、手动刷新、Cron 定时抓取和数据库下载。
 
 运行与发布不需要 Python，也不使用 PyInstaller。网页仍使用 HTML / CSS / JavaScript，作为 Qt 资源编译进程序。旧 Python 代码保存在 `archive/python/`，仅供迁移对照，不参与构建。
 
@@ -9,7 +9,8 @@ C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 默认打�
 解压后运行：
 
 - Windows：`orders-windows-x64/orders.exe`。包内包含 Qt WebEngine，保留整个解压目录；无需安装 WebView2。
-- Linux：`orders-linux-x64/bin/orders`。包内包含 Qt 与相关运行库，面向 Ubuntu 24.04 x64 或兼容环境，需要 glibc 2.39+；浏览器模式需要系统提供 `xdg-open`。
+- Linux：`orders-linux-x64/bin/orders` 或 `orders-linux-arm64/bin/orders`。包内包含 Qt 与相关运行库，面向 Ubuntu 24.04 对应架构或兼容环境，需要 glibc 2.39+；浏览器模式需要系统提供 `xdg-open`。
+- macOS：按 Intel / Apple Silicon 选择 `orders-macos-x64.tar.gz` / `orders-macos-arm64.tar.gz`，解压后运行 `orders.app`，或执行 `orders.app/Contents/MacOS/orders`。面向 macOS 13+，应用包包含 Qt、SQLite 插件和项目运行库。
 
 启动后在「连接与存储配置」中填写 Supabase 地址、密钥以及 Gate API Key / Secret，点击「保存程序配置」即可，无需创建或打开 `.env`。连接配置立即生效，正在执行的任务使用原配置；更改数据目录需要重启，不会自动搬移已有数据库。密钥不回显，留空保留原值，勾选清除可删除。发布版默认在用户目录 `.orders-dashboard/` 保存数据库和配置。Windows 的 exe、DLL、Qt 插件与 `example.env`、`example.config` 均位于解压后的程序目录内。
 
@@ -99,10 +100,13 @@ CMake 是唯一构建入口。测试覆盖 Cron、字符串精度、事务回滚
 
 ## CI 与发布
 
-`.github/workflows/build.yml` 在 Windows 和 Linux 编译 C++、执行测试并组装运行库。所有推送和 PR 都上传 Actions 构建附件：Windows 下载为 `orders-windows-x64.zip`，Linux 下载为 `orders-linux-x64.zip`，各自包含同名目录，不再嵌套第二层压缩包。Linux 构建附件 ZIP 解压后需要在程序目录执行 `chmod +x bin/orders`；Release 的 `.tar.gz` 保留可执行权限。每次推送 `master`（或在 `master` 手动运行工作流）在两端及容器检查通过后，自动创建 `build-<运行 ID>-<重跑次数>` 预发布版本；`v*` 标签继续发布对应版本，带 `-` 的版本标签标记为预发布。PR 和其他分支只做检查。发布内容：
+`.github/workflows/build.yml` 在 Windows x64、Linux x64 / ARM64 和 macOS Intel / Apple Silicon 编译 C++、执行测试并组装运行库。所有推送和 PR 都上传 Actions 构建附件：Windows 下载为 `orders-windows-x64.zip`，Linux 下载为 `orders-linux-x64.zip`，各自包含同名目录，不再嵌套第二层压缩包。Linux ARM64 附件为 `orders-linux-arm64.zip`；macOS 附件 ZIP 内包含同名 `.tar.gz`，解开 tar 包后保留执行权限与应用包结构。Linux 构建附件 ZIP 解压后需要在程序目录执行 `chmod +x bin/orders`；Release 的 `.tar.gz` 保留可执行权限。每次推送 `master`（或在 `master` 手动运行工作流）在所有平台及容器检查通过后，自动创建 `build-<运行 ID>-<重跑次数>` 预发布版本；`v*` 标签继续发布对应版本，带 `-` 的版本标签标记为预发布。PR 和其他分支只做检查。发布内容：
 
 - `orders-windows-x64.zip`
 - `orders-linux-x64.tar.gz`
+- `orders-linux-arm64.tar.gz`
+- `orders-macos-x64.tar.gz`
+- `orders-macos-arm64.tar.gz`
 - `SHA256SUMS.txt`
 - `container-image.txt`：GHCR 镜像标签与不可变 digest，Release 说明也附有拉取命令
 - GHCR 容器镜像，与 Release 使用相同的版本标签，并附加 `sha-<提交短哈希>` 标签
@@ -115,7 +119,7 @@ CMake 是唯一构建入口。测试覆盖 Cron、字符串精度、事务回滚
 
 ## 容器
 
-Docker 使用 Ubuntu 多阶段 C++ 构建，运行阶段直接启动原生程序。
+Docker 使用 Ubuntu 多阶段 C++ 构建，运行阶段直接启动原生程序。GHCR 镜像同时提供 `linux/amd64` 和 `linux/arm64`，Docker 自动选择对应架构；CI 分别启动两种架构的镜像检查网页和接口。
 
 ```powershell
 docker run -d --name orders-dashboard --restart unless-stopped `

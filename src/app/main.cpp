@@ -191,7 +191,11 @@ int main(int argc, char *argv[]) {
         }
 #else
         if (!parser.isSet("no-browser"))
+#ifdef Q_OS_MACOS
+            QProcess::startDetached("open", {address.toString()});
+#else
             QProcess::startDetached("xdg-open", {address.toString()});
+#endif
         result = application->exec();
 #endif
         scheduler.stop();

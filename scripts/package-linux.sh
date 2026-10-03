@@ -9,7 +9,7 @@ cp "$plugin_directory/sqldrivers/libqsqlite.so" "$package_directory/plugins/sqld
 cp "$plugin_directory/tls/"*.so "$package_directory/plugins/tls/"
 # OpenSSL is loaded dynamically by Qt's TLS plugin; include it explicitly.
 for library in libssl.so.3 libcrypto.so.3; do
-    path="$(ldconfig -p | awk -v name="$library" '$1 == name && /x86-64/ && !found {print $NF; found=1}')"
+    path="$(ldd "$plugin_directory/tls/libqopensslbackend.so" | awk -v name="$library" '$1 == name && $2 == "=>" && !found {print $3; found=1}')"
     test -n "$path"
     cp -L "$path" "$package_directory/lib/"
 done

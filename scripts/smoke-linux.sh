@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-executable="$(realpath "${1:?Pass the C++ executable path}")"
+executable_path="${1:?Pass the C++ executable path}"
+executable="$(cd "$(dirname "$executable_path")" && pwd)/$(basename "$executable_path")"
 temporary="$(mktemp -d)"
 export ORDERS_DATA_DIR="$temporary"
 export ORDERS_CONFIG_PATH="$temporary/config"
