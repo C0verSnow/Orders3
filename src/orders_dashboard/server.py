@@ -7,6 +7,7 @@ import socket
 import sqlite3
 from configparser import Error as ConfigError
 from urllib.parse import urlparse
+from .trailing import OrdersList
 
 
 class LocalHTTPServer(ThreadingHTTPServer):
@@ -19,7 +20,8 @@ class LocalHTTPServer(ThreadingHTTPServer):
         super().server_bind()
 
 
-def make_handler(dashboard):
+def make_handler(dashboard, orders_list=None):
+    orders_list = orders_list if orders_list is not None else OrdersList()
     # Serve only named public assets; never expose source, credentials, or arbitrary files.
     assets = {"/": ("index.html", "text/html; charset=utf-8"),
               "/index.html": ("index.html", "text/html; charset=utf-8"),
@@ -50,6 +52,8 @@ def make_handler(dashboard):
             try:
                 if path == "/api/data":
                     self.send_json(200, dashboard.snapshot())
+                elif path == "/api/orders":
+                    self.send_json(200, orders_list.snapshot())
                 elif path == "/api/schedule":
                     self.send_json(200, dashboard.scheduler.snapshot() if dashboard.scheduler else None)
                 elif path == "/api/download":
@@ -67,13 +71,22 @@ def make_handler(dashboard):
 
         def do_POST(self):
             path = urlparse(self.path).path
-            if path not in {"/api/refresh", "/api/schedule"}:
+            if path not in {"/api/refresh", "/api/schedule", "/api/orders/refresh"}:
                 self.send_json(404, {"error": "未找到资源"})
                 return
             # Browser mutations must originate from this local page.
             expected_origin = f"http://127.0.0.1:{self.server.server_port}"
             if self.headers.get("Origin") != expected_origin:
                 self.send_json(403, {"error": "请从本地页面发起操作"})
+                return
+            if path == "/api/orders/refresh":
+                if not orders_list.refresh():
+                    self.send_json(409, {"error": "正在获取订单，请稍后再试"})
+                    return
+                try:
+                    self.send_json(502 if orders_list.error else 200, orders_list.snapshot())
+                except (OSError, ValueError, sqlite3.Error) as error:
+                    self.send_json(500, {"error": f"读取订单失败：{error}"})
                 return
             if path == "/api/schedule":
                 if dashboard.scheduler is None:

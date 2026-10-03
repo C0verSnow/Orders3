@@ -41,17 +41,16 @@ static std::string quote_argument(const std::string& value) {
 #endif
 
 
-// Python reads root/config, runs Cron refreshes and exposes configuration to the UI.
-// Calling frequency() without arguments starts the configured dashboard.
-int frequency(int argc, char* argv[]) {
+// Start a Python entry script through the shared process launcher.
+static int run_python(const char* script_file, int argc = 0, char* argv[] = nullptr) {
     try {
         namespace fs = std::filesystem;
-        fs::path script = fs::absolute(fs::path(__FILE__)).parent_path().parent_path() / "scripts" / "run.py";
+        fs::path script = fs::absolute(fs::path(__FILE__)).parent_path().parent_path() / "scripts" / script_file;
         if (!fs::exists(script) && argc > 0 && argv != nullptr) {
-            script = fs::absolute(fs::path(argv[0])).parent_path().parent_path() / "scripts" / "run.py";
+            script = fs::absolute(fs::path(argv[0])).parent_path().parent_path() / "scripts" / script_file;
         }
         if (!fs::exists(script)) {
-            std::cerr << "Cannot find scripts/run.py; build and run from the repository layout.\n";
+            std::cerr << "Cannot find scripts/" << script_file << "; build and run from the repository layout.\n";
             return 1;
         }
 
@@ -104,12 +103,14 @@ int frequency(int argc, char* argv[]) {
     }
 }
 
-// Fetch trailing orders once using the shared Python runtime and .env settings.
+// Start the configured dashboard; optional arguments are forwarded unchanged.
+int frequency(int argc, char* argv[]) {
+    return run_python("run.py", argc, argv);
+}
+
+// Fetch trailing orders directly, without constructing command-line options.
 int list() {
-    char program[] = "orders";
-    char option[] = "--list";
-    char* arguments[] = {program, option, nullptr};
-    return frequency(2, arguments);
+    return run_python("list.py");
 }
 
 int launch(int argc, char* argv[]) {

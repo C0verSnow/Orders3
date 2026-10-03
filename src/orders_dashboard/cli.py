@@ -1,11 +1,8 @@
 """Command-line entry point."""
 import argparse
 from pathlib import Path
-import sqlite3
 import sys
 import webbrowser
-
-import requests
 
 from .config import default_output, load_schedule, validate_output
 from .dashboard import Dashboard
@@ -30,14 +27,8 @@ def main(argv=None):
     if args.list:
         if args.cached:
             parser.error("--list 与 --cached 不能同时使用")
-        from .trailing import refresh_orders
-        try:
-            output, count = refresh_orders(args.output)
-        except (ValueError, OSError, requests.RequestException, sqlite3.Error) as error:
-            print(f"获取订单列表失败：{error}", file=sys.stderr)
-            return 1
-        print(f"已保存 {count} 条订单：{output}")
-        return 0
+        from .trailing import main as list_orders
+        return list_orders(args.output)
     try:
         output = validate_output(args.output if args.output is not None else default_output())
         schedule = load_schedule()

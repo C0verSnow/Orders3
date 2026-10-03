@@ -15,6 +15,7 @@ from orders_dashboard import dashboard as orders
 from orders_dashboard.server import LocalHTTPServer, make_handler
 from orders_dashboard.config import ScheduleConfig, load_schedule
 from orders_dashboard.scheduler import RefreshScheduler
+from orders_dashboard.trailing import OrdersList
 
 
 class DashboardTests(unittest.TestCase):
@@ -22,7 +23,8 @@ class DashboardTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.output = Path(self.directory.name) / "custom data.db"
         self.dashboard = orders.Dashboard(self.output)
-        self.server = LocalHTTPServer(("127.0.0.1", 0), make_handler(self.dashboard))
+        self.orders_list = OrdersList(Path(self.directory.name) / "orderslist.db")
+        self.server = LocalHTTPServer(("127.0.0.1", 0), make_handler(self.dashboard, self.orders_list))
         self.address = f"http://127.0.0.1:{self.server.server_port}"
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -64,6 +66,42 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["items"], records)
         self.assertIsNotNone(json.loads(body)["updated_at"])
+
+    def test_web_orders_refresh_persistence_failure_and_empty_list(self):
+        self.assertEqual(json.loads(self.request("/api/orders")[2])["orders"], [])
+        row = ("123", "BTC_USDT", "38", "", False, 2, 1790055122058)
+        with patch("orders_dashboard.trailing.fetch_orders", return_value=[row]):
+            status, _, body = self.request("/api/orders/refresh", "POST", self.address)
+        self.assertEqual(status, 200)
+        payload = json.loads(body)
+        self.assertEqual(payload["orders"][0]["contract"], "BTC_USDT")
+        self.assertIs(payload["orders"][0]["reduce_only"], False)
+        self.assertIsNotNone(payload["updated_at"])
+        self.assertFalse(self.output.exists())
+        self.assertEqual(json.loads(self.request("/api/orders")[2])["orders"], payload["orders"])
+        self.assertEqual(OrdersList(self.orders_list.output).snapshot()["orders"], payload["orders"])
+        with patch("orders_dashboard.trailing.fetch_orders", side_effect=ValueError("offline")):
+            status, _, body = self.request("/api/orders/refresh", "POST", self.address)
+        self.assertEqual(status, 502)
+        self.assertEqual(json.loads(body)["orders"], payload["orders"])
+        self.assertIn("offline", json.loads(body)["error"])
+        with patch("orders_dashboard.trailing.fetch_orders", return_value=[]):
+            status, _, body = self.request("/api/orders/refresh", "POST", self.address)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["orders"], [])
+        self.assertIsNone(json.loads(body)["error"])
+
+    def test_web_orders_origin_and_busy(self):
+        with patch("orders_dashboard.trailing.fetch_orders") as fetch:
+            for origin in [None, "https://example.com"]:
+                self.assertEqual(self.request("/api/orders/refresh", "POST", origin)[0], 403)
+            fetch.assert_not_called()
+            self.orders_list.lock.acquire()
+            try:
+                self.assertEqual(self.request("/api/orders/refresh", "POST", self.address)[0], 409)
+                fetch.assert_not_called()
+            finally:
+                self.orders_list.lock.release()
 
     def test_refresh_updates_file_and_response(self):
         records = [{"url": "https://example.com", "data": {"value": 123}, "status_code": 200}]

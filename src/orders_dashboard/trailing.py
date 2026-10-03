@@ -6,6 +6,9 @@ import os
 from pathlib import Path
 import sqlite3
 import time
+import sys
+import threading
+from datetime import datetime, timezone
 
 import requests
 
@@ -14,6 +17,10 @@ from .config import validate_output
 HOST = "https://api.gateio.ws"
 API_PATH = "/api/v4/futures/usdt/autoorder/v1/trail/list"
 FIELDS = ("id", "contract", "amount", "trigger_price", "reduce_only", "original_status")
+
+
+def default_orders_output():
+    return Path(__file__).resolve().parents[2] / "data" / "orderslist.db"
 
 
 def fetch_orders():
@@ -55,7 +62,7 @@ def fetch_orders():
 
 def refresh_orders(output=None):
     output = validate_output(output if output is not None else
-                             Path(__file__).resolve().parents[2] / "data" / "orderslist.db")
+                             default_orders_output())
     rows = fetch_orders()
     output.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(output)) as connection:
@@ -72,3 +79,47 @@ def refresh_orders(output=None):
             connection.execute("DELETE FROM orders")
             connection.executemany("INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
     return output, len(rows)
+
+
+def main(output=None):
+    try:
+        output, count = refresh_orders(output)
+    except (ValueError, OSError, requests.RequestException, sqlite3.Error) as error:
+        print(f"获取订单列表失败：{error}", file=sys.stderr)
+        return 1
+    print(f"已保存 {count} 条订单：{output}")
+    return 0
+
+
+class OrdersList:
+    """Share the list operation with the webpage, without CLI argument parsing."""
+
+    def __init__(self, output=None):
+        self.output = validate_output(output if output is not None else default_orders_output())
+        self.lock = threading.Lock()
+        self.error = None
+
+    def snapshot(self):
+        orders = []
+        updated_at = None
+        if self.output.exists():
+            with closing(sqlite3.connect(self.output.as_uri() + "?mode=ro", uri=True)) as connection:
+                connection.row_factory = sqlite3.Row
+                orders = [dict(row) for row in connection.execute("SELECT * FROM orders ORDER BY id")]
+            for order in orders:
+                order["reduce_only"] = bool(order["reduce_only"])
+            updated_at = datetime.fromtimestamp(self.output.stat().st_mtime, timezone.utc).isoformat()
+        return {"orders": orders, "updated_at": updated_at,
+                "error": self.error, "refreshing": self.lock.locked()}
+
+    def refresh(self):
+        if not self.lock.acquire(blocking=False):
+            return False
+        try:
+            refresh_orders(self.output)
+            self.error = None
+        except (ValueError, OSError, requests.RequestException, sqlite3.Error) as error:
+            self.error = f"获取订单列表失败，保留上次数据：{error}"
+        finally:
+            self.lock.release()
+        return True

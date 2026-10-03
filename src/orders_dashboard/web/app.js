@@ -213,6 +213,83 @@ $("schedule-form").addEventListener("submit", async (event) => {
     $("schedule-save").textContent = "保存定时配置";
   }
 });
+let fetchingOrders = false;
+let loadingOrders = false;
+function ordersNotice(message) {
+  $("orders-notice").textContent = message || "";
+  $("orders-notice").hidden = !message;
+}
+function applyOrders(data) {
+  if (!Array.isArray(data.orders)) throw new Error("订单列表格式错误");
+  $("orders-count").textContent = `${data.orders.length} 条`;
+  $("orders-updated").textContent = dateText(data.updated_at);
+  ordersNotice(data.error);
+  const container = $("orders-records");
+  container.replaceChildren();
+  if (!data.orders.length) {
+    container.append(node("div", "empty", data.updated_at ? "目前没有跟踪订单。" : "点击「获取跟踪订单」加载列表。"));
+    return;
+  }
+  const wrapper = node("div", "table-scroll");
+  wrapper.tabIndex = 0;
+  wrapper.setAttribute("role", "region");
+  wrapper.setAttribute("aria-label", "Gate 跟踪订单表格，可横向滚动查看全部列");
+  const table = node("table", "data-table");
+  const thead = node("thead");
+  const header = node("tr");
+  for (const label of ["订单 ID", "合约", "数量", "触发价格", "仅减仓", "原始状态", "接口时间"]) {
+    const th = node("th", "", label);
+    th.scope = "col";
+    header.append(th);
+  }
+  thead.append(header);
+  const tbody = node("tbody");
+  for (const order of data.orders) {
+    const tr = node("tr");
+    for (const field of ["id", "contract", "amount", "trigger_price"]) {
+      tr.append(node("td", "", order[field] === "" || order[field] == null ? "—" : String(order[field])));
+    }
+    tr.append(node("td", "", order.reduce_only ? "是" : "否"),
+      node("td", "", String(order.original_status)),
+      node("td", "table-date", dateText(order.timestamp)));
+    tbody.append(tr);
+  }
+  table.append(thead, tbody);
+  wrapper.append(table);
+  container.append(wrapper);
+}
+async function loadOrders() {
+  if (loadingOrders || fetchingOrders) return;
+  loadingOrders = true;
+  try {
+    const response = await fetch("/api/orders", {cache: "no-store"});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "读取订单失败");
+    applyOrders(data);
+  } catch (error) { ordersNotice(error.message); }
+  finally { loadingOrders = false; }
+}
+$("orders-refresh").addEventListener("click", async () => {
+  if (fetchingOrders || loadingOrders) return;
+  fetchingOrders = true;
+  $("orders-refresh").disabled = true;
+  $("orders-refresh").textContent = "正在获取订单…";
+  ordersNotice("正在获取最新跟踪订单，请稍候…");
+  try {
+    const response = await fetch("/api/orders/refresh", {method: "POST"});
+    const data = await response.json();
+    if (Array.isArray(data.orders)) applyOrders(data);
+    if (!response.ok) throw new Error(data.error || "获取订单失败");
+    ordersNotice("订单已更新。");
+  } catch (error) { ordersNotice(error.message); }
+  finally {
+    fetchingOrders = false;
+    $("orders-refresh").disabled = false;
+    $("orders-refresh").textContent = "获取跟踪订单";
+  }
+});
+loadOrders();
+setInterval(loadOrders, 15000);
 loadData();
 setInterval(loadData, 15000);
 setInterval(updateCountdown, 1000);
