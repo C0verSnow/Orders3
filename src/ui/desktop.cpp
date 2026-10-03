@@ -3,6 +3,7 @@
 #include <QDesktopServices>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QIcon>
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QPainter>
@@ -62,7 +63,10 @@ QPixmap splashImage() {
 } // namespace
 
 int runDesktop(const QUrl &address) {
+    const QIcon icon(":/web/logo.ico");
+    QApplication::setWindowIcon(icon);
     QMainWindow window;
+    window.setWindowIcon(icon);
     window.setWindowTitle("Orders · 本地订单看板");
     window.resize(1200, 820);
     window.setMinimumSize(720, 520);
@@ -93,6 +97,7 @@ int runDesktop(const QUrl &address) {
         download->accept();
     });
     QSplashScreen splash(splashImage());
+    splash.setWindowIcon(icon);
     splash.show();
     QPropertyAnimation fade(&splash, "windowOpacity");
     fade.setDuration(400);
