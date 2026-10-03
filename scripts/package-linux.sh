@@ -7,10 +7,14 @@ mkdir -p "$package_directory/lib" "$package_directory/plugins/sqldrivers" "$pack
 plugin_directory="$(qtpaths6 --plugin-dir)"
 cp "$plugin_directory/sqldrivers/libqsqlite.so" "$package_directory/plugins/sqldrivers/"
 cp "$plugin_directory/tls/"*.so "$package_directory/plugins/tls/"
-# OpenSSL is loaded dynamically by Qt's TLS plugin; include it explicitly.
+# OpenSSL is loaded dynamically by Qt's TLS plugin, so ldd may not list it.
+# Resolve its SONAMEs from the native runner's linker cache instead.
 for library in libssl.so.3 libcrypto.so.3; do
-    path="$(ldd "$plugin_directory/tls/libqopensslbackend.so" | awk -v name="$library" '$1 == name && $2 == "=>" && !found {print $3; found=1}')"
-    test -n "$path"
+    path="$(ldconfig -p | awk -v name="$library" '$1 == name && !found {print $NF; found=1}')"
+    if [[ -z "$path" || ! -f "$path" ]]; then
+        echo "Cannot locate required OpenSSL runtime library: $library" >&2
+        exit 1
+    fi
     cp -L "$path" "$package_directory/lib/"
 done
 # Collect transitive dependencies, retaining the target distribution's glibc as a system dependency.

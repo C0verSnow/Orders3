@@ -21,7 +21,6 @@
   <main>
     <div class="heading">
       <div><p class="eyebrow">DATA WORKSPACE / 数据工作台</p><h1>抓取数据，一目了然<span>。</span></h1><p class="subtitle">集中查看 URL 抓取结果，追踪订单信息与来源状态。</p></div>
-      <button id="refresh" class="primary" type="button">↻ 重新抓取</button>
     </div>
     <section class="stats" aria-label="数据概览">
       <article><span>抓取来源</span><strong id="total">—</strong><small>全部数据记录</small></article>
@@ -59,7 +58,7 @@
       <p id="schedule-notice" class="notice" role="status" aria-live="polite" hidden></p>
     </section>
     <section class="results" aria-labelledby="results-title">
-      <div class="section-heading"><h2 id="results-title">来源与订单表格 <span id="count">0</span></h2><span class="hint">每个订单一行 · 每 15 秒同步</span></div>
+      <div class="section-heading"><h2 id="results-title">来源与订单表格 <span id="count">0</span></h2><span class="hint">每个订单一行 · 每 15 秒同步</span><button id="refresh" class="primary" type="button">↻ 重新抓取</button></div>
       <div class="toolbar"><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="搜索 URL、交易对或抓取内容…" aria-label="搜索抓取结果"></label><label class="filter">状态 <select id="filter"><option value="all">全部状态</option><option value="success">仅成功</option><option value="failed">仅失败</option></select></label><a class="download" href="/api/download" download="data.db">↓ 导出 data.db</a></div>
       <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
       <div id="records" aria-live="polite"><div class="empty">正在加载抓取结果…</div></div>
