@@ -48,7 +48,7 @@ if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     qt_add_executable(orders_tests tests/cpp/core_tests.cpp)
     target_link_libraries(orders_tests PRIVATE orders_core Qt6::Test)
-    add_test(NAME orders_core COMMAND orders_tests)
+    add_test(NAME orders_core COMMAND orders_tests -v2)
 endif()
 
 install(TARGETS orders RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

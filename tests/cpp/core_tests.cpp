@@ -7,6 +7,8 @@
 #include "services/dashboard.hpp"
 #include "services/fetcher.hpp"
 #include "services/scheduler.hpp"
+#include <QCoreApplication>
+#include <QDebug>
 #include <QFile>
 #include <QHostAddress>
 #include <QJsonDocument>
@@ -206,5 +208,19 @@ private slots:
                      .value("activation_price").toString(), QString("12"));
     }
 };
-QTEST_GUILESS_MAIN(CoreTests)
+
+// An orders::Error escaping a test slot would otherwise abort the process with an
+// opaque Windows crash dump. Report it so CI shows the failing operation.
+int main(int argc, char *argv[]) {
+    QCoreApplication app(argc, argv);
+    CoreTests tests;
+    try {
+        return QTest::qExec(&tests, argc, argv);
+    } catch (const std::exception &error) {
+        qCritical().noquote() << "Unhandled exception in test:" << error.what();
+    } catch (...) {
+        qCritical() << "Unhandled non-standard exception in test";
+    }
+    return 1;
+}
 #include "core_tests.moc"
