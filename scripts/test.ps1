@@ -1,10 +1,7 @@
-param([string]$Python = "python")
+param([string]$BuildDirectory = "", [string]$Configuration = "Release")
 $ErrorActionPreference = "Stop"
-$repository = Split-Path -Parent $PSScriptRoot
-Push-Location $repository
-try {
-    & $Python (Join-Path $PSScriptRoot "test.py")
-    if ($LASTEXITCODE -ne 0) { throw "Tests failed ($LASTEXITCODE)" }
-} finally {
-    Pop-Location
+if (-not $BuildDirectory) {
+    $BuildDirectory = Join-Path (Split-Path -Parent $PSScriptRoot) "build/native"
 }
+& ctest --test-dir $BuildDirectory -C $Configuration --output-on-failure
+if ($LASTEXITCODE -ne 0) { throw "C++ tests failed ($LASTEXITCODE)" }

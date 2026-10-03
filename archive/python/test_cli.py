@@ -60,6 +60,7 @@ class StartupTests(unittest.TestCase):
                                 thread.join()
 
                         console = StringIO()
+                        errors = StringIO()
                         with patch("orders_dashboard.cli.default_output", return_value=output), \
                                 patch("orders_dashboard.trailing.default_orders_output", return_value=Path(directory) / "orders.db"), \
                                 patch("orders_dashboard.trailing.fetch_orders", return_value=[
@@ -69,8 +70,8 @@ class StartupTests(unittest.TestCase):
                                 patch("orders_dashboard.dashboard.fetch_data", return_value=[]), \
                                 patch.object(LocalHTTPServer, "serve_forever", serve), \
                                 patch("orders_dashboard.cli.webbrowser.open") as browser, \
-                                redirect_stdout(console), redirect_stderr(StringIO()):
-                            self.assertEqual(main(arguments), 0)
+                                redirect_stdout(console), redirect_stderr(errors):
+                            self.assertEqual(main(arguments), 0, errors.getvalue())
                         if "--cached" in arguments:
                             fetch_orders.assert_not_called()
                         else:

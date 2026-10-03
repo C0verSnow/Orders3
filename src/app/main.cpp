@@ -1,0 +1,203 @@
+#include "app/server.hpp"
+#include "core/config.hpp"
+#include "core/error.hpp"
+#include "services/dashboard.hpp"
+#include "services/scheduler.hpp"
+#ifdef Q_OS_WIN
+#include "ui/desktop.hpp"
+#include <QApplication>
+#include <windows.h>
+#include <cstdio>
+#endif
+#include <QCommandLineParser>
+#include <QCoreApplication>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QProcess>
+#include <QThreadPool>
+#include <QTimer>
+#include <QtConcurrent/QtConcurrentRun>
+#include <atomic>
+#include <csignal>
+#include <iostream>
+#include <memory>
+
+namespace {
+volatile std::sig_atomic_t interrupted = 0;
+void stopSignal(int) { interrupted = 1; }
+
+#ifdef Q_OS_WIN
+std::atomic<bool> consoleStopped{false};
+BOOL WINAPI stopConsole(DWORD event) {
+    if (event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT || event == CTRL_CLOSE_EVENT) {
+        consoleStopped = true;
+        return TRUE;
+    }
+    return FALSE;
+}
+void attachConsole() {
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        FILE *stream = nullptr;
+        freopen_s(&stream, "CONOUT$", "w", stdout);
+        freopen_s(&stream, "CONOUT$", "w", stderr);
+    }
+    SetConsoleCtrlHandler(stopConsole, TRUE);
+}
+#endif
+
+// Ensure background callbacks finish before the server, scheduler and dashboard are destroyed.
+struct WorkerDrain {
+    std::shared_ptr<std::atomic<bool>> cancelled;
+    ~WorkerDrain() {
+        cancelled->store(true);
+        QThreadPool::globalInstance()->waitForDone();
+    }
+};
+} // namespace
+
+int main(int argc, char *argv[]) {
+    bool desktop = false;
+#ifdef Q_OS_WIN
+    desktop = true;
+#endif
+    bool explicitDesktop = false;
+    for (int index = 1; index < argc; ++index) {
+        const QString argument = QString::fromLocal8Bit(argv[index]);
+        explicitDesktop = explicitDesktop || argument == "--desktop";
+        if (argument == "--browser" || argument == "--no-browser" || argument == "--fetch-only"
+            || argument == "--list" || argument == "--help" || argument == "-h"
+            || argument == "--version" || argument == "-v")
+            desktop = false;
+    }
+    desktop = desktop || explicitDesktop;
+    std::unique_ptr<QCoreApplication> application;
+#ifdef Q_OS_WIN
+    if (desktop)
+        application = std::make_unique<QApplication>(argc, argv);
+    else {
+        attachConsole();
+        application = std::make_unique<QCoreApplication>(argc, argv);
+    }
+#else
+    application = std::make_unique<QCoreApplication>(argc, argv);
+#endif
+    QCoreApplication::setApplicationName("orders");
+    QCoreApplication::setApplicationVersion("0.2.0");
+    QCoreApplication::setOrganizationName("OrdersDashboard");
+    QCommandLineParser parser;
+    parser.setApplicationDescription("本地订单数据看板（C++ / Qt，无 Python 运行时）");
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.addPositionalArgument("output", "SQLite 输出文件路径", "[output]");
+    parser.addOptions({
+        {"port", "监听端口，0 自动分配", "port", "0"},
+        {"host", "监听 IP，默认仅本机", "host", "127.0.0.1"},
+        {"cached", "启动时展示缓存，跳过远程抓取"},
+        {"fetch-only", "只抓取来源并保存数据库"},
+        {"list", "只获取 Gate 跟踪订单"},
+        {"browser", "使用系统浏览器"},
+        {"no-browser", "只启动服务"},
+        {"desktop", "使用 Windows 独立窗口"}
+    });
+    parser.process(*application);
+    try {
+        const auto positional = parser.positionalArguments();
+        if (positional.size() > 1)
+            throw orders::Error("最多提供一个数据库路径");
+        bool validPort = false;
+        const int port = parser.value("port").toInt(&validPort);
+        if (!validPort || port < 0 || port > 65535)
+            throw orders::Error("端口必须在 0 到 65535 之间");
+        if (parser.isSet("cached") && (parser.isSet("fetch-only") || parser.isSet("list")))
+            throw orders::Error("--cached 不能与 --fetch-only 或 --list 同时使用");
+        if (explicitDesktop && (parser.isSet("browser") || parser.isSet("no-browser")
+                                || parser.isSet("fetch-only") || parser.isSet("list")))
+            throw orders::Error("--desktop 不能与浏览器模式或单次抓取同时使用");
+#ifndef Q_OS_WIN
+        if (explicitDesktop)
+            throw orders::Error("--desktop 仅支持 Windows；Linux 请使用浏览器模式");
+#endif
+        auto config = orders::Config::load();
+        if (!positional.isEmpty()) {
+            if (parser.isSet("list"))
+                config.ordersPath = orders::validateOutput(positional.first());
+            else
+                config.dataPath = orders::validateOutput(positional.first());
+        }
+        if (config.dataPath == config.ordersPath)
+            throw orders::Error("来源数据库与跟踪订单数据库必须使用不同路径");
+        orders::Dashboard dashboard(config);
+        if (parser.isSet("list")) {
+            const auto result = dashboard.refreshOrders();
+            if (!result.success)
+                throw orders::Error(dashboard.ordersSnapshot().value("error").toString());
+            std::cout << "已保存订单：" << config.ordersPath.toUtf8().constData() << '\n';
+            return 0;
+        }
+        if (parser.isSet("fetch-only")) {
+            const auto result = dashboard.refreshSources();
+            const auto snapshot = dashboard.sourceSnapshot();
+            if (!result.success)
+                throw orders::Error(snapshot.value("error").toString());
+            for (const auto &item : snapshot.value("items").toArray()) {
+                if (item.toObject().contains("error"))
+                    return 1;
+            }
+            return 0;
+        }
+        orders::Scheduler scheduler(dashboard, orders::loadSchedule(config.schedulePath),
+                                    config.schedulePath);
+        orders::Server server(dashboard, scheduler);
+        WorkerDrain drain{config.cancelled};
+        QObject::connect(application.get(), &QCoreApplication::aboutToQuit, application.get(),
+                         [cancelled = config.cancelled] { cancelled->store(true); });
+        const QUrl address = server.listen(parser.value("host"), quint16(port));
+        std::cout << "本地看板：" << address.toString().toUtf8().constData() << std::endl;
+        if (!parser.isSet("cached")) {
+#ifdef Q_OS_WIN
+            auto sources = QtConcurrent::run([&dashboard] { dashboard.refreshSources(); });
+            auto trailing = QtConcurrent::run([&dashboard] { dashboard.refreshOrders(); });
+            Q_UNUSED(sources);
+            Q_UNUSED(trailing);
+#else
+            dashboard.refreshSources();
+            dashboard.refreshOrders();
+#endif
+        }
+        scheduler.start();
+        std::signal(SIGINT, stopSignal);
+        std::signal(SIGTERM, stopSignal);
+        QTimer signalPoll;
+        QObject::connect(&signalPoll, &QTimer::timeout, application.get(), [&] {
+            bool stopped = interrupted != 0;
+#ifdef Q_OS_WIN
+            stopped = stopped || consoleStopped.load();
+#endif
+            if (stopped)
+                application->quit();
+        });
+        signalPoll.start(100);
+        int result;
+#ifdef Q_OS_WIN
+        if (desktop) {
+            result = orders::runDesktop(address);
+        } else {
+            if (!parser.isSet("no-browser")) {
+                // QCoreApplication keeps service mode free of GUI initialization.
+                QProcess::startDetached("rundll32.exe",
+                                        {"url.dll,FileProtocolHandler", address.toString()});
+            }
+            result = application->exec();
+        }
+#else
+        if (!parser.isSet("no-browser"))
+            QProcess::startDetached("xdg-open", {address.toString()});
+        result = application->exec();
+#endif
+        scheduler.stop();
+        return result;
+    } catch (const std::exception &exception) {
+        std::cerr << "启动失败：" << exception.what() << std::endl;
+        return 1;
+    }
+}

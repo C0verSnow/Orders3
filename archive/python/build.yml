@@ -14,85 +14,89 @@ concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
 
+env:
+  PYTHON_VERSION: '3.12'
+  # Windows runners redirect Python output using a non-UTF-8 code page by default.
+  PYTHONUTF8: '1'
+
 jobs:
   windows:
-    name: Windows x64 C++ application
+    name: Windows x64 executable
     runs-on: windows-2022
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      - uses: jurplel/install-qt-action@v4
-        with:
-          version: '6.8.3'
-          arch: win64_msvc2022_64
-          modules: 'qtwebengine qtwebchannel qtpositioning qthttpserver qtwebsockets'
-          cache: true
-      - name: Compile C++ application and tests
-        run: |
-          cmake -S . -B build/native -A x64 -DBUILD_TESTING=ON
-          if ($LASTEXITCODE -ne 0) { throw "CMake configure failed" }
-          cmake --build build/native --config Release --parallel
-          if ($LASTEXITCODE -ne 0) { throw "C++ build failed" }
-      - name: Run native regression tests
-        run: ./scripts/test.ps1
-      - name: Assemble native release directory
-        run: |
-          cmake --install build/native --config Release --prefix dist/orders-windows-x64
-          if ($LASTEXITCODE -ne 0) { throw "CMake install failed" }
-          windeployqt --release --compiler-runtime dist/orders-windows-x64/bin/orders.exe
-          if ($LASTEXITCODE -ne 0) { throw "Qt deployment failed" }
-          Copy-Item README.md dist/orders-windows-x64/
-          Copy-Item docs/third-party.md dist/orders-windows-x64/
-          $licenseDirectory = Join-Path $env:QT_ROOT_DIR "licenses"
-          if (Test-Path -LiteralPath $licenseDirectory) {
-            Copy-Item -LiteralPath $licenseDirectory -Destination dist/orders-windows-x64/licenses -Recurse
-          }
-      - name: Check packaged application outside checkout
-        run: ./scripts/smoke.ps1 -Executable dist/orders-windows-x64/bin/orders.exe
-      - name: Create Windows archive
-        run: Compress-Archive -Path dist/orders-windows-x64 -DestinationPath dist/orders-windows-x64.zip
-      - uses: actions/upload-artifact@v7.0.1
-        with:
-          name: native-windows-x64
-          path: dist/orders-windows-x64.zip
-          if-no-files-found: error
-          retention-days: 14
-
-  linux:
-    name: Linux x64 C++ application
-    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - name: Install C++ and Qt development tools
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          architecture: x64
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install runtime and packaging dependencies
+        run: python -m pip install ".[desktop]" "pyinstaller>=6.22,<7"
+      - name: Run regression tests
+        run: python scripts/test.py
+      - name: Check C++ launcher with dynamic MSVC runtime
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build qt6-base-dev qt6-httpserver-dev qt6-websockets-dev qt6-base-dev-tools libqt6sql6-sqlite patchelf
-      - name: Compile C++ application and tests
-        run: |
-          cmake --preset release
-          cmake --build --preset release --parallel 2
-      - name: Run native regression tests
-        run: ctest --preset release
-      - name: Package C++ application and runtime libraries
-        run: bash scripts/package-linux.sh build/release
-      - name: Check packaged application outside checkout
-        run: bash scripts/smoke-linux.sh dist/orders-linux-x64/bin/orders
+          cmake -S . -B build/native -A x64 -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
+          cmake --build build/native --config Release
+      - name: Package single executable with dynamic system libraries
+        run: >-
+          python -m PyInstaller --noconfirm --clean --onefile --noupx
+          --name orders-windows-x64 --paths src
+          --collect-data orders_dashboard --collect-all webview
+          --hidden-import orders_dashboard.desktop scripts/standalone.py
+      - name: Verify executable outside source checkout
+        run: python scripts/smoke_standalone.py dist/orders-windows-x64.exe
       - uses: actions/upload-artifact@v7.0.1
         with:
-          name: native-linux-x64
-          path: dist/orders-linux-x64.tar.gz
+          name: executable-windows-x64
+          path: dist/orders-windows-x64.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  linux:
+    name: Linux x64 executable
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          architecture: x64
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install runtime and packaging dependencies
+        run: python -m pip install . 'pyinstaller>=6.22,<7'
+      - name: Run regression tests
+        run: python scripts/test.py
+      - name: Check C++ launcher with dynamic system libraries
+        run: |
+          cmake -S . -B build/native -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native --parallel 2
+      - name: Package single executable with dynamic system libraries
+        run: >-
+          python -m PyInstaller --noconfirm --clean --onefile --noupx
+          --name orders-linux-x64 --paths src
+          --collect-data orders_dashboard scripts/standalone.py
+      - name: Verify executable outside source checkout
+        run: python scripts/smoke_standalone.py dist/orders-linux-x64
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: executable-linux-x64
+          path: dist/orders-linux-x64
           if-no-files-found: error
           retention-days: 14
 
   container:
-    name: Native Linux container / GHCR
+    name: Linux container image / GHCR
     needs: [windows, linux]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -159,17 +163,17 @@ jobs:
           cache-from: type=gha
 
   release:
-    name: Publish native application archives
+    name: Publish Windows and Linux executables
     needs: [windows, linux, container]
     if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v8.0.1
         with:
-          pattern: native-*
+          pattern: executable-*
           merge-multiple: true
           path: release
       - name: Create checksums and publish release assets
@@ -181,9 +185,9 @@ jobs:
         run: |
           set -euo pipefail
           cd release
-          test -s orders-windows-x64.zip
-          test -s orders-linux-x64.tar.gz
-          sha256sum orders-windows-x64.zip orders-linux-x64.tar.gz > SHA256SUMS.txt
+          test -s orders-windows-x64.exe
+          test -s orders-linux-x64
+          sha256sum orders-windows-x64.exe orders-linux-x64 > SHA256SUMS.txt
           if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
             release_options=()
             if [[ "$RELEASE_TAG" == *-* ]]; then
@@ -191,4 +195,4 @@ jobs:
             fi
             gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes "${release_options[@]}"
           fi
-          gh release upload "$RELEASE_TAG" orders-windows-x64.zip orders-linux-x64.tar.gz SHA256SUMS.txt --clobber
+          gh release upload "$RELEASE_TAG" orders-windows-x64.exe orders-linux-x64 SHA256SUMS.txt --clobber

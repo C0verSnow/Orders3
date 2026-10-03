@@ -11,4 +11,4 @@ JOIN records AS r ON r.position = o.record_position
 ORDER BY o.record_position, o.order_index;
 ```
 
-HTTP `/api/data` 返回来源记录、订单行、更新时间和刷新错误。旧版 `record_json` 数据库仍可读取；刷新后通过临时数据库原子替换成当前表结构。数据库下载通过 `/api/download` 完成。
+HTTP `/api/data` 返回来源记录、订单行、更新时间和刷新错误。旧版 `record_json` 数据库仍可读取；刷新后通过 SQLite 事务更新为当前表结构，失败时回滚。数据库下载通过 `/api/download` 生成一致快照。

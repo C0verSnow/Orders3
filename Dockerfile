@@ -1,25 +1,33 @@
 # syntax=docker/dockerfile:1
-FROM python:3.12-slim-bookworm AS builder
+FROM ubuntu:24.04 AS builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates g++ cmake ninja-build qt6-base-dev qt6-httpserver-dev qt6-websockets-dev \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-COPY pyproject.toml README.md ./
+COPY CMakeLists.txt resources.qrc ./
 COPY src ./src
-RUN python -m pip wheel --no-cache-dir --wheel-dir /wheels .
+COPY web ./web
+COPY .env.example config.example README.md ./
+COPY docs ./docs
+RUN cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+    && cmake --build build --parallel 2 \
+    && cmake --install build --prefix /opt/orders
 
-FROM python:3.12-slim-bookworm
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    ORDERS_DATA_DIR=/data \
-    ORDERS_CONFIG_PATH=/data/config
-WORKDIR /app
-COPY --from=builder /wheels /wheels
-RUN python -m pip install --no-cache-dir --no-index --find-links=/wheels orders-dashboard \
-    && rm -rf /wheels \
+FROM ubuntu:24.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl libqt6core6t64 libqt6network6t64 libqt6sql6t64 \
+    libqt6sql6-sqlite libqt6concurrent6t64 libqt6httpserver6 libqt6websockets6 \
+    && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 orders \
     && mkdir /data && chown orders:orders /data
+COPY --from=builder /opt/orders /opt/orders
+ENV ORDERS_DATA_DIR=/data \
+    ORDERS_CONFIG_PATH=/data/config
+WORKDIR /opt/orders
 USER orders
 VOLUME ["/data"]
 EXPOSE 8090
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/api/data', timeout=3).read()"
-ENTRYPOINT ["python", "-m", "orders_dashboard"]
+    CMD curl --fail --silent http://127.0.0.1:8090/api/data > /dev/null || exit 1
+ENTRYPOINT ["/opt/orders/bin/orders"]
 CMD ["--host", "0.0.0.0", "--port", "8090", "--no-browser"]

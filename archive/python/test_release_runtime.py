@@ -11,7 +11,8 @@ from orders_dashboard.trailing import default_orders_output
 class ReleaseRuntimeTests(unittest.TestCase):
     def test_frozen_runtime_uses_executable_location_and_persistent_user_data(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            # Windows temporary paths may contain an 8.3 alias; runtime_root resolves it.
+            root = Path(directory).resolve()
             with patch("sys.frozen", True, create=True), \
                     patch("sys.executable", str(root / "orders.exe")), \
                     patch("orders_dashboard.config.Path.home", return_value=root), \
