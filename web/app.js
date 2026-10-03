@@ -2,7 +2,7 @@ import { $, dateText, node, createTable, updateFetchButton, initWorkspace } from
 import { initSettings } from "./settings.js";
 import { initSchedule, applySchedule } from "./schedule.js";
 import { initStartup } from "./startup.js";
-import { initFlow, updateFlow, beginFlow, finishFlow, flowReadError } from "./flow.js";
+import { initFlow, updateFlow } from "./flow.js";
 
 const fastStartup = document.body.classList.contains("startup-enabled");
 let items = [];
@@ -173,19 +173,16 @@ async function loadData() {
     if (generation !== sourceGeneration) return;
     sourceReadFailed = true;
     notice(`无法读取本地数据：${error.message}`);
-    flowReadError("sources", error.message);
   }
   finally {
     loading = false;
     scheduleSourceSync();
   }
 }
-$("refresh").addEventListener("click", async () => {
+async function refreshSources() {
   if (refreshing || updatingData) return;
   refreshing = true;
   sourceGeneration++;
-  beginFlow("sources");
-  let fetchError = "";
   updateFetchButton("refresh", true, "获取订单");
   notice("正在获取实盘订单并处理自动下单，请稍候…");
   try {
@@ -197,14 +194,14 @@ $("refresh").addEventListener("click", async () => {
     }
     if (!response.ok) throw new Error(data.error || "抓取失败");
     notice("订单数据已更新，自动下单处理完成。结果见下方。");
-  } catch (error) { fetchError = error.message; notice(error.message); }
+  } catch (error) { notice(error.message); }
   finally {
     refreshing = false;
     updateFetchButton("refresh", updatingData, "获取订单");
-    finishFlow("sources", updatingData, fetchError);
     scheduleSourceSync();
   }
-});
+}
+$("refresh").addEventListener("click", refreshSources);
 $("search").addEventListener("input", render);
 $("filter").addEventListener("change", render);
 let fetchingOrders = false;
@@ -308,7 +305,6 @@ async function loadOrders() {
   } catch (error) {
     if (generation !== ordersGeneration) return;
     ordersNotice(error.message);
-    flowReadError("orders", error.message);
   }
   finally { loadingOrders = false; }
 }
@@ -316,8 +312,6 @@ async function refreshOrders() {
   if (fetchingOrders || updatingOrders) return;
   fetchingOrders = true;
   ordersGeneration++;
-  beginFlow("orders");
-  let fetchError = "";
   updateOrdersButtons(true);
   ordersNotice("正在更新持仓和跟踪订单，并替换本程序的平仓单，请稍候…");
   try {
@@ -326,11 +320,10 @@ async function refreshOrders() {
     if (Array.isArray(data.orders)) applyOrders(data);
     if (!response.ok) throw new Error(data.error || "获取订单失败");
     ordersNotice("持仓和订单已更新，平仓单已处理。");
-  } catch (error) { fetchError = error.message; ordersNotice(error.message); }
+  } catch (error) { ordersNotice(error.message); }
   finally {
     fetchingOrders = false;
     updateOrdersButtons(updatingOrders);
-    finishFlow("orders", updatingOrders, fetchError);
   }
 }
 $("orders-refresh").addEventListener("click", refreshOrders);
@@ -341,7 +334,11 @@ async function pollOrders() {
   setTimeout(pollOrders, updatingOrders ? TASK_SYNC_MS : ORDERS_SYNC_MS);
 }
 initWorkspace();
-initFlow();
+initFlow({
+  // Gate trading is serialized server-side, so refresh the combined workspace in order.
+  refresh: async () => { await refreshSources(); await refreshOrders(); },
+  onSettled: () => { loadData(); loadOrders(); }
+});
 initSettings();
 initSchedule(scheduleSourceSync);
 initStartup(fastStartup);

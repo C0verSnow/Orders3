@@ -15,6 +15,19 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
+  web:
+    name: Web static checks and state regression tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run check
+      - run: npm test
+
   publication:
     name: Determine publication version
     runs-on: ubuntu-24.04
@@ -185,7 +198,7 @@ jobs:
 
   container:
     name: Native Linux container / GHCR
-    needs: [publication, windows, linux, macos]
+    needs: [web, publication, windows, linux, macos]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -262,7 +275,7 @@ jobs:
               exit 1
             fi
             grep -qi '<html' /tmp/orders-page.html
-            for route in style.css app.js logo.svg api/data api/orders; do
+            for route in style.css flow.css app.js activity.js flow.js logo.svg api/data api/orders api/activity; do
               curl --fail --silent --show-error "http://127.0.0.1:8090/$route" > /dev/null
             done
             curl --fail --silent --show-error -H 'Origin: http://127.0.0.1:8090' -H 'Content-Type: application/json' --data '{"enabled":false,"cron":"*/15 * * * *"}' http://127.0.0.1:8090/api/schedule
@@ -294,7 +307,7 @@ jobs:
 
   release:
     name: Publish native application archives
-    needs: [publication, windows, linux, macos, container]
+    needs: [web, publication, windows, linux, macos, container]
     if: needs.publication.outputs.enabled == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10

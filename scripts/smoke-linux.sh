@@ -12,7 +12,7 @@ process=$!
 trap 'kill "$process" 2>/dev/null || true; wait "$process" 2>/dev/null || true; cat runtime.log' EXIT
 origin="http://127.0.0.1:8090"
 curl --fail --silent --show-error --retry 30 --retry-delay 1 --retry-connrefused "$origin/api/data" > data.json
-for route in / /app.js /flow.js /ui.js /settings.js /schedule.js /startup.js /style.css /logo.svg /api/orders /api/schedule /api/settings; do
+for route in / /app.js /flow.js /activity.js /flow.css /api/activity /ui.js /settings.js /schedule.js /startup.js /style.css /logo.svg /api/orders /api/schedule /api/settings; do
     curl --fail --silent --show-error "$origin$route" > /dev/null
 done
 curl --fail --silent --show-error -H "Origin: $origin" -H 'Content-Type: application/json' \

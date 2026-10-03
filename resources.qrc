@@ -3,6 +3,8 @@
     <file alias="index.html">web/index.html</file>
     <file alias="app.js">web/app.js</file>
     <file alias="flow.js">web/flow.js</file>
+    <file alias="activity.js">web/activity.js</file>
+    <file alias="flow.css">web/flow.css</file>
     <file alias="ui.js">web/ui.js</file>
     <file alias="settings.js">web/settings.js</file>
     <file alias="schedule.js">web/schedule.js</file>

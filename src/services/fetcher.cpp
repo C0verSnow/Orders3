@@ -339,6 +339,10 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
     for (const auto &value : document.array()) {
         if (!value.isObject()) throw Error("持仓列表包含无效记录");
         const auto source = value.toObject();
+        const auto positionValue = source.value("value");
+        if (!positionValue.isString()) throw Error("持仓缺少十进制文本字段：value");
+        // Only persist positions with nonzero value, including short positions.
+        if (decimal::parse(positionValue.toString()).digits == "0") continue;
         const auto sizeValue = source.value("size");
         bool valid = false;
         const qint64 size = sizeValue.isString() ? sizeValue.toString().toLongLong(&valid)
@@ -360,7 +364,6 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
             decimal::parse(source.value(field).toString());
             position.insert(field, source.value(field));
         }
-        // Empty positions contribute PNL but never create a closing order.
         position.insert("close_price", size == 0 ? QString("0") : decimal::closePrice(
             position.value("entry_price").toString(), position.value("value").toString(),
             position.value("initial_margin").toString(), position.value("mark_price").toString(),

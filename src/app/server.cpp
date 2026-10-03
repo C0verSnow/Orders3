@@ -63,6 +63,8 @@ Server::Server(Dashboard &dashboard, Scheduler &scheduler)
         {"/", "text/html; charset=utf-8"}, {"/index.html", "text/html; charset=utf-8"},
         {"/app.js", "text/javascript; charset=utf-8"},
         {"/flow.js", "text/javascript; charset=utf-8"},
+        {"/activity.js", "text/javascript; charset=utf-8"},
+        {"/flow.css", "text/css; charset=utf-8"},
         {"/ui.js", "text/javascript; charset=utf-8"},
         {"/settings.js", "text/javascript; charset=utf-8"},
         {"/schedule.js", "text/javascript; charset=utf-8"},
@@ -93,6 +95,9 @@ Server::Server(Dashboard &dashboard, Scheduler &scheduler)
     });
     http_.route("/api/orders", Method::Get, [this] {
         return guarded([&] { return json(dashboard_.ordersSnapshot()); });
+    });
+    http_.route("/api/activity", Method::Get, [this] {
+        return json(dashboard_.activitySnapshot());
     });
     http_.route("/api/schedule", Method::Get, [this] { return json(scheduler_.snapshot()); });
     http_.route("/api/settings", Method::Get, [this](const QHttpServerRequest &request) {

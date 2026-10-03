@@ -21,6 +21,7 @@ add_library(orders_core SHARED
     src/infrastructure/storage.cpp
     src/services/fetcher.cpp
     src/services/dashboard.cpp
+    src/services/activity.cpp
     src/services/scheduler.cpp
 )
 include(GenerateExportHeader)
@@ -71,6 +72,13 @@ if(BUILD_TESTING)
     endif()
     target_link_libraries(orders_tests PRIVATE orders_core Qt6::Test)
     add_test(NAME orders_core COMMAND orders_tests)
+    qt_add_executable(activity_tests tests/cpp/activity_tests.cpp)
+    set_target_properties(activity_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+    if(MSVC)
+        target_compile_options(activity_tests PRIVATE /utf-8)
+    endif()
+    target_link_libraries(activity_tests PRIVATE orders_core Qt6::Test)
+    add_test(NAME orders_activity COMMAND activity_tests)
 endif()
 
 if(WIN32)

@@ -6,12 +6,31 @@
 #include <QNetworkRequest>
 #include <QTimer>
 #include <memory>
+#include <utility>
 
 namespace orders {
 namespace {
+thread_local HttpObserver httpObserver;
+
+class RequestActivity {
+public:
+    RequestActivity(const QUrl &url, bool write) : url_(url), write_(write) {
+        if (httpObserver) httpObserver(url_, write_, true, 0);
+    }
+    ~RequestActivity() {
+        if (httpObserver) httpObserver(url_, write_, false, status_);
+    }
+    void complete(int status) { status_ = status; }
+private:
+    QUrl url_;
+    bool write_;
+    int status_ = 0;
+};
+
 HttpResult request(const QUrl &url, const HttpHeaders &headers, bool redirects,
                    const std::shared_ptr<std::atomic<bool>> &cancelled,
                    const QByteArray *body) {
+    RequestActivity activity(url, body != nullptr);
     if (cancelled && cancelled->load())
         throw Error("程序正在关闭");
     if (!url.isValid() || url.host().isEmpty()
@@ -50,11 +69,21 @@ HttpResult request(const QUrl &url, const HttpHeaders &headers, bool redirects,
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     if (reply->error() != QNetworkReply::NoError && status < 400)
         throw Error("网络请求失败：" + reply->errorString());
+    activity.complete(status);
     if (!redirects && status >= 300 && status < 400)
         throw Error("接口返回重定向，已停止请求");
     return {status, reply->readAll()};
 }
 } // namespace
+
+ScopedHttpObserver::ScopedHttpObserver(HttpObserver observer)
+    : previous_(std::move(httpObserver)) {
+    httpObserver = std::move(observer);
+}
+
+ScopedHttpObserver::~ScopedHttpObserver() {
+    httpObserver = std::move(previous_);
+}
 
 HttpResult get(const QUrl &url, const HttpHeaders &headers, bool redirects,
                const std::shared_ptr<std::atomic<bool>> &cancelled) {

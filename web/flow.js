@@ -1,113 +1,150 @@
-import { $, dateText } from "./ui.js";
+import { $, node } from "./ui.js";
+import { activityView, newActivityEvents } from "./activity.js";
 
-const channels = {
-  sources: {ready: false, busy: false, phase: "", error: "", updated: null, summary: "等待来源订单加载"},
-  orders: {ready: false, busy: false, error: "", updated: null, summary: "等待 Gate 数据加载"}
-};
-const descriptions = {
-  sources: {
-    input: "获取已配置的订单数据并解析交易信息。单个数据源异常会记录原因，其他数据源继续处理。",
-    process: "从文本中识别交易对、方向、价格、数量和时间。价格与带单位的数量保留原文，缺失字段显示为 —。",
-    store: "保存来源和解析订单后自动下单：先跳过7天内同合约同方向的已完成订单，再停止未完成的开仓追踪单，最后发布新单。执行结果在来源订单区域仅显示最近 10 条。"
-  },
-  orders: {
-    input: "使用已保存的 Gate 配置，每分钟获取并更新跟踪订单列表，也可点击按钮更新。列表隐藏状态码为 5 的订单。",
-    process: "校验接口响应和订单字段，整理为看板可读的列表，保留价格与数量的字符串精度。",
-    store: "完整列表校验通过后，保存最新跟踪订单记录。获取失败时继续展示已保存的订单。"
-  }
-};
-let selected = "sources";
-let step = "input";
-let demo = false;
-let paused = false;
+const SYNC_MS = 600;
+const REQUEST_TIMEOUT_MS = 3000;
+const labels = {sources: "来源订单", gate: "Gate 交易接口", orders: "持仓与跟踪订单"};
+let snapshot;
+let sequence;
+let timer;
+let controller;
+let stopped = false;
+let synchronizing = false;
+let epoch = 0;
+let readError = "";
+const counts = {sources: 0, orders: 0};
 
-function renderFlow() {
-  const current = channels[selected];
-  const panel = $("flow-panel");
-  panel.dataset.channel = selected;
-  panel.dataset.state = current.busy ? "busy" : current.error ? "error" : current.updated ? "ready" : "idle";
-  panel.dataset.demo = String(demo);
-  panel.dataset.motion = String(!paused);
-  $("flow-state").textContent = demo ? "动画演示 · 不发起请求"
-    : current.busy ? current.phase === "trading" ? "来源已保存 · 正在自动下单" : "正在获取 · 当前显示缓存"
-    : current.error ? "获取异常 · 可查看下方提示"
-    : current.updated ? "实盘记录已更新" : current.ready ? "等待首次获取" : "等待订单数据";
-  $("flow-summary").textContent = current.summary;
-  $("flow-detail").textContent = descriptions[selected][step];
-  $("flow-caption").textContent = demo
-    ? "演示模式：光点展示所选数据路径，不代表真实请求或执行进度。"
-    : `动画表示任务运行，不表示逐节点进度。最近更新：${dateText(current.updated)}`;
-  for (const channel of Object.keys(channels))
-    $(`flow-${channel}`).setAttribute("aria-pressed", String(channel === selected));
-  for (const button of panel.querySelectorAll("[data-flow-step]")) {
-    button.setAttribute("aria-pressed", String(button.dataset.flowStep === step));
-    if (button.dataset.flowStep === "process")
-      button.textContent = selected === "sources" ? "02 解析" : "02 校验";
-  }
-  $("flow-fetch").disabled = !current.ready || current.busy;
-  $("flow-fetch").textContent = current.busy ? "正在获取…"
-    : selected === "sources" ? "获取来源订单" : "获取跟踪订单";
-  $("flow-demo").setAttribute("aria-pressed", String(demo));
-  $("flow-demo").textContent = demo ? "结束演示" : "演示动画";
-  $("flow-motion").setAttribute("aria-pressed", String(paused));
-  $("flow-motion").textContent = paused ? "继续动画" : "暂停动画";
+function eventText(event) {
+  const subject = labels[event.node || event.job];
+  if (event.type === "job-start") return `${subject} · 任务开始`;
+  if (event.type === "job-end") return `${subject} · ${event.success ? "任务完成" : "任务失败"}`;
+  const operation = event.write ? "提交交易" : "获取数据";
+  if (event.type === "request-start") return `${subject} · ${operation}中`;
+  return `${subject} · ${operation}${event.status >= 200 && event.status < 300 ? "完成" : "失败"} · ${event.status || "网络异常"}`;
 }
 
-export function updateFlow(channel, snapshot) {
-  const current = channels[channel];
-  current.ready = true;
-  current.busy = Boolean(snapshot.refreshing);
-  current.phase = snapshot.phase || "";
-  current.error = snapshot.error || "";
-  current.updated = snapshot.updated_at;
-  if (channel === "sources") {
-    const failures = snapshot.items.filter((item) => item.error || Number(item.status_code) >= 400).length;
-    current.summary = `${snapshot.items.length} 个数据源 · ${snapshot.orders?.length || 0} 条解析订单 · ${failures} 个异常数据源`;
-    const execution = snapshot.execution || [];
-    if (execution.length) current.summary += ` · 已创建 ${execution.filter((row) => row.action === "created").length} · 跳过 ${execution.filter((row) => row.action === "skipped").length}`;
-  } else {
-    current.summary = `${snapshot.orders.length} 条跟踪订单 · 实盘记录`;
+function render(connected) {
+  const view = activityView(snapshot, connected);
+  $("flow-panel").dataset.state = view.state;
+  $("flow-state").textContent = {
+    offline: "执行状态连接中断", busy: "正在执行", error: "执行异常",
+    ready: "本轮执行完成", idle: "等待任务"
+  }[view.state];
+  for (const name of ["sources", "gate"]) {
+    const state = view.nodes[name];
+    const link = $(`flow-link-${name}`);
+    link.dataset.active = String(state.active);
+    link.dataset.write = String(state.write);
+    $(`flow-node-${name}`).dataset.state = state.state;
+    $(name === "sources" ? "flow-source-status" : "flow-gate-status").textContent =
+      !connected ? "状态不可用" : state.active ? state.write ? "正在提交交易" : "正在获取实盘数据"
+        : state.state === "error" ? "请求失败" : state.completed ? `已完成 ${state.completed} 次请求` : "等待请求";
   }
-  renderFlow();
+  $("flow-node-workspace").dataset.state = view.state;
+  $("flow-workspace-status").textContent = !connected ? "等待重新连接"
+    : view.running ? Object.values(view.nodes).some((state) => state.active) ? "接口执行中" : "任务处理中 / 等待交易锁"
+      : view.state === "error" ? "请查看执行结果" : view.state === "ready" ? "执行完成" : "等待任务";
+  $("flow-workspace-count").textContent = `${counts.sources} 条来源 · ${counts.orders} 条跟踪`;
+  $("flow-summary").textContent = `本次运行 · ${view.completed} 次请求完成 · ${view.failed} 次请求失败`;
+  $("flow-caption").textContent = connected
+    ? "仅实际请求期间显示流动；交易提交流向 Gate，数据获取流向工作台。状态每 600 毫秒同步。"
+    : `状态同步中断，动画已停止。${readError || "连接建立中"}，正在自动重连。`;
+  $("flow-fetch").disabled = !connected || view.running || synchronizing;
+  $("flow-fetch").textContent = view.running || synchronizing ? "正在更新…" : "更新订单";
 }
 
-export function beginFlow(channel) {
-  selected = channel;
-  demo = false;
-  channels[channel].busy = true;
-  channels[channel].error = "";
-  renderFlow();
-}
-
-export function finishFlow(channel, busy, error = "") {
-  channels[channel].busy = busy;
-  channels[channel].error = error;
-  renderFlow();
-}
-
-export function flowReadError(channel, error) {
-  channels[channel].ready = true;
-  channels[channel].error = error;
-  renderFlow();
-}
-
-export function initFlow() {
-  for (const channel of Object.keys(channels)) {
-    $(`flow-${channel}`).addEventListener("click", () => {
-      selected = channel;
-      renderFlow();
-    });
+function renderEvents() {
+  const container = $("flow-events");
+  container.replaceChildren();
+  for (const event of (snapshot.events || []).slice(-5).reverse()) {
+    const row = node("li");
+    const time = node("time", "", new Date(event.at).toLocaleTimeString("zh-CN", {hour12: false}));
+    time.dateTime = event.at;
+    row.append(time, node("span", "", eventText(event)));
+    if ((event.type === "job-end" && !event.success) || (event.type === "request-end" && !(event.status >= 200 && event.status < 300)))
+      row.classList.add("failed");
+    container.append(row);
   }
-  for (const button of $("flow-panel").querySelectorAll("[data-flow-step]")) {
-    button.addEventListener("click", () => {
-      step = button.dataset.flowStep;
-      renderFlow();
-    });
+  if (!container.children.length) container.append(node("li", "", "等待真实执行记录"));
+}
+
+function acknowledge(events) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  for (const name of ["sources", "gate"]) {
+    const event = [...events].reverse().find((item) => item.node === name && item.type === "request-end");
+    if (!event) continue;
+    const success = event.status >= 200 && event.status < 300;
+    const card = $(`flow-node-${name}`).querySelector("rect");
+    card.getAnimations().forEach((animation) => animation.cancel());
+    card.animate([{stroke: success ? "#7eab51" : "#ce6956", strokeWidth: 4}, {strokeWidth: 1}], {duration: 450});
   }
-  $("flow-demo").addEventListener("click", () => { demo = !demo; renderFlow(); });
-  $("flow-motion").addEventListener("click", () => { paused = !paused; renderFlow(); });
-  $("flow-fetch").addEventListener("click", () => {
-    $(selected === "sources" ? "refresh" : "orders-refresh").click();
+}
+
+// Cached table data only updates counts; it cannot start motion.
+export function updateFlow(channel, data) {
+  counts[channel] = data.orders?.length || 0;
+  if (snapshot) render(!readError);
+}
+
+export function initFlow({refresh, onSettled}) {
+  const narrow = window.matchMedia("(max-width: 600px)");
+  function layout() {
+    const mobile = narrow.matches;
+    const map = $("flow-panel").querySelector("svg");
+    map.setAttribute("viewBox", mobile ? "0 0 320 550" : "0 0 960 260");
+    map.querySelector(":scope > rect").setAttribute("height", mobile ? "550" : "260");
+    $("flow-node-sources").setAttribute("transform", mobile ? "translate(55 20)" : "translate(44 66)");
+    $("flow-node-workspace").setAttribute("transform", mobile ? "translate(54 195)" : "translate(374 50)");
+    $("flow-node-gate").setAttribute("transform", mobile ? "translate(55 402)" : "translate(706 66)");
+    for (const name of ["sources", "gate"]) {
+      const path = mobile ? name === "sources" ? "M 160 148 V 195" : "M 160 402 V 355"
+        : name === "sources" ? "M 254 130 H 374" : "M 586 130 H 706";
+      $(`flow-link-${name}`).querySelectorAll("path").forEach((link) => link.setAttribute("d", path));
+    }
+  }
+  narrow.addEventListener("change", layout);
+  layout();
+  async function sync() {
+    if (stopped) return;
+    const generation = epoch;
+    const pending = new AbortController();
+    controller = pending;
+    const timeout = setTimeout(() => pending.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch("/api/activity", {cache: "no-store", signal: pending.signal});
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const next = await response.json();
+      if (stopped || generation !== epoch) return;
+      if (!Number.isSafeInteger(next.sequence) || !next.jobs || !next.requests || !Array.isArray(next.events))
+        throw new Error("执行状态格式错误");
+      const events = newActivityEvents(next, sequence);
+      const changed = next.sequence !== sequence;
+      const recovered = Boolean(readError) || (sequence != null && next.sequence < sequence);
+      snapshot = next;
+      sequence = next.sequence;
+      readError = "";
+      render(true);
+      if (changed) renderEvents();
+      acknowledge(events);
+      $("flow-synced").textContent = `同步于 ${new Date().toLocaleTimeString("zh-CN", {hour12: false})}`;
+      if (recovered || events.some((event) => event.type === "job-end")) onSettled();
+    } catch (error) {
+      if (stopped || generation !== epoch) return;
+      readError = error.name === "AbortError" ? "连接超时" : error.message;
+      render(false);
+    } finally {
+      clearTimeout(timeout);
+      if (!stopped && generation === epoch) timer = setTimeout(sync, readError ? 2000 : SYNC_MS);
+    }
+  }
+  $("flow-fetch").addEventListener("click", async () => {
+    synchronizing = true;
+    render(!readError && Boolean(snapshot));
+    try { await refresh(); }
+    finally { synchronizing = false; render(!readError && Boolean(snapshot)); }
   });
-  renderFlow();
+  window.addEventListener("pagehide", () => { stopped = true; epoch++; clearTimeout(timer); controller?.abort(); });
+  window.addEventListener("pageshow", (event) => { if (event.persisted) { stopped = false; sync(); } });
+  render(false);
+  sync();
 }

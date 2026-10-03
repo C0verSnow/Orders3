@@ -84,6 +84,8 @@ RefreshResult Dashboard::refreshSources() {
     if (sourcesBusy_.exchange(true))
         return {};
     BusyGuard guard(sourcesBusy_);
+    activity_.begin("sources");
+    ScopedHttpObserver observer(activity_.observer("sources"));
     bool saved = false;
     try {
         {
@@ -121,12 +123,14 @@ RefreshResult Dashboard::refreshSources() {
             }
             sourcePhase_ = success ? "completed" : "failed";
         }
+        activity_.finish("sources", success);
         return {true, success};
     } catch (const std::exception &error) {
         std::lock_guard<std::mutex> lock(sourceMutex_);
         sourcePhase_ = "failed";
         sourceError_ = (saved ? "来源已保存，但自动下单失败：" : "抓取失败，保留上次数据：")
                        + QString::fromUtf8(error.what());
+        activity_.finish("sources", false);
         return {true, false};
     }
 }
@@ -138,6 +142,8 @@ RefreshResult Dashboard::refreshOrders(bool executeCloseOrders) {
     if (ordersBusy_.exchange(true))
         return {};
     BusyGuard guard(ordersBusy_);
+    activity_.begin("orders");
+    ScopedHttpObserver observer(activity_.observer("orders"));
     try {
         const auto current = config();
         if (!executeCloseOrders) {
@@ -145,6 +151,7 @@ RefreshResult Dashboard::refreshOrders(bool executeCloseOrders) {
             std::lock_guard<std::mutex> lock(ordersMutex_);
             saveTrailingOrders(current.ordersPath, items);
             ordersError_.clear();
+            activity_.finish("orders", true);
             return {true, true};
         }
         // This single polling cycle refreshes positions/list, stops our old closing orders,
@@ -157,14 +164,17 @@ RefreshResult Dashboard::refreshOrders(bool executeCloseOrders) {
             const auto result = value.toObject();
             if (result.value("action").toString() == "failed") {
                 ordersError_ = "持仓已更新，但自动平仓下单失败：" + result.value("error").toString();
+                activity_.finish("orders", false);
                 return {true, false};
             }
         }
+        activity_.finish("orders", true);
         return {true, true};
     } catch (const std::exception &error) {
         std::lock_guard<std::mutex> lock(ordersMutex_);
         closeExecutionResults_ = {};
         ordersError_ = "更新持仓或平仓订单失败：" + QString::fromUtf8(error.what());
+        activity_.finish("orders", false);
         return {true, false};
     }
 }

@@ -1,6 +1,7 @@
 #pragma once
 #include "orders_core_export.h"
 #include "core/config.hpp"
+#include "services/activity.hpp"
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QElapsedTimer>
@@ -21,6 +22,7 @@ public:
     RefreshResult refreshOrders(bool executeCloseOrders = true);
     QJsonObject sourceSnapshot() const;
     QJsonObject ordersSnapshot() const;
+    QJsonObject activitySnapshot() const { return activity_.snapshot(); }
     QByteArray download() const;
     Config config() const;
     QJsonObject environmentSnapshot() const;
@@ -29,6 +31,7 @@ public:
 
 private:
     Config config_;
+    Activity activity_;
     mutable std::mutex configMutex_;
     std::atomic<bool> sourcesBusy_{false};
     std::atomic<bool> ordersBusy_{false};

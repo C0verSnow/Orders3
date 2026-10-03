@@ -1,0 +1,10 @@
+{
+  "name": "orders-dashboard-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/check-web.mjs",
+    "test": "node --test tests/web/*.test.mjs"
+  },
+  "engines": { "node": ">=22" }
+}

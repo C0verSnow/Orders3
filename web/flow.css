@@ -1,0 +1,262 @@
+/* A link moves only while the backend reports an active network request. */
+.flow-panel {
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.flow-panel .eyebrow {
+  margin: 0 0 10px;
+  font-size: 10px;
+}
+
+.flow-state {
+  border: 1px solid #dce6d6;
+  border-radius: 20px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #526a45;
+  background: #f4f8ef;
+}
+
+.flow-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 25px 20px;
+  flex-wrap: wrap;
+}
+
+.flow-toolbar .primary {
+  font-size: 12px;
+}
+
+.flow-toolbar button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+.flow-scene {
+  margin: 0;
+  border-block: 1px solid #e6ece1;
+  background: #f9fbf7;
+}
+
+.flow-map {
+  width: 100%;
+  display: block;
+  height: auto;
+}
+
+.flow-track {
+  fill: none;
+  stroke: #d6e0ce;
+  stroke-width: 2;
+}
+
+.flow-current {
+  fill: none;
+  stroke: #7eab51;
+  stroke-width: 2;
+  stroke-dasharray: 5 7;
+  opacity: 0;
+}
+
+.flow-card > rect {
+  fill: white;
+  stroke: #dfe8d8;
+}
+
+.flow-card-title {
+  fill: #334c2e;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.flow-card-kicker {
+  fill: #809078;
+  font-size: 10px;
+  letter-spacing: .5px;
+}
+
+.flow-node-status {
+  fill: #718368;
+  font-size: 12px;
+}
+
+.flow-hub > rect {
+  fill: #eff5e7;
+  stroke: #cbdcba;
+}
+
+.flow-card[data-state="busy"] > rect {
+  stroke: #7eab51;
+  stroke-width: 2;
+}
+
+.flow-card[data-state="error"] > rect {
+  stroke: #ce6956;
+  fill: #fff4ef;
+}
+
+.flow-card[data-state="offline"] > rect {
+  fill: #f0f2ee;
+  stroke: #cbd2c7;
+}
+
+.flow-panel[data-state="error"] .flow-state {
+  color: #a14b38;
+  background: #fff4ef;
+  border-color: #efd6ca;
+}
+
+.flow-panel[data-state="offline"] .flow-state {
+  color: #6d7768;
+  background: #f0f2ee;
+  border-color: #cbd2c7;
+}
+
+.flow-packet {
+  fill: #7eab51;
+  opacity: 0;
+  offset-rotate: 0deg;
+}
+
+.flow-packet-sources {
+  offset-path: path("M 254 130 H 374");
+}
+
+.flow-packet-gate {
+  offset-path: path("M 706 130 H 586");
+}
+
+.flow-link[data-active="true"] .flow-packet {
+  opacity: 1;
+  animation: flow-travel 1s linear infinite;
+}
+
+.flow-link[data-active="true"] .flow-current {
+  opacity: 1;
+}
+
+.flow-link[data-write="true"] .flow-packet-gate {
+  animation-direction: reverse;
+}
+
+.flow-scene figcaption {
+  padding: 0 25px 18px;
+  color: #7b8b72;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.flow-activity {
+  padding: 18px 25px 22px;
+}
+
+.flow-activity-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #788575;
+  font-size: 12px;
+}
+
+.flow-activity-heading > span {
+  color: #334c2e;
+  font-weight: 600;
+}
+
+.flow-events {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: #607367;
+}
+
+.flow-events li {
+  display: flex;
+  gap: 16px;
+  line-height: 1.6;
+}
+
+.flow-events time {
+  color: #8b9d80;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.flow-events .failed {
+  color: #a14b38;
+}
+
+.unified-orders > .section-heading {
+  background: #f9fbf7;
+  border-bottom: 1px solid #edf0e9;
+}
+
+.order-group + .order-group {
+  border-top: 1px solid #dfe8d8;
+}
+
+.order-group h3 {
+  margin: 0;
+  color: #334c2e;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.order-group h3 span {
+  margin-left: 10px;
+  color: #788575;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+@keyframes flow-travel {
+  from {
+    offset-distance: 0%;
+  }
+  to {
+    offset-distance: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .flow-panel .section-heading {
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+  .flow-toolbar, .flow-activity {
+    padding-inline: 20px;
+  }
+  .flow-scene figcaption {
+    padding-inline: 20px;
+    min-width: 300px;
+  }
+}
+
+@media (max-width: 600px) {
+  .flow-packet-sources {
+    offset-path: path("M 160 148 V 195");
+  }
+  .flow-packet-gate {
+    offset-path: path("M 160 402 V 355");
+  }
+  .flow-scene figcaption {
+    min-width: 0;
+  }
+  .flow-toolbar .primary {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-link[data-active="true"] .flow-packet {
+    animation: none;
+    opacity: 0;
+  }
+}

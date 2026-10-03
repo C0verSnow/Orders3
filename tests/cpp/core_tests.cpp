@@ -58,6 +58,12 @@ private slots:
                 {"realised_pnl", "0.0660018163"}, {"initial_margin", "4.852279702667"},
                 {"mark_price", "93.053"}, {"ignored_field", "not stored"}};
         };
+        QJsonArray exchangePositions{position(-37), position(37), position(0)};
+        for (const QString &zero : {"0.00", "-0.000"}) {
+            auto row = position(-37);
+            row.insert("value", zero);
+            exchangePositions.append(row);
+        }
         const auto old = [](QString id, bool reduce, int status) {
             return QJsonObject{{"id", id}, {"contract", "HYPE_USDT"}, {"amount", "37"},
                 {"activation_price", "84.229"}, {"reduce_only", reduce}, {"original_status", status}};
@@ -84,8 +90,7 @@ private slots:
                     return orders::HttpResult{401, "{}"};
                 if (method == "GET") {
                     if (path.endsWith("/positions"))
-                        return orders::HttpResult{200, QJsonDocument(QJsonArray{
-                            position(-37), position(37), position(0)}).toJson()};
+                        return orders::HttpResult{200, QJsonDocument(exchangePositions).toJson()};
                     ++listPages;
                     const QJsonArray page = path.contains("page_num=1&")
                         ? QJsonArray{exchangeOrders[1], exchangeOrders[2], exchangeOrders[3]}
@@ -117,7 +122,9 @@ private slots:
             QCOMPARE(bodies[index].value("position_mode").toString(), QString("dual_plus"));
         }
         const auto saved = orders::readPositions(config.dataPath);
-        QCOMPARE(saved.size(), 3);
+        QCOMPARE(saved.size(), 2);
+        QCOMPARE(saved[0].toObject().value("size").toInteger(), qint64(-37));
+        QCOMPARE(saved[1].toObject().value("size").toInteger(), qint64(37));
         QCOMPARE(saved[0].toObject().size(), 10);
         QVERIFY(!saved[0].toObject().contains("ignored_field"));
         QCOMPARE(saved[0].toObject().value("close_price").toString(), QString("84.229"));
@@ -183,7 +190,7 @@ private slots:
                                    const QByteArray &, const orders::HttpHeaders &) {
             if (path.endsWith("/positions")) {
                 auto row = position;
-                if (invalidValue) row.insert("value", "0");
+                if (invalidValue) row.insert("value", "invalid");
                 return orders::HttpResult{200, QJsonDocument(QJsonArray{row, row}).toJson()};
             }
             if (method == "GET") return orders::HttpResult{200, QJsonDocument(QJsonObject{
