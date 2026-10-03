@@ -247,6 +247,7 @@ h1 span {
   line-height: 1.25;
   letter-spacing: -1px;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .stats small {
@@ -855,6 +856,10 @@ body:focus {
 
 .trailing-table {
   min-width: 850px;
+}
+
+.positions-table {
+  min-width: 1350px;
 }
 
 .table-scroll:focus-visible {

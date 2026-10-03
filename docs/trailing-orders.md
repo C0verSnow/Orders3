@@ -1,6 +1,6 @@
 # 自动追踪订单
 
-`fetchTrailingOrders(config)` 读取一次 Gate 列表；Scheduler 每 60 秒独立调用，不受来源 Cron 启用开关影响。一次请求尚未结束或正在自动交易时不叠加请求，下次计时继续。`--list` 仍为单次读取；服务模式启动轮询，退出时取消网络请求并等待工作线程。
+`fetchTrailingOrders(config)` 读取一次 Gate 列表；服务模式下 Scheduler 每 60 秒独立调用持仓与平仓更新流程，不受来源 Cron 启用开关影响，具体见 [自动平仓追踪单](close-position-orders.md)。一次请求尚未结束或正在自动交易时不叠加请求，下次计时继续。`--list` 仍为单次读取；退出时取消网络请求并等待工作线程。
 
 手动、定时和启动时的来源抓取成功保存后，都调用 `createTrailingOrders(config)`。无参数版本读取 `Config::load()`；使用页面最新配置的业务入口传入 config。函数读取 `orders` 和 `orderslist`，按以下顺序执行：
 

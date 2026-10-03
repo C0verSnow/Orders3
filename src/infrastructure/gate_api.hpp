@@ -5,6 +5,7 @@
 
 namespace orders::gate {
 // Only transport helpers; refresh state and persistence belong to services.
+// path may include an already encoded query; it is signed separately from the URL path.
 ORDERS_CORE_EXPORT HttpHeaders signedHeaders(const QByteArray &method, const QByteArray &path,
     const QByteArray &body, const QString &key, const QString &secret);
 HttpHeaders signedGetHeaders(const QByteArray &path, const QString &key, const QString &secret);

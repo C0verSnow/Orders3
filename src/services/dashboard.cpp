@@ -1,6 +1,7 @@
 #include "services/dashboard.hpp"
 #include "services/fetcher.hpp"
 #include "core/error.hpp"
+#include "core/decimal.hpp"
 #include "infrastructure/storage.hpp"
 #include <QJsonValue>
 #include <QStringList>
@@ -21,7 +22,9 @@ QJsonValue nullable(const QString &text) {
 }
 } // namespace
 
-Dashboard::Dashboard(Config config) : config_(std::move(config)) {}
+Dashboard::Dashboard(Config config) : config_(std::move(config)) {
+    uptime_.start();
+}
 
 Config Dashboard::config() const {
     std::lock_guard<std::mutex> lock(configMutex_);
@@ -128,7 +131,7 @@ RefreshResult Dashboard::refreshSources() {
     }
 }
 
-RefreshResult Dashboard::refreshOrders() {
+RefreshResult Dashboard::refreshOrders(bool executeCloseOrders) {
     std::unique_lock<std::mutex> trading(gateMutex_, std::try_to_lock);
     if (!trading.owns_lock())
         return {};
@@ -137,14 +140,31 @@ RefreshResult Dashboard::refreshOrders() {
     BusyGuard guard(ordersBusy_);
     try {
         const auto current = config();
-        const auto items = fetchTrailingOrders(current);
+        if (!executeCloseOrders) {
+            const auto items = fetchTrailingOrders(current);
+            std::lock_guard<std::mutex> lock(ordersMutex_);
+            saveTrailingOrders(current.ordersPath, items);
+            ordersError_.clear();
+            return {true, true};
+        }
+        // This single polling cycle refreshes positions/list, stops our old closing orders,
+        // and publishes replacements under the same trading lock as opening orders.
+        const auto execution = closePositionOrders(current);
         std::lock_guard<std::mutex> lock(ordersMutex_);
-        saveTrailingOrders(current.ordersPath, items);
+        closeExecutionResults_ = execution;
         ordersError_.clear();
+        for (const auto &value : execution) {
+            const auto result = value.toObject();
+            if (result.value("action").toString() == "failed") {
+                ordersError_ = "持仓已更新，但自动平仓下单失败：" + result.value("error").toString();
+                return {true, false};
+            }
+        }
         return {true, true};
     } catch (const std::exception &error) {
         std::lock_guard<std::mutex> lock(ordersMutex_);
-        ordersError_ = "获取订单失败，保留上次数据：" + QString::fromUtf8(error.what());
+        closeExecutionResults_ = {};
+        ordersError_ = "更新持仓或平仓订单失败：" + QString::fromUtf8(error.what());
         return {true, false};
     }
 }
@@ -162,7 +182,17 @@ QJsonObject Dashboard::sourceSnapshot() const {
 QJsonObject Dashboard::ordersSnapshot() const {
     std::lock_guard<std::mutex> lock(ordersMutex_);
     const auto snapshot = readTrailingOrders(config().ordersPath);
+    const auto positions = readPositions(config().dataPath);
+    QString unrealised = "0", realised = "0";
+    for (const auto &value : positions) {
+        const auto position = value.toObject();
+        unrealised = decimal::sum(unrealised, position.value("unrealised_pnl").toString());
+        realised = decimal::sum(realised, position.value("realised_pnl").toString());
+    }
     return {{"orders", snapshot.orders}, {"updated_at", nullable(snapshot.updatedAt)},
+            {"positions", positions}, {"close_execution", closeExecutionResults_},
+            {"unrealised_pnl", unrealised}, {"realised_pnl", realised},
+            {"uptime_ms", uptime_.elapsed()},
             {"error", nullable(ordersError_)}, {"refreshing", bool(ordersBusy_)}};
 }
 

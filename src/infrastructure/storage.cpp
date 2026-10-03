@@ -307,6 +307,77 @@ void saveTrailingOrders(const QString &path, const QJsonArray &orders) {
     transaction.commit();
 }
 
+QJsonArray readPositions(const QString &path) {
+    QJsonArray positions;
+    if (!QFileInfo::exists(path))
+        return positions;
+    Database database(path, true);
+    if (columns(database.connection(), "position").isEmpty())
+        return positions;
+    QSqlQuery query(database.connection());
+    execute(query, "SELECT * FROM position ORDER BY contract, size");
+    while (query.next())
+        positions.append(rowObject(query));
+    return positions;
+}
+
+void savePositions(const QString &path, const QJsonArray &positions) {
+    ensureDirectory(path);
+    Database database(path);
+    auto &db = database.connection();
+    Transaction transaction(db);
+    QSqlQuery query(db);
+    // Keep both sides of a contract and preserve decimal prices as text.
+    execute(query, R"(CREATE TABLE IF NOT EXISTS position (
+        contract TEXT NOT NULL, entry_price TEXT NOT NULL, value TEXT NOT NULL,
+        leverage_max TEXT NOT NULL, unrealised_pnl TEXT NOT NULL, realised_pnl TEXT NOT NULL,
+        size INTEGER NOT NULL, initial_margin TEXT NOT NULL, mark_price TEXT NOT NULL,
+        close_price TEXT NOT NULL))");
+    execute(query, "DELETE FROM position");
+    for (const auto &value : positions) {
+        if (!value.isObject())
+            throw Error("持仓记录必须为对象");
+        const auto position = value.toObject();
+        prepare(query, R"(INSERT INTO position
+            (contract, entry_price, value, leverage_max, unrealised_pnl, realised_pnl,
+             size, initial_margin, mark_price, close_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?))");
+        for (const QString &field : {"contract", "entry_price", "value", "leverage_max",
+                                     "unrealised_pnl", "realised_pnl", "size", "initial_margin",
+                                     "mark_price", "close_price"})
+            query.addBindValue(sqlValue(position.value(field)));
+        prepared(query);
+    }
+    transaction.commit();
+}
+
+QStringList readManagedCloseOrderIds(const QString &path, const QString &owner) {
+    QStringList ids;
+    if (!QFileInfo::exists(path))
+        return ids;
+    Database database(path, true);
+    if (columns(database.connection(), "managed_close_orders").isEmpty())
+        return ids;
+    QSqlQuery query(database.connection());
+    prepare(query, "SELECT id FROM managed_close_orders WHERE owner = ?");
+    query.addBindValue(owner);
+    prepared(query);
+    while (query.next())
+        ids.append(query.value(0).toString());
+    return ids;
+}
+
+void saveManagedCloseOrderId(const QString &path, const QString &owner, const QString &id) {
+    ensureDirectory(path);
+    Database database(path);
+    QSqlQuery query(database.connection());
+    execute(query, R"(CREATE TABLE IF NOT EXISTS managed_close_orders (
+        owner TEXT NOT NULL, id TEXT NOT NULL, PRIMARY KEY (owner, id)))");
+    prepare(query, "INSERT OR IGNORE INTO managed_close_orders (owner, id) VALUES (?, ?)");
+    query.addBindValue(owner);
+    query.addBindValue(id);
+    prepared(query);
+}
+
 QByteArray exportDatabase(const QString &path) {
     QTemporaryDir directory;
     if (!directory.isValid())

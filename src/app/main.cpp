@@ -124,7 +124,7 @@ int main(int argc, char *argv[]) {
         }
         orders::Dashboard dashboard(config);
         if (parser.isSet("list")) {
-            const auto result = dashboard.refreshOrders();
+            const auto result = dashboard.refreshOrders(false);
             if (!result.success)
                 throw orders::Error(dashboard.ordersSnapshot().value("error").toString());
             std::cout << "已保存订单：" << config.ordersPath.toUtf8().constData()

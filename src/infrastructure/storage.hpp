@@ -3,6 +3,7 @@
 #include <QByteArray>
 #include <QJsonArray>
 #include <QString>
+#include <QStringList>
 
 namespace orders {
 struct SourceSnapshot {
@@ -18,5 +19,10 @@ ORDERS_CORE_EXPORT SourceSnapshot readSources(const QString &path);
 ORDERS_CORE_EXPORT TrailingSnapshot readTrailingOrders(const QString &path);
 ORDERS_CORE_EXPORT void saveSources(const QString &path, const QJsonArray &items);
 ORDERS_CORE_EXPORT void saveTrailingOrders(const QString &path, const QJsonArray &orders);
+ORDERS_CORE_EXPORT QJsonArray readPositions(const QString &path);
+ORDERS_CORE_EXPORT void savePositions(const QString &path, const QJsonArray &positions);
+ORDERS_CORE_EXPORT QStringList readManagedCloseOrderIds(const QString &path, const QString &owner);
+ORDERS_CORE_EXPORT void saveManagedCloseOrderId(const QString &path, const QString &owner,
+                                               const QString &id);
 ORDERS_CORE_EXPORT QByteArray exportDatabase(const QString &path);
 } // namespace orders

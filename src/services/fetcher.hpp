@@ -17,4 +17,9 @@ using TrailingOrderSender = std::function<HttpResult(const QByteArray &, const Q
 ORDERS_CORE_EXPORT QJsonArray createTrailingOrders(const Config &config,
                                                    const TrailingOrderSender &sender = {});
 ORDERS_CORE_EXPORT QJsonArray createTrailingOrders();
+using ClosePositionRequester = std::function<HttpResult(const QByteArray &, const QByteArray &,
+                                                       const QByteArray &, const HttpHeaders &)>;
+ORDERS_CORE_EXPORT QJsonArray closePositionOrders(const Config &config,
+                                                 const ClosePositionRequester &requester = {});
+ORDERS_CORE_EXPORT QJsonArray closePositionOrders();
 } // namespace orders

@@ -3,6 +3,7 @@
 #include "core/config.hpp"
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QElapsedTimer>
 #include <atomic>
 #include <mutex>
 
@@ -17,7 +18,7 @@ class ORDERS_CORE_EXPORT Dashboard {
 public:
     explicit Dashboard(Config config);
     RefreshResult refreshSources();
-    RefreshResult refreshOrders();
+    RefreshResult refreshOrders(bool executeCloseOrders = true);
     QJsonObject sourceSnapshot() const;
     QJsonObject ordersSnapshot() const;
     QByteArray download() const;
@@ -39,5 +40,7 @@ private:
     QString sourcePhase_;
     QString sourceError_;
     QString ordersError_;
+    QElapsedTimer uptime_;
+    QJsonArray closeExecutionResults_;
 };
 } // namespace orders

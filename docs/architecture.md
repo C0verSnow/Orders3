@@ -23,7 +23,7 @@
 | GET | `/api/data` | 来源、解析订单和调度快照 |
 | POST | `/api/refresh` | 抓取来源，完成后返回快照 |
 | GET | `/api/orders` | Gate 本地订单快照 |
-| POST | `/api/orders/refresh` | 更新 Gate 订单，完成后返回快照 |
+| POST | `/api/orders/refresh` | 更新持仓和 Gate 订单，替换本程序平仓单后返回快照 |
 | GET / POST | `/api/schedule` | 读取或保存调度配置 |
 | GET / POST | `/api/settings` | 读取或保存连接与存储配置；读取不返回密钥原文 |
 | GET | `/api/download` | 一致的 SQLite 数据库快照 |
@@ -43,6 +43,8 @@
 新增网页模块时，需要同时更新 `resources.qrc`、`Server` 静态资源白名单和发布包检查脚本。网页资源由 Qt 嵌入分发，不开放任意目录。
 
 ## 数据兼容
+
+持仓自动平仓、订单归属记录和页面盈亏统计见 [自动平仓追踪单](close-position-orders.md)。Gate 每分钟更新及网页手动刷新共用此流程；`--list` 仅读取列表。
 
 来源表保持 `records` 和 `orders` 的现有字段，支持旧 `record_json` 布局。来源、JSON 标量、字段缺失和 null 的区别保留。解析出的订单字段使用文本，不转成浮点数。
 

@@ -19,6 +19,17 @@ let sourceSyncTimer;
 let sourceSchedule = null;
 let sourceTableSnapshot;
 let sourceReadFailed = false;
+let uptimeMs;
+let uptimeReceivedAt;
+
+function renderUptime() {
+  if (!Number.isFinite(uptimeMs)) return;
+  const seconds = Math.floor((uptimeMs + performance.now() - uptimeReceivedAt) / 1000);
+  const days = Math.floor(seconds / 86400);
+  const clock = [Math.floor(seconds / 3600) % 24, Math.floor(seconds / 60) % 60, seconds % 60]
+    .map((value) => String(value).padStart(2, "0")).join(":");
+  $("uptime").textContent = `${days ? `${days}天 ` : ""}${clock}`;
+}
 
 function scheduleSourceSync(schedule = sourceSchedule) {
   sourceSchedule = schedule;
@@ -108,14 +119,14 @@ function notice(message) {
   $("notice").textContent = message || "";
   $("notice").hidden = !message;
 }
-function renderExecution(results = []) {
+function renderExecution(results = [], containerId = "execution-results", title = "自动下单结果") {
   // Results are appended in execution order; discard the oldest rows from the view.
   results = results.slice(-10);
-  const container = $("execution-results");
+  const container = $(containerId);
   container.replaceChildren();
   container.hidden = !results.length;
   if (!results.length) return;
-  const {wrapper, tbody} = createTable(["自动下单结果", "合约", "数量", "订单 ID", "说明"], "最近 10 条自动下单结果");
+  const {wrapper, tbody} = createTable([title, "合约", "数量", "订单 ID", "说明"], `最近 10 条${title}`);
   const labels = {created: "已创建", stopped: "已停止", skipped: "已跳过", failed: "失败"};
   for (const result of results) {
     const tr = node("tr");
@@ -130,9 +141,6 @@ function applyData(data) {
   if (!Array.isArray(data.items) || data.items.some((item) => !item || typeof item !== "object" || Array.isArray(item))) throw new Error("服务器数据格式错误");
   items = data.items;
   orderRows = Array.isArray(data.orders) ? data.orders : [];
-  $("total").textContent = items.length;
-  $("failed").textContent = items.filter(failed).length;
-  $("success").textContent = items.filter((item) => !failed(item)).length;
   const date = new Date(data.updated_at);
   $("updated").textContent = data.updated_at && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString("zh-CN", {hour12: false}) : "—";
   $("update-date").textContent = data.updated_at ? date.toLocaleDateString("zh-CN") : "尚未生成 data.db 数据库";
@@ -202,17 +210,69 @@ $("filter").addEventListener("change", render);
 let fetchingOrders = false;
 let loadingOrders = false;
 function ordersNotice(message) {
-  $("orders-notice").textContent = message || "";
-  $("orders-notice").hidden = !message;
+  for (const id of ["orders-notice", "positions-notice"]) {
+    $(id).textContent = message || "";
+    $(id).hidden = !message;
+  }
+}
+function updateOrdersButtons(busy) {
+  updateFetchButton("orders-refresh", busy, "获取跟踪订单");
+  updateFetchButton("positions-refresh", busy, "更新持仓与平仓单");
+}
+function renderPositions(positions = []) {
+  const container = $("positions-records");
+  const scrollLeft = container.querySelector(".table-scroll")?.scrollLeft || 0;
+  $("positions-count").textContent = `${positions.length} 条`;
+  container.replaceChildren();
+  if (!positions.length) {
+    container.append(node("div", "empty", "暂无持仓记录，点击「更新持仓与平仓单」获取数据。"));
+    return;
+  }
+  const {wrapper, tbody} = createTable(
+    ["合约", "方向", "持仓数量（张）", "开仓价格", "持仓价值（USDT）", "最大杠杆",
+      "未实现盈亏（USDT）", "已实现盈亏（USDT）", "初始保证金（USDT）", "标记价格", "计算平仓价格"],
+    "Gate 持仓与计算平仓价格", "positions-table");
+  for (const position of positions) {
+    const tr = node("tr");
+    tr.append(node("td", "table-symbol", position.contract || "—"));
+    const size = String(position.size ?? "");
+    tr.append(node("td", "", !size ? "—" : /^-?0+$/.test(size) ? "空仓" : size.startsWith("-") ? "空头" : "多头"));
+    for (const field of ["size", "entry_price", "value", "leverage_max", "unrealised_pnl",
+      "realised_pnl", "initial_margin", "mark_price", "close_price"]) {
+      const value = position[field];
+      // Keep decimal text intact, just as in the cached position snapshot.
+      tr.append(node("td", "", value === "" || value == null ? "—" : String(value)));
+    }
+    tbody.append(tr);
+  }
+  container.append(wrapper);
+  wrapper.scrollLeft = scrollLeft;
 }
 function applyOrders(data) {
   if (!Array.isArray(data.orders)) throw new Error("订单列表格式错误");
+  renderPositions(Array.isArray(data.positions) ? data.positions : []);
+  $("positions-updated").textContent = dateText(data.updated_at);
+  for (const field of ["unrealised_pnl", "realised_pnl"]) {
+    const element = $(field.replaceAll("_", "-"));
+    const value = data[field];
+    element.textContent = value == null ? "—" : new Intl.NumberFormat("zh-CN", {
+      maximumFractionDigits: 4, useGrouping: false
+    }).format(Number(value));
+    element.title = value == null ? "" : `${value} USDT`;
+  }
+  if (Number.isFinite(data.uptime_ms)) {
+    uptimeMs = data.uptime_ms;
+    uptimeReceivedAt = performance.now();
+    renderUptime();
+  }
+  renderExecution(Array.isArray(data.close_execution) ? data.close_execution : [],
+    "close-execution-results", "自动平仓下单结果");
   const visibleOrders = data.orders.filter((order) => Number(order.original_status) !== 5);
   $("orders-count").textContent = `${visibleOrders.length} 条`;
   $("orders-updated").textContent = dateText(data.updated_at);
   updatingOrders = Boolean(data.refreshing);
-  updateFetchButton("orders-refresh", fetchingOrders || updatingOrders, "获取跟踪订单");
-  ordersNotice(data.error || (updatingOrders ? "正在后台获取最新订单，当前显示本地缓存。" : ""));
+  updateOrdersButtons(fetchingOrders || updatingOrders);
+  ordersNotice(data.error || (updatingOrders ? "正在更新持仓、停止旧平仓单并发布新平仓单，当前显示本地缓存。" : ""));
   updateFlow("orders", {...data, orders: visibleOrders, refreshing: fetchingOrders || updatingOrders});
   const container = $("orders-records");
   container.replaceChildren();
@@ -252,31 +312,33 @@ async function loadOrders() {
   }
   finally { loadingOrders = false; }
 }
-$("orders-refresh").addEventListener("click", async () => {
+async function refreshOrders() {
   if (fetchingOrders || updatingOrders) return;
   fetchingOrders = true;
   ordersGeneration++;
   beginFlow("orders");
   let fetchError = "";
-  updateFetchButton("orders-refresh", true, "获取跟踪订单");
-  ordersNotice("正在获取最新跟踪订单，请稍候…");
+  updateOrdersButtons(true);
+  ordersNotice("正在更新持仓和跟踪订单，并替换本程序的平仓单，请稍候…");
   try {
     const response = await fetch("/api/orders/refresh", {method: "POST"});
     const data = await response.json();
     if (Array.isArray(data.orders)) applyOrders(data);
     if (!response.ok) throw new Error(data.error || "获取订单失败");
-    ordersNotice("订单已更新。");
+    ordersNotice("持仓和订单已更新，平仓单已处理。");
   } catch (error) { fetchError = error.message; ordersNotice(error.message); }
   finally {
     fetchingOrders = false;
-    updateFetchButton("orders-refresh", updatingOrders, "获取跟踪订单");
+    updateOrdersButtons(updatingOrders);
     finishFlow("orders", updatingOrders, fetchError);
   }
-});
+}
+$("orders-refresh").addEventListener("click", refreshOrders);
+$("positions-refresh").addEventListener("click", refreshOrders);
 async function pollOrders() {
   await loadOrders();
   // Sync the cached Gate list once per minute; manual requests update immediately.
-  setTimeout(pollOrders, ORDERS_SYNC_MS);
+  setTimeout(pollOrders, updatingOrders ? TASK_SYNC_MS : ORDERS_SYNC_MS);
 }
 initWorkspace();
 initFlow();
@@ -285,3 +347,4 @@ initSchedule(scheduleSourceSync);
 initStartup(fastStartup);
 pollOrders();
 loadData();
+setInterval(renderUptime, 1000);

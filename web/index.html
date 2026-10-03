@@ -24,9 +24,9 @@
       <div><p class="eyebrow">TROY CAPITALIZE / 实盘工作台</p><h1>实盘数据，一目了然<span>。</span></h1><p class="subtitle">集中查看实盘订单、自动下单结果与 Gate 跟踪订单，掌握交易执行情况。</p></div>
     </div>
     <section class="stats" aria-label="数据概览">
-      <article><span>订单数据源</span><strong id="total">—</strong><small>已接入的数据源</small></article>
-      <article><span><i class="dot"></i> 成功</span><strong id="success">—</strong><small>订单数据获取正常</small></article>
-      <article><span><i class="dot red"></i> 失败</span><strong id="failed">—</strong><small>订单数据获取异常</small></article>
+      <article><span>浮盈浮亏</span><strong id="unrealised-pnl">—</strong><small>持仓未实现盈亏 · USDT</small></article>
+      <article><span>实盈实亏</span><strong id="realised-pnl">—</strong><small>持仓接口已实现盈亏合计 · USDT</small></article>
+      <article><span>在线时长</span><strong id="uptime">—</strong><small>本次程序启动后的运行时间</small></article>
       <article class="updated"><span>最近更新</span><strong id="updated">—</strong><small id="update-date">等待数据加载</small></article>
     </section>
     <section id="flow-panel" class="results flow-panel" aria-labelledby="flow-title" data-channel="sources" data-state="idle" data-demo="false" data-motion="true">
@@ -152,7 +152,7 @@
         <div class="section-heading">
           <div class="section-title">
             <h2 id="orders-title">Gate 跟踪订单 <span id="orders-count">0 条</span></h2>
-            <p class="hint">每分钟更新 Gate 跟踪订单</p>
+            <p class="hint">每分钟更新持仓和跟踪订单，停止本程序的旧平仓单并发布新平仓单；手动获取也会执行</p>
           </div>
           <button id="orders-refresh" class="primary" type="button">获取跟踪订单</button>
         </div>
@@ -164,6 +164,24 @@
         <div id="orders-records" class="panel-content" aria-live="polite">
           <div class="empty">正在加载跟踪订单…</div>
         </div>
+      </section>
+      <section class="results order-panel" aria-labelledby="positions-title">
+        <div class="section-heading">
+          <div class="section-title">
+            <h2 id="positions-title">Gate 持仓与平仓 <span id="positions-count">0 条</span></h2>
+            <p class="hint">与跟踪订单一起每分钟更新，显示持仓明细、计算平仓价格和最近 10 条自动平仓下单结果</p>
+          </div>
+          <button id="positions-refresh" class="primary" type="button">更新持仓与平仓单</button>
+        </div>
+        <div class="panel-meta">
+          <span>订单最近更新：<time id="positions-updated">—</time></span>
+          <span>零持仓保留盈亏记录，不发布平仓单；手动更新会替换本程序的平仓单</span>
+        </div>
+        <p id="positions-notice" class="notice" role="status" aria-live="polite" hidden></p>
+        <div id="positions-records" class="panel-content" aria-live="polite">
+          <div class="empty">正在加载持仓…</div>
+        </div>
+        <div id="close-execution-results" aria-live="polite" hidden></div>
       </section>
     </div>
     </div>

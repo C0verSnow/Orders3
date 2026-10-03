@@ -1,12 +1,16 @@
 #include "services/fetcher.hpp"
 
 #include "core/error.hpp"
+#include "core/decimal.hpp"
 #include "infrastructure/gate_api.hpp"
 #include "infrastructure/http_client.hpp"
 #include "infrastructure/storage.hpp"
 #include <QDateTime>
+#include <QCryptographicHash>
 #include <QRegularExpression>
+#include <QSet>
 #include <cmath>
+#include <limits>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
@@ -308,6 +312,166 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
 
 QJsonArray createTrailingOrders() {
     return createTrailingOrders(Config::load());
+}
+
+QJsonArray closePositionOrders(const Config &config, const ClosePositionRequester &requester) {
+    ensureNotCancelled(config);
+    if (config.gateKey.isEmpty() || config.gateSecret.isEmpty())
+        throw Error("请在程序的「连接与存储配置」中填写 Gate API Key 和 Secret");
+    const auto request = [&](const QByteArray &method, const QByteArray &path,
+                             const QByteArray &body = QByteArray{}) {
+        ensureNotCancelled(config);
+        const auto headers = gate::signedHeaders(method, path, body, config.gateKey, config.gateSecret);
+        if (requester) return requester(method, path, body, headers);
+        const QUrl url(kGateHost + QString::fromUtf8(path));
+        return method == "GET" ? get(url, headers, false, config.cancelled)
+                               : post(url, body, headers, config.cancelled);
+    };
+    const auto response = request("GET", "/api/v4/futures/usdt/positions");
+    ensureHttpSuccess(response);
+    QJsonParseError error;
+    const auto document = QJsonDocument::fromJson(response.body, &error);
+    if (error.error != QJsonParseError::NoError || !document.isArray())
+        throw Error("持仓接口必须返回有效的 JSON 数组");
+
+    QJsonArray positions;
+    // Validate the complete snapshot before cancelling any protection orders.
+    for (const auto &value : document.array()) {
+        if (!value.isObject()) throw Error("持仓列表包含无效记录");
+        const auto source = value.toObject();
+        const auto sizeValue = source.value("size");
+        bool valid = false;
+        const qint64 size = sizeValue.isString() ? sizeValue.toString().toLongLong(&valid)
+                                                : sizeValue.toInteger();
+        if (sizeValue.isDouble()) {
+            const auto number = sizeValue.toDouble();
+            valid = std::isfinite(number) && std::floor(number) == number
+                && std::abs(number) <= 9007199254740991.0;
+        }
+        if (!valid || size == std::numeric_limits<qint64>::min())
+            throw Error("持仓 size 必须为有效整数张数");
+        const auto contract = source.value("contract").toString();
+        static const QRegularExpression contractPattern(R"(^[A-Z0-9]+_USDT$)");
+        if (!contractPattern.match(contract).hasMatch()) throw Error("持仓合约无效：" + contract);
+        QJsonObject position{{"contract", contract}, {"size", size}};
+        for (const QString &field : {"entry_price", "value", "leverage_max", "unrealised_pnl",
+                                     "realised_pnl", "initial_margin", "mark_price"}) {
+            if (!source.value(field).isString()) throw Error("持仓缺少十进制文本字段：" + field);
+            decimal::parse(source.value(field).toString());
+            position.insert(field, source.value(field));
+        }
+        // Empty positions contribute PNL but never create a closing order.
+        position.insert("close_price", size == 0 ? QString("0") : decimal::closePrice(
+            position.value("entry_price").toString(), position.value("value").toString(),
+            position.value("initial_margin").toString(), position.value("mark_price").toString(),
+            size < 0));
+        positions.append(position);
+    }
+    ensureNotCancelled(config);
+    savePositions(config.dataPath, positions);
+    // Obtain the current exchange list, so completed or manually stopped orders are not stopped again.
+    QJsonArray trailing;
+    QSet<QString> seenIds;
+    for (int pageNumber = 1; ; ++pageNumber) {
+        const auto path = kTrailingOrdersPath + "?page_num=" + QByteArray::number(pageNumber)
+            + "&page_size=100";
+        const auto listResponse = request("GET", path);
+        ensureHttpSuccess(listResponse);
+        const auto page = gate::parseTrailingOrders(listResponse.body);
+        if (page.isEmpty()) break;
+        for (const auto &value : page) {
+            const auto id = value.toObject().value("id").toString();
+            if (seenIds.contains(id))
+                throw Error("追踪订单分页出现重复 ID，请重新获取");
+            seenIds.insert(id);
+            trailing.append(value);
+        }
+        if (pageNumber == (std::numeric_limits<int>::max)())
+            throw Error("追踪订单分页数量过多");
+    }
+    ensureNotCancelled(config);
+    saveTrailingOrders(config.ordersPath, trailing);
+    const auto owner = QString::fromLatin1(QCryptographicHash::hash(
+        config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
+    const auto managed = readManagedCloseOrderIds(config.ordersPath, owner);
+    QJsonArray results;
+    const auto send = [&](const QByteArray &path, const QJsonObject &payload) {
+        return successfulResponse(request("POST", path,
+            QJsonDocument(payload).toJson(QJsonDocument::Compact)));
+    };
+    // Prevalidate all stop IDs before the first write to the exchange.
+    for (const auto &value : trailing) {
+        const auto old = value.toObject();
+        const int status = old.value("original_status").toInt();
+        if (!old.value("reduce_only").toBool() || (status != 1 && status != 2)
+            || !managed.contains(old.value("id").toString())) continue;
+        bool valid = false;
+        const auto id = old.value("id").toString().toLongLong(&valid);
+        if (!valid || id <= 0) throw Error("旧平仓订单 ID 无效");
+    }
+    for (qsizetype index = 0; index < trailing.size(); ++index) {
+        auto old = trailing[index].toObject();
+        const int status = old.value("original_status").toInt();
+        if (!old.value("reduce_only").toBool() || (status != 1 && status != 2)
+            || !managed.contains(old.value("id").toString())) continue;
+        QJsonObject result{{"action", "stopped"}, {"id", old.value("id")},
+                           {"contract", old.value("contract")}};
+        try {
+            send(kStopPath, {{"id", old.value("id").toString().toLongLong()}});
+            old.insert("original_status", 5);
+            old.insert("timestamp", QDateTime::currentMSecsSinceEpoch());
+            trailing[index] = old;
+            saveTrailingOrders(config.ordersPath, trailing);
+            results.append(result);
+        } catch (const std::exception &error) {
+            result.insert("action", "failed");
+            result.insert("operation", "stop");
+            result.insert("error", QString::fromUtf8(error.what()));
+            results.append(result);
+            return results;
+        }
+    }
+    // Order parameters come from the committed position table.
+    for (const auto &value : readPositions(config.dataPath)) {
+        const auto position = value.toObject();
+        const auto size = position.value("size").toInteger();
+        if (size == 0) continue;
+        const auto amount = QString::number(-size);
+        const QJsonObject body{{"contract", position.value("contract")}, {"amount", amount},
+            {"activation_price", position.value("close_price")}, {"is_gte", size > 0},
+            {"reduce_only", true}, {"price_type", 3}, {"price_offset", "1%"},
+            {"pos_margin_mode", "cross"}, {"position_mode", "dual_plus"}, {"text", "apiv4"}};
+        QJsonObject result{{"contract", body.value("contract")}, {"amount", amount},
+                           {"activation_price", body.value("activation_price")}};
+        try {
+            const auto created = send(kCreatePath, body);
+            const auto id = created.value("data").toObject().value("id").toString();
+            result.insert("id", id);
+            bool valid = false;
+            if (id.toLongLong(&valid) <= 0 || !valid)
+                throw Error("创建响应缺少有效订单 ID；请先核对 Gate 列表");
+            saveManagedCloseOrderId(config.ordersPath, owner, id);
+            trailing.append(QJsonObject{{"id", id}, {"contract", body.value("contract")},
+                {"amount", amount}, {"activation_price", body.value("activation_price")},
+                {"reduce_only", true}, {"original_status", 1},
+                {"timestamp", QDateTime::currentMSecsSinceEpoch()}});
+            saveTrailingOrders(config.ordersPath, trailing);
+            result.insert("action", "created");
+            results.append(result);
+        } catch (const std::exception &error) {
+            result.insert("action", "failed");
+            result.insert("operation", "create");
+            result.insert("error", QString::fromUtf8(error.what()));
+            results.append(result);
+            return results; // Do not retry an ambiguous POST in this batch.
+        }
+    }
+    ensureNotCancelled(config);
+    return results;
+}
+
+QJsonArray closePositionOrders() {
+    return closePositionOrders(Config::load());
 }
 
 } // namespace orders

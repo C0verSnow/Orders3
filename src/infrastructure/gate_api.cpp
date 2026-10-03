@@ -18,7 +18,11 @@ HttpHeaders signedHeaders(const QByteArray &method, const QByteArray &path,
     const QByteArray timestamp = QByteArray::number(QDateTime::currentSecsSinceEpoch());
     const QByteArray bodyHash =
         QCryptographicHash::hash(body, QCryptographicHash::Sha512).toHex();
-    const QByteArray message = method + "\n" + path + "\n\n" + bodyHash + "\n" + timestamp;
+    const auto separator = path.indexOf('?');
+    const auto requestPath = separator < 0 ? path : path.left(separator);
+    const auto query = separator < 0 ? QByteArray{} : path.mid(separator + 1);
+    const QByteArray message = method + "\n" + requestPath + "\n" + query + "\n"
+        + bodyHash + "\n" + timestamp;
     const QByteArray signature = QMessageAuthenticationCode::hash(
         message, secret.toUtf8(), QCryptographicHash::Sha512).toHex();
     return {{"KEY", key.toUtf8()}, {"Timestamp", timestamp}, {"SIGN", signature},

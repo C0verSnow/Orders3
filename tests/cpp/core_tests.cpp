@@ -1,6 +1,7 @@
 #include "core/config.hpp"
 #include "core/cron.hpp"
 #include "core/error.hpp"
+#include "core/decimal.hpp"
 #include "core/order_parser.hpp"
 #include "infrastructure/storage.hpp"
 #include "infrastructure/gate_api.hpp"
@@ -26,6 +27,185 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void closePricesUseExactDecimalArithmetic() {
+        using orders::decimal::closePrice;
+        QCOMPARE(closePrice("88.077351351351", "344.2961", "4.852279702667", "93.053", true),
+                 QString("84.229"));
+        QCOMPARE(closePrice("100", "100", "10", "93.053", false), QString("131.000"));
+        QCOMPARE(closePrice("100", "100", "10", "93.053", true), QString("69.000"));
+        QCOMPARE(closePrice("1.005", "100", "0", "1.00", false), QString("1.00"));
+        QCOMPARE(closePrice("1.015", "100", "0", "1.00", false), QString("1.02"));
+        QCOMPARE(orders::decimal::sum("-18.409900000001", "0.0660018163"),
+                 QString("-18.343898183701"));
+        QVERIFY_EXCEPTION_THROWN(closePrice("100", "0", "1", "10", false), orders::Error);
+        QVERIFY_EXCEPTION_THROWN(closePrice("100", "10", "10", "10", true), orders::Error);
+    }
+
+    void closePositionsRespectOwnershipDirectionAndPersistence() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.gateKey = "offline-key";
+        config.gateSecret = "offline-secret";
+        const auto owner = QString::fromLatin1(QCryptographicHash::hash(
+            config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
+        orders::saveManagedCloseOrderId(config.ordersPath, owner, "9007199254740993");
+        orders::saveManagedCloseOrderId(config.ordersPath, "another-account", "22");
+        const auto position = [](qint64 size) {
+            return QJsonObject{{"contract", "HYPE_USDT"}, {"size", size},
+                {"entry_price", "88.077351351351"}, {"value", size ? "344.2961" : "0"},
+                {"leverage_max", "75"}, {"unrealised_pnl", "-18.409900000001"},
+                {"realised_pnl", "0.0660018163"}, {"initial_margin", "4.852279702667"},
+                {"mark_price", "93.053"}, {"ignored_field", "not stored"}};
+        };
+        const auto old = [](QString id, bool reduce, int status) {
+            return QJsonObject{{"id", id}, {"contract", "HYPE_USDT"}, {"amount", "37"},
+                {"activation_price", "84.229"}, {"reduce_only", reduce}, {"original_status", status}};
+        };
+        const QJsonArray exchangeOrders{old("9007199254740993", true, 2), old("20", true, 1),
+            old("21", false, 1), old("22", true, 1)};
+        QList<QByteArray> writes;
+        QList<QJsonObject> bodies;
+        int nextId = 100;
+        int listPages = 0;
+        const auto results = orders::closePositionOrders(config,
+            [&](const QByteArray &method, const QByteArray &path, const QByteArray &body,
+                const orders::HttpHeaders &headers) {
+                QMap<QByteArray, QByteArray> map;
+                for (const auto &header : headers) map.insert(header.first, header.second);
+                const auto separator = path.indexOf('?');
+                const auto requestPath = separator < 0 ? path : path.left(separator);
+                const auto query = separator < 0 ? QByteArray{} : path.mid(separator + 1);
+                const auto message = method + "\n" + requestPath + "\n" + query + "\n"
+                    + QCryptographicHash::hash(body, QCryptographicHash::Sha512).toHex()
+                    + "\n" + map.value("Timestamp");
+                if (map.value("SIGN") != QMessageAuthenticationCode::hash(
+                    message, config.gateSecret.toUtf8(), QCryptographicHash::Sha512).toHex())
+                    return orders::HttpResult{401, "{}"};
+                if (method == "GET") {
+                    if (path.endsWith("/positions"))
+                        return orders::HttpResult{200, QJsonDocument(QJsonArray{
+                            position(-37), position(37), position(0)}).toJson()};
+                    ++listPages;
+                    const QJsonArray page = path.contains("page_num=1&")
+                        ? QJsonArray{exchangeOrders[1], exchangeOrders[2], exchangeOrders[3]}
+                        : path.contains("page_num=2&") ? QJsonArray{exchangeOrders[0]} : QJsonArray{};
+                    return orders::HttpResult{200, QJsonDocument(QJsonObject{{"code", 0},
+                        {"timestamp", qint64(1791011512347)},
+                        {"data", QJsonObject{{"orders", page}}}}).toJson()};
+                }
+                writes.append(path);
+                bodies.append(QJsonDocument::fromJson(body).object());
+                if (path.endsWith("/stop")) return orders::HttpResult{200, R"({"code":0})"};
+                return orders::HttpResult{200, QJsonDocument(QJsonObject{{"code", 0},
+                    {"data", QJsonObject{{"id", QString::number(nextId++)}}}}).toJson()};
+            });
+        QCOMPARE(results.size(), 3);
+        QCOMPARE(listPages, 3); // Includes our order on page 2 even when the server caps pages.
+        QCOMPARE(writes.size(), 3);
+        QVERIFY(writes[0].endsWith("/stop"));
+        QCOMPARE(bodies[0].value("id").toInteger(), qint64(9007199254740993));
+        QCOMPARE(bodies[1].value("amount").toString(), QString("37"));
+        QCOMPARE(bodies[1].value("activation_price").toString(), QString("84.229"));
+        QVERIFY(!bodies[1].value("is_gte").toBool());
+        QCOMPARE(bodies[2].value("amount").toString(), QString("-37"));
+        QVERIFY(bodies[2].value("is_gte").toBool());
+        for (int index : {1, 2}) {
+            QVERIFY(bodies[index].value("reduce_only").toBool());
+            QCOMPARE(bodies[index].value("price_offset").toString(), QString("1%"));
+            QCOMPARE(bodies[index].value("price_type").toInt(), 3);
+            QCOMPARE(bodies[index].value("position_mode").toString(), QString("dual_plus"));
+        }
+        const auto saved = orders::readPositions(config.dataPath);
+        QCOMPARE(saved.size(), 3);
+        QCOMPARE(saved[0].toObject().size(), 10);
+        QVERIFY(!saved[0].toObject().contains("ignored_field"));
+        QCOMPARE(saved[0].toObject().value("close_price").toString(), QString("84.229"));
+        const auto ids = orders::readManagedCloseOrderIds(config.ordersPath, owner);
+        QVERIFY(ids.contains("100") && ids.contains("101"));
+        QVERIFY(!ids.contains("20") && !ids.contains("22"));
+        const auto trailing = orders::readTrailingOrders(config.ordersPath).orders;
+        for (const auto &value : trailing) {
+            const auto row = value.toObject();
+            if (row.value("id").toString() == "20") QCOMPARE(row.value("original_status").toInt(), 1);
+            if (row.value("id").toString() == "9007199254740993")
+                QCOMPARE(row.value("original_status").toInt(), 5);
+        }
+    }
+
+    void closePositionsEmptySnapshotStillStopsOwnedOrders() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.gateKey = "key";
+        config.gateSecret = "secret";
+        const auto owner = QString::fromLatin1(QCryptographicHash::hash(
+            config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
+        orders::saveManagedCloseOrderId(config.ordersPath, owner, "1");
+        const QJsonObject old{{"id", "1"}, {"contract", "BTC_USDT"}, {"amount", "-1"},
+            {"activation_price", "100"}, {"reduce_only", true}, {"original_status", 1}};
+        int stops = 0, creates = 0;
+        const auto results = orders::closePositionOrders(config,
+            [&](const QByteArray &method, const QByteArray &path, const QByteArray &,
+                const orders::HttpHeaders &) {
+                if (path.endsWith("/positions")) return orders::HttpResult{200, "[]"};
+                if (method == "GET") return orders::HttpResult{200, QJsonDocument(QJsonObject{
+                    {"code", 0}, {"timestamp", 123}, {"data", QJsonObject{{"orders",
+                        path.contains("page_num=1&") ? QJsonArray{old} : QJsonArray{}}}}}).toJson()};
+                if (path.endsWith("/stop")) ++stops;
+                else ++creates;
+                return orders::HttpResult{200, R"({"code":0})"};
+            });
+        QCOMPARE(stops, 1);
+        QCOMPARE(creates, 0);
+        QCOMPARE(results.size(), 1);
+        QVERIFY(orders::readPositions(config.dataPath).isEmpty());
+    }
+
+    void closePositionsFailuresStopTheBatch() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.gateKey = "key";
+        config.gateSecret = "secret";
+        const auto owner = QString::fromLatin1(QCryptographicHash::hash(
+            config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
+        orders::saveManagedCloseOrderId(config.ordersPath, owner, "1");
+        const QJsonObject position{{"contract", "BTC_USDT"}, {"size", 1}, {"entry_price", "100"},
+            {"value", "100"}, {"leverage_max", "75"}, {"unrealised_pnl", "0"},
+            {"realised_pnl", "0"}, {"initial_margin", "10"}, {"mark_price", "100.0"}};
+        const QJsonObject old{{"id", "1"}, {"contract", "BTC_USDT"}, {"amount", "-1"},
+            {"activation_price", "100"}, {"reduce_only", true}, {"original_status", 1}};
+        int writes = 0;
+        bool invalidValue = true;
+        bool stopFails = true;
+        const auto requester = [&](const QByteArray &method, const QByteArray &path,
+                                   const QByteArray &, const orders::HttpHeaders &) {
+            if (path.endsWith("/positions")) {
+                auto row = position;
+                if (invalidValue) row.insert("value", "0");
+                return orders::HttpResult{200, QJsonDocument(QJsonArray{row, row}).toJson()};
+            }
+            if (method == "GET") return orders::HttpResult{200, QJsonDocument(QJsonObject{
+                {"code", 0}, {"timestamp", 123}, {"data", QJsonObject{{"orders",
+                    path.contains("page_num=1&") ? QJsonArray{old} : QJsonArray{}}}}}).toJson()};
+            ++writes;
+            if (path.endsWith("/stop") && !stopFails) return orders::HttpResult{200, R"({"code":0})"};
+            return orders::HttpResult{500, "{}"};
+        };
+        QVERIFY_EXCEPTION_THROWN(orders::closePositionOrders(config, requester), orders::Error);
+        QCOMPARE(writes, 0);
+        invalidValue = false;
+        auto results = orders::closePositionOrders(config, requester);
+        QCOMPARE(writes, 1);
+        QCOMPARE(results.last().toObject().value("operation").toString(), QString("stop"));
+        writes = 0;
+        stopFails = false;
+        results = orders::closePositionOrders(config, requester);
+        QCOMPARE(writes, 2); // One stop, one failed create; no second create or retry.
+        QCOMPARE(results.last().toObject().value("operation").toString(), QString("create"));
+    }
+
     void trailingOrdersStopThenCreateAndSign() {
         QTemporaryDir directory;
         orders::Config config;
