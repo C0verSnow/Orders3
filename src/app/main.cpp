@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
         {"port", "监听端口，0 自动分配", "port", "0"},
         {"host", "监听 IP，默认仅本机", "host", "127.0.0.1"},
         {"cached", "启动时展示缓存，跳过远程抓取"},
-        {"fetch-only", "只抓取来源并保存数据库"},
+        {"fetch-only", "抓取来源一次，保存数据库并自动处理开仓追踪单"},
         {"list", "只获取 Gate 跟踪订单"},
         {"browser", "使用系统浏览器"},
         {"no-browser", "只启动服务"},

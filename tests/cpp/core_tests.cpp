@@ -1,7 +1,12 @@
 #include "core/config.hpp"
 #include "core/cron.hpp"
 #include "core/error.hpp"
+#include "core/order_parser.hpp"
 #include "infrastructure/storage.hpp"
+#include "infrastructure/gate_api.hpp"
+#include <QCryptographicHash>
+#include <QMessageAuthenticationCode>
+#include <QRegularExpression>
 #include "infrastructure/http_client.hpp"
 #include "services/dashboard.hpp"
 #include "services/fetcher.hpp"
@@ -21,6 +26,342 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void trailingOrdersStopThenCreateAndSign() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.gateKey = "offline-key";
+        config.gateSecret = "offline-secret";
+        orders::saveSources(config.dataPath, QJsonArray{QJsonObject{{"data",
+            "contract: XAU_USDT\nactivation_price: 4071.29 USDT\namount: 371 Contracts\nTimestamp: 1791011512347\n"
+            "contract: BTC_USDT\nactivation_price: 100 USDT\namount: -2 contracts\nTimestamp: 1791011512347"}}});
+        const auto old = [](QString id, bool reduce, int status) {
+            return QJsonObject{{"id", id}, {"contract", "SOL_USDT"}, {"amount", "1"},
+                {"activation_price", "100"}, {"reduce_only", reduce},
+                {"original_status", status}, {"timestamp", qint64(1791011512341)}};
+        };
+        orders::saveTrailingOrders(config.ordersPath, QJsonArray{
+            old("9007199254740993", false, 1), old("2", false, 2),
+            old("3", true, 1), old("4", true, 2), old("5", false, 4)});
+        QList<QByteArray> paths;
+        QList<QJsonObject> bodies;
+        int nextId = 100;
+        const auto results = orders::createTrailingOrders(config,
+            [&](const QByteArray &path, const QByteArray &body, const orders::HttpHeaders &headers) {
+                paths.append(path);
+                bodies.append(QJsonDocument::fromJson(body).object());
+                QMap<QByteArray, QByteArray> map;
+                for (const auto &header : headers) map.insert(header.first, header.second);
+                if (map.value("KEY") != "offline-key") return orders::HttpResult{401, "{}"};
+                const auto message = "POST\n" + path + "\n\n"
+                    + QCryptographicHash::hash(body, QCryptographicHash::Sha512).toHex()
+                    + "\n" + map.value("Timestamp");
+                const auto expected = QMessageAuthenticationCode::hash(message,
+                    config.gateSecret.toUtf8(), QCryptographicHash::Sha512).toHex();
+                if (map.value("SIGN") != expected)
+                    return orders::HttpResult{401, "{}"};
+                if (path.endsWith("/stop")) return orders::HttpResult{200, R"({"code":0})"};
+                return orders::HttpResult{200, QJsonDocument(QJsonObject{{"code", 0},
+                    {"data", QJsonObject{{"id", QString::number(nextId++)}}}}).toJson()};
+            });
+        QCOMPARE(results.size(), 4);
+        QCOMPARE(paths.size(), 4);
+        QVERIFY(paths[0].endsWith("/stop"));
+        QVERIFY(paths[1].endsWith("/stop"));
+        QVERIFY(paths[2].endsWith("/create"));
+        QCOMPARE(bodies[1].value("id").toInteger(), qint64(9007199254740993));
+        QCOMPARE(bodies[2].value("amount").toString(), QString("371"));
+        QCOMPARE(bodies[2].value("activation_price").toString(), QString("4071.29"));
+        QVERIFY(!bodies[2].value("reduce_only").toBool());
+        QVERIFY(!bodies[2].value("is_gte").toBool());
+        QVERIFY(bodies[3].value("is_gte").toBool());
+        QCOMPARE(bodies[2].value("price_type").toInt(), 3);
+        QCOMPARE(bodies[2].value("price_offset").toString(), QString("1%"));
+        QCOMPARE(bodies[2].value("position_mode").toString(), QString("dual_plus"));
+        const auto saved = orders::readTrailingOrders(config.ordersPath).orders;
+        QCOMPARE(saved.size(), 7);
+        QCOMPARE(saved[0].toObject().value("id").toString(), QString("100"));
+    }
+
+    void trailingDuplicateTimeBoundary_data() {
+        QTest::addColumn<qint64>("difference");
+        QTest::addColumn<QString>("oldAmount");
+        QTest::addColumn<int>("status");
+        QTest::addColumn<bool>("skip");
+        constexpr qint64 week = 7LL * 24 * 60 * 60 * 1000;
+        QTest::newRow("same-time") << qint64(0) << QString("1") << 4 << true;
+        QTest::newRow("before-week") << week - 1 << QString("1") << 4 << true;
+        QTest::newRow("reverse-order") << -week + 1 << QString("1") << 4 << true;
+        QTest::newRow("exact-week") << week << QString("1") << 4 << false;
+        QTest::newRow("opposite-sign") << qint64(0) << QString("-1") << 4 << false;
+        QTest::newRow("other-status") << qint64(0) << QString("1") << 5 << false;
+    }
+
+    void trailingDuplicateTimeBoundary() {
+        QFETCH(qint64, difference);
+        QFETCH(QString, oldAmount);
+        QFETCH(int, status);
+        QFETCH(bool, skip);
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.gateKey = config.gateSecret = "offline";
+        constexpr qint64 time = 1791011512347;
+        orders::saveSources(config.dataPath, QJsonArray{QJsonObject{{"data",
+            "contract: XAU_USDT\nactivation_price: 4071.29 USDT\namount: 371 Contracts\nTimestamp: 1791011512347"}}});
+        orders::saveTrailingOrders(config.ordersPath, QJsonArray{QJsonObject{
+            {"id", "1"}, {"contract", "XAU_USDT"}, {"amount", oldAmount},
+            {"activation_price", "100"}, {"reduce_only", false},
+            {"original_status", status}, {"timestamp", time - difference}}});
+        int requests = 0;
+        const auto results = orders::createTrailingOrders(config,
+            [&](const QByteArray &, const QByteArray &, const orders::HttpHeaders &) {
+                ++requests;
+                return orders::HttpResult{200, R"({"code":0,"data":{"id":"200"}})"};
+            });
+        QCOMPARE(requests, skip ? 0 : 1);
+        QCOMPARE(results[0].toObject().value("action").toString(),
+                 skip ? QString("skipped") : QString("created"));
+    }
+
+    void trailingStopFailurePreventsCreation() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.gateKey = config.gateSecret = "offline";
+        orders::saveSources(config.dataPath, QJsonArray{QJsonObject{{"data",
+            "contract: XAU_USDT\nactivation_price: 4071.29 USDT\namount: 371 Contracts\nTimestamp: 1791011512347"}}});
+        const QJsonArray old{QJsonObject{{"id", "1"}, {"contract", "BTC_USDT"}, {"amount", "1"},
+            {"activation_price", "100"}, {"reduce_only", false},
+            {"original_status", 1}, {"timestamp", qint64(1791011512347)}}};
+        orders::saveTrailingOrders(config.ordersPath, old);
+        int requests = 0;
+        const auto result = orders::createTrailingOrders(config,
+            [&](const QByteArray &path, const QByteArray &, const orders::HttpHeaders &) {
+                ++requests;
+                if (!path.endsWith("/stop")) return orders::HttpResult{500, "{}"};
+                return orders::HttpResult{200, R"({"code":-1,"message":"Failed to terminate"})"};
+            });
+        QCOMPARE(requests, 1);
+        QCOMPARE(result[0].toObject().value("action").toString(), QString("failed"));
+        QCOMPARE(orders::readTrailingOrders(config.ordersPath).orders, old);
+    }
+
+    void trailingInvalidBatchDoesNotSendRequests() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        orders::saveSources(config.dataPath, QJsonArray{QJsonObject{{"data",
+            "contract: XAU_USDT\nactivation_price: 4071.29 USDT\namount: 371 Contracts\nTimestamp: 1791011512347\n"
+            "contract: BTC_USDT\nactivation_price: 100\namount: 0.01 BTC\nTimestamp: 1791011512347"}}});
+        int requests = 0;
+        const auto sender = [&](const QByteArray &, const QByteArray &, const orders::HttpHeaders &) {
+            ++requests;
+            return orders::HttpResult{200, "{}"};
+        };
+        QVERIFY_EXCEPTION_THROWN(orders::createTrailingOrders(config, sender), orders::Error);
+        QCOMPARE(requests, 0);
+    }
+
+    void trailingPartialCreationIsSavedWithoutRetry() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.gateKey = config.gateSecret = "offline";
+        orders::saveSources(config.dataPath, QJsonArray{QJsonObject{{"data",
+            "contract: XAU_USDT\nactivation_price: 4071.29 USDT\namount: 371 Contracts\nTimestamp: 1791011512347\n"
+            "contract: BTC_USDT\nactivation_price: 100\namount: -2 Contracts\nTimestamp: 1791011512347"}}});
+        int requests = 0;
+        const auto results = orders::createTrailingOrders(config,
+            [&](const QByteArray &, const QByteArray &, const orders::HttpHeaders &) {
+                ++requests;
+                return requests == 1 ? orders::HttpResult{200, R"({"code":0,"data":{"id":"200"}})"}
+                    : orders::HttpResult{503, "unavailable"};
+            });
+        QCOMPARE(requests, 2);
+        QCOMPARE(results[0].toObject().value("action").toString(), QString("created"));
+        QCOMPARE(results[1].toObject().value("action").toString(), QString("failed"));
+        const auto saved = orders::readTrailingOrders(config.ordersPath).orders;
+        QCOMPARE(saved.size(), 1);
+        QCOMPARE(saved[0].toObject().value("id").toString(), QString("200"));
+    }
+
+    void postSendsExactBodyAndRejectsRedirects() {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        const auto base = QString("http://127.0.0.1:%1").arg(server.serverPort());
+        QList<QByteArray> requests;
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (server.hasPendingConnections()) {
+                auto *socket = server.nextPendingConnection();
+                auto buffer = std::make_shared<QByteArray>();
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
+                    buffer->append(socket->readAll());
+                    const int end = buffer->indexOf("\r\n\r\n");
+                    if (end < 0) return;
+                    const auto headers = QString::fromLatin1(buffer->left(end));
+                    const auto match = QRegularExpression("Content-Length: (\\d+)",
+                        QRegularExpression::CaseInsensitiveOption).match(headers);
+                    if (!match.hasMatch() || buffer->size() < end + 4 + match.captured(1).toInt()) return;
+                    requests.append(*buffer);
+                    if (buffer->startsWith("POST /redirect "))
+                        socket->write("HTTP/1.1 307 Temporary Redirect\r\nLocation: /target\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+                    else
+                        socket->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 10\r\n\r\n{\"code\":0}");
+                    socket->disconnectFromHost();
+                });
+            }
+        });
+        const QByteArray body = R"({"id":9007199254740993})";
+        auto future = QtConcurrent::run([&] {
+            return orders::post(QUrl(base + "/post"), body, {{"KEY", "offline"}});
+        });
+        QTRY_VERIFY_WITH_TIMEOUT(future.isFinished(), 5000);
+        QCOMPARE(future.result().status, 200);
+        QVERIFY(requests[0].endsWith(body));
+        auto redirect = QtConcurrent::run([&] {
+            try { orders::post(QUrl(base + "/redirect"), body, {{"KEY", "offline"}}); }
+            catch (const orders::Error &) { return true; }
+            return false;
+        });
+        QTRY_VERIFY_WITH_TIMEOUT(redirect.isFinished(), 5000);
+        QVERIFY(redirect.result());
+        QCOMPARE(requests.size(), 2);
+    }
+
+    void minutePollingContinuesWithSourceScheduleDisabled() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        orders::Dashboard dashboard(config);
+        orders::Scheduler scheduler(dashboard, {false, "*/15 * * * *"}, directory.filePath("config"));
+        scheduler.start();
+        QVERIFY(dashboard.ordersSnapshot().value("error").isNull());
+        QTRY_VERIFY_WITH_TIMEOUT(!dashboard.ordersSnapshot().value("error").isNull(), 65000);
+        scheduler.stop();
+        QVERIFY(dashboard.sourceSnapshot().value("error").isNull());
+        QVERIFY(!dashboard.ordersSnapshot().value("refreshing").toBool());
+        QVERIFY(!scheduler.snapshot().value("enabled").toBool());
+    }
+
+    void successfulSourceSaveAutomaticallyAttemptsTrading() {
+        QTemporaryDir directory;
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        const auto base = QString("http://127.0.0.1:%1").arg(server.serverPort());
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (server.hasPendingConnections()) {
+                auto *socket = server.nextPendingConnection();
+                auto buffer = std::make_shared<QByteArray>();
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
+                    buffer->append(socket->readAll());
+                    if (!buffer->contains("\r\n\r\n")) return;
+                    QByteArray body = "[]";
+                    if (buffer->startsWith("GET /target "))
+                        body = "contract: XAU_USDT\nactivation_price: 4071.29 USDT\namount: 371 Contracts\nTimestamp: 1791011512347";
+                    else if (buffer->contains("offset=0"))
+                        body = QJsonDocument(QJsonArray{QJsonObject{{"url", base + "/target"}}})
+                            .toJson(QJsonDocument::Compact);
+                    socket->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: "
+                        + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                    socket->disconnectFromHost();
+                });
+            }
+        });
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.supabaseUrl = base;
+        config.supabaseKey = "offline";
+        // Missing Gate credentials prove the automatic invocation without contacting Gate.
+        orders::Dashboard dashboard(config);
+        auto future = QtConcurrent::run([&] { return dashboard.refreshSources(); });
+        QTRY_VERIFY_WITH_TIMEOUT(future.isFinished(), 5000);
+        QVERIFY(future.result().accepted);
+        QVERIFY(!future.result().success);
+        const auto snapshot = dashboard.sourceSnapshot();
+        QCOMPARE(snapshot.value("orders").toArray().size(), 1);
+        QCOMPARE(snapshot.value("phase").toString(), QString("failed"));
+        QVERIFY(snapshot.value("error").toString().contains("Gate API Key"));
+        QVERIFY(snapshot.value("error").toString().contains("来源已保存"));
+        QVERIFY(!snapshot.value("refreshing").toBool());
+        QVERIFY(!dashboard.ordersSnapshot().value("refreshing").toBool());
+    }
+
+    void sourceContentHandlesJsonAndFailures_data() {
+        QTest::addColumn<QByteArray>("body");
+        QTest::addColumn<int>("status");
+        QTest::addColumn<QJsonValue>("expected");
+        QTest::newRow("object") << QByteArray("{\"ok\":true}") << 200
+                                << QJsonValue(QJsonObject{{"ok", true}});
+        QTest::newRow("array") << QByteArray("[1,2]") << 200
+                               << QJsonValue(QJsonArray{1, 2});
+        QTest::newRow("string") << QByteArray("\"hello\"") << 200 << QJsonValue("hello");
+        QTest::newRow("number") << QByteArray("42") << 200 << QJsonValue(42);
+        QTest::newRow("boolean") << QByteArray("true") << 200 << QJsonValue(true);
+        QTest::newRow("null") << QByteArray("null") << 200 << QJsonValue(QJsonValue::Null);
+        QTest::newRow("text") << QByteArray("order alert") << 200 << QJsonValue("order alert");
+        QTest::newRow("empty") << QByteArray() << 200 << QJsonValue("");
+        QTest::newRow("multiple-values") << QByteArray("1,2") << 200 << QJsonValue("1,2");
+        QTest::newRow("http-failure") << QByteArray("unavailable") << 503
+                                      << QJsonValue(QJsonValue::Null);
+    }
+
+    void sourceContentHandlesJsonAndFailures() {
+        QFETCH(QByteArray, body);
+        QFETCH(int, status);
+        QFETCH(QJsonValue, expected);
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        const QString base = QString("http://127.0.0.1:%1").arg(server.serverPort());
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (server.hasPendingConnections()) {
+                auto *socket = server.nextPendingConnection();
+                auto buffer = std::make_shared<QByteArray>();
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
+                    buffer->append(socket->readAll());
+                    if (!buffer->contains("\r\n\r\n"))
+                        return;
+                    const bool target = buffer->startsWith("GET /target ");
+                    QByteArray responseBody = "[]";
+                    if (target) {
+                        responseBody = body;
+                    } else if (buffer->contains("offset=0")) {
+                        const QJsonObject source{{"url", base + "/target"},
+                                                 {"error", "stale error"},
+                                                 {"status_code", 500}, {"extra", "keep"}};
+                        responseBody = QJsonDocument(QJsonArray{source})
+                                           .toJson(QJsonDocument::Compact);
+                    }
+                    const int responseStatus = target ? status : 200;
+                    socket->write("HTTP/1.1 " + QByteArray::number(responseStatus)
+                                  + " Response\r\nConnection: close\r\nContent-Length: "
+                                  + QByteArray::number(responseBody.size()) + "\r\n\r\n"
+                                  + responseBody);
+                    socket->disconnectFromHost();
+                });
+            }
+        });
+        orders::Config config;
+        config.supabaseUrl = base + "///";
+        config.supabaseKey = "fixture-secret";
+        config.cancelled.reset(); // A cancellation token is optional.
+        auto future = QtConcurrent::run([config] { return orders::fetchSources(config); });
+        QTRY_VERIFY_WITH_TIMEOUT(future.isFinished(), 5000);
+        const auto items = future.result();
+        QCOMPARE(items.size(), 1);
+        const auto source = items.first().toObject();
+        QCOMPARE(source.value("data"), expected);
+        QCOMPARE(source.value("status_code").toInt(), status);
+        QCOMPARE(source.value("extra").toString(), QString("keep"));
+        if (status >= 400)
+            QCOMPARE(source.value("error").toString(), QString("接口返回 HTTP %1").arg(status));
+        else
+            QVERIFY(!source.contains("error"));
+    }
+
     void sourcePagingDoesNotLeakCredentialsToTargets() {
         QTcpServer server;
         QVERIFY(server.listen(QHostAddress::LocalHost, 0));
@@ -69,6 +410,21 @@ private slots:
         auto cancelled = std::make_shared<std::atomic<bool>>(true);
         QVERIFY_EXCEPTION_THROWN(orders::get(QUrl("http://127.0.0.1:1"), {}, true, cancelled),
                                  orders::Error);
+    }
+
+    void cancelledFetchAbortsBeforeConfigurationChecks() {
+        orders::Config config;
+        config.cancelled->store(true);
+        const auto verifyCancellation = [](auto fetch, const orders::Config &settings) {
+            try {
+                fetch(settings);
+                QFAIL("Cancelled fetch must abort");
+            } catch (const orders::Error &error) {
+                QCOMPARE(QString::fromUtf8(error.what()), QString("程序正在关闭"));
+            }
+        };
+        verifyCancellation(orders::fetchSources, config);
+        verifyCancellation(orders::fetchTrailingOrders, config);
     }
 
     void invalidRefreshKeepsCachesAndReleasesBusyState() {
@@ -143,6 +499,25 @@ private slots:
         QCOMPARE(second.value("activation_price").toString(), QString("0.0000000123 USDT"));
         QVERIFY(second.value("timestamp").isNull());
         QCOMPARE(second.value("order_index").toInt(), 1);
+    }
+
+    void parserHandlesAliasesAndInvalidTimestamps() {
+        QVERIFY(orders::parseOrders("unrelated text", 0).isEmpty());
+        const auto rows = orders::parseOrders(
+            "sYmBoL:\tBTC_USDT\r\npRiCe: 1.2300\r\nSize: -3 Contracts\r\n"
+            "Timestamp: invalid\r\ncontract: ETH_USDT\nTimestamp: 9223372036854775808\n"
+            "contract: SOL_USDT\nOrders Times: 1791011512347", 4);
+        QCOMPARE(rows.size(), 3);
+        const auto first = rows.first().toObject();
+        QCOMPARE(first.value("activation_price").toString(), QString("1.2300"));
+        QCOMPARE(first.value("amount").toString(), QString("-3 Contracts"));
+        QVERIFY(first.value("timestamp").isNull());
+        QVERIFY(first.value("side").isNull());
+        QVERIFY(rows[1].toObject().value("timestamp").isNull());
+        const auto last = rows.last().toObject();
+        QCOMPARE(last.value("timestamp").toInteger(), qint64(1791011512347));
+        QCOMPARE(last.value("record_position").toInt(), 4);
+        QCOMPARE(last.value("order_index").toInt(), 2);
     }
 
     void cronCalendarAndDayOrSemantics() {

@@ -1745,7 +1745,7 @@ query_param = 'leverage=199&margin_mode=cross'
 
 ## url = '/futures/usdt/autoorder/v1/trail/create'
 body='{"reduce_only":false, "contract":"BTC_USDT","amount":"1","activation_price":"100","is_gte":false,"price_type":3,"price_offset":"1%",' \
-'"pos_margin_mode": "cross" ,"position_mode": "dual_plus" , "text":"apiv4"}'
+'"pos_margin_mode": "cross" ,"position_mode": "dual_plus" , "text":"apiv4"}'(注意: 当amount为负数时"is_gte":true.当amount为正数时"is_gte":false)
 {
     "code": 0,
     "message": "ok",

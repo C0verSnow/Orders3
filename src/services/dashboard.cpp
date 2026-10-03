@@ -81,21 +81,57 @@ RefreshResult Dashboard::refreshSources() {
     if (sourcesBusy_.exchange(true))
         return {};
     BusyGuard guard(sourcesBusy_);
+    bool saved = false;
     try {
+        {
+            std::lock_guard<std::mutex> lock(sourceMutex_);
+            sourcePhase_ = "fetching";
+            sourceError_.clear();
+            executionResults_ = {};
+        }
         const auto current = config();
         const auto items = fetchSources(current);
-        std::lock_guard<std::mutex> lock(sourceMutex_);
-        saveSources(current.dataPath, items);
-        sourceError_.clear();
-        return {true, true};
+        {
+            std::lock_guard<std::mutex> lock(sourceMutex_);
+            saveSources(current.dataPath, items);
+            saved = true;
+            sourcePhase_ = "trading";
+            sourceError_.clear();
+            executionResults_ = {};
+        }
+        // Only orders from successful sources are parsed into the orders table.
+        std::lock_guard<std::mutex> trading(gateMutex_);
+        ordersBusy_ = true;
+        BusyGuard ordersGuard(ordersBusy_);
+        const auto execution = createTrailingOrders(current);
+        bool success = true;
+        {
+            std::lock_guard<std::mutex> lock(sourceMutex_);
+            executionResults_ = execution;
+            for (const auto &value : execution) {
+                const auto result = value.toObject();
+                if (result.value("action").toString() == "failed") {
+                    success = false;
+                    sourceError_ = "来源已保存，但交易执行失败：" + result.value("error").toString();
+                    break;
+                }
+            }
+            sourcePhase_ = success ? "completed" : "failed";
+        }
+        return {true, success};
     } catch (const std::exception &error) {
         std::lock_guard<std::mutex> lock(sourceMutex_);
-        sourceError_ = "抓取失败，保留上次数据：" + QString::fromUtf8(error.what());
+        sourcePhase_ = "failed";
+        sourceError_ = (saved ? "来源已保存，但自动下单失败：" : "抓取失败，保留上次数据：")
+                       + QString::fromUtf8(error.what());
         return {true, false};
     }
 }
 
 RefreshResult Dashboard::refreshOrders() {
+    std::unique_lock<std::mutex> trading(gateMutex_, std::try_to_lock);
+    if (!trading.owns_lock())
+        return {};
     if (ordersBusy_.exchange(true))
         return {};
     BusyGuard guard(ordersBusy_);
@@ -117,6 +153,8 @@ QJsonObject Dashboard::sourceSnapshot() const {
     std::lock_guard<std::mutex> lock(sourceMutex_);
     const auto snapshot = readSources(config().dataPath);
     return {{"items", snapshot.items}, {"orders", snapshot.orders},
+            {"execution", executionResults_},
+            {"phase", sourcePhase_},
             {"updated_at", nullable(snapshot.updatedAt)}, {"error", nullable(sourceError_)},
             {"refreshing", bool(sourcesBusy_)}};
 }

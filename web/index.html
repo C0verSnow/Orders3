@@ -28,6 +28,93 @@
       <article><span><i class="dot red"></i> 失败</span><strong id="failed">—</strong><small>需要检查的来源</small></article>
       <article class="updated"><span>最近更新</span><strong id="updated">—</strong><small id="update-date">等待数据加载</small></article>
     </section>
+    <section id="flow-panel" class="results flow-panel" aria-labelledby="flow-title" data-channel="sources" data-state="idle" data-demo="false" data-motion="true">
+      <div class="section-heading">
+        <div class="section-title">
+          <p class="eyebrow">LIVE FLOW / 数据流</p>
+          <h2 id="flow-title">看见数据抵达的过程</h2>
+          <p class="hint">选择流程、查看节点，再获取最新数据。</p>
+        </div>
+        <span id="flow-state" class="flow-state" role="status" aria-live="polite">等待本地数据</span>
+      </div>
+      <div class="flow-toolbar">
+        <div class="flow-switch" role="group" aria-label="选择数据流程">
+          <button id="flow-sources" type="button" aria-pressed="true">来源订单</button>
+          <button id="flow-orders" type="button" aria-pressed="false">Gate 跟踪订单</button>
+        </div>
+        <div class="flow-controls">
+          <button id="flow-demo" type="button" aria-pressed="false">演示动画</button>
+          <button id="flow-motion" type="button" aria-pressed="false">暂停动画</button>
+          <button id="flow-fetch" class="primary" type="button" disabled>获取来源订单</button>
+        </div>
+      </div>
+      <figure class="flow-scene">
+        <svg class="flow-map" viewBox="0 0 960 360" role="img" aria-labelledby="flow-map-title flow-map-description">
+          <title id="flow-map-title">来源和 Gate 订单汇入本地数据库</title>
+          <desc id="flow-map-description">上方路径：读取来源、抓取内容、解析订单；下方路径：读取 Gate 列表、校验响应。两条路径都保存到本地 SQLite 数据库。</desc>
+          <defs>
+            <pattern id="flow-grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#dfe7dc"/></pattern>
+          </defs>
+          <rect width="960" height="360" fill="url(#flow-grid)"/>
+          <g class="flow-lane flow-lane-sources">
+            <path class="flow-track" d="M 214 105 H 340 M 546 105 H 605 Q 650 105 650 150 V 155 Q 650 180 696 180"/>
+            <path class="flow-current" d="M 214 105 H 340 M 546 105 H 605 Q 650 105 650 150 V 155 Q 650 180 696 180"/>
+            <circle class="flow-packet flow-packet-source-a" r="5"/>
+            <circle class="flow-packet flow-packet-source-b" r="5"/>
+            <g class="flow-card" transform="translate(44 55)">
+              <rect width="170" height="100" rx="18"/>
+              <rect class="flow-icon" x="18" y="19" width="26" height="26" rx="7"/>
+              <path class="flow-icon-line" d="M 24 28 H 38 M 24 35 H 34"/>
+              <text class="flow-card-kicker" x="56" y="36">01 / SOURCE</text>
+              <text class="flow-card-title" x="18" y="72">读取来源 · 抓取内容</text>
+            </g>
+            <g class="flow-card" transform="translate(340 55)">
+              <rect width="206" height="100" rx="18"/>
+              <path class="flow-icon-line" d="M 29 23 L 21 32 L 29 41 M 40 23 L 48 32 L 40 41"/>
+              <text class="flow-card-kicker" x="62" y="36">02 / PARSE</text>
+              <text class="flow-card-title" x="18" y="72">解析订单 · 保留精度</text>
+            </g>
+            <text class="flow-wire-label" x="247" y="87">内容</text>
+          </g>
+          <g class="flow-lane flow-lane-orders">
+            <path class="flow-track" d="M 214 265 H 340 M 546 265 H 605 Q 650 265 650 225 V 205 Q 650 180 696 180"/>
+            <path class="flow-current" d="M 214 265 H 340 M 546 265 H 605 Q 650 265 650 225 V 205 Q 650 180 696 180"/>
+            <circle class="flow-packet flow-packet-order-a" r="5"/>
+            <circle class="flow-packet flow-packet-order-b" r="5"/>
+            <g class="flow-card" transform="translate(44 215)">
+              <rect width="170" height="100" rx="18"/>
+              <path class="flow-icon-line" d="M 23 39 V 27 H 31 V 39 M 37 39 V 21 H 45 V 39"/>
+              <text class="flow-card-kicker" x="56" y="36">01 / GATE</text>
+              <text class="flow-card-title" x="18" y="72">获取跟踪订单列表</text>
+            </g>
+            <g class="flow-card" transform="translate(340 215)">
+              <rect width="206" height="100" rx="18"/>
+              <path class="flow-icon-line" d="M 23 32 L 30 39 L 46 23"/>
+              <text class="flow-card-kicker" x="62" y="36">02 / VALIDATE</text>
+              <text class="flow-card-title" x="18" y="72">校验响应 · 整理字段</text>
+            </g>
+            <text class="flow-wire-label" x="247" y="247">列表</text>
+          </g>
+          <g class="flow-database" transform="translate(696 113)">
+            <rect width="218" height="134" rx="22"/>
+            <ellipse class="flow-db-icon" cx="109" cy="28" rx="20" ry="7"/>
+            <path class="flow-icon-line" d="M 89 28 V 49 C 89 59 129 59 129 49 V 28 M 89 39 C 89 49 129 49 129 39"/>
+            <text class="flow-card-title" x="109" y="84" text-anchor="middle">本地 SQLite</text>
+            <text class="flow-card-kicker" x="109" y="109" text-anchor="middle">保存快照 · 更新看板</text>
+          </g>
+        </svg>
+        <figcaption id="flow-caption">高亮路径对应当前选择的流程；动画表示任务运行，不表示逐节点进度。</figcaption>
+      </figure>
+      <div class="flow-bottom">
+        <div class="flow-steps" role="group" aria-label="查看流程节点说明">
+          <button type="button" data-flow-step="input" aria-pressed="true">01 读取</button>
+          <button type="button" data-flow-step="process" aria-pressed="false">02 解析</button>
+          <button type="button" data-flow-step="store" aria-pressed="false">03 保存</button>
+        </div>
+        <span id="flow-summary" class="hint">等待数据加载</span>
+      </div>
+      <p id="flow-detail" class="flow-detail">从 Supabase 分页读取来源地址，再逐条抓取内容。</p>
+    </section>
     <section class="results settings-panel" aria-labelledby="settings-title">
       <div class="section-heading"><h2 id="settings-title">连接与存储配置</h2><span id="settings-status" class="hint" role="status">等待配置加载</span></div>
       <form id="settings-form" class="settings-form">
@@ -62,7 +149,7 @@
         <div class="section-heading">
           <div class="section-title">
             <h2 id="results-title">来源订单 <span id="count">0</span></h2>
-            <p class="hint">从来源内容解析订单 · 每 15 秒同步本地数据</p>
+            <p class="hint">抓取来源成功后自动下单 · 网页每秒同步状态，抓取由按钮或定时任务触发</p>
           </div>
           <button id="refresh" class="primary" type="button">获取订单</button>
         </div>
@@ -84,6 +171,7 @@
           </label>
         </div>
         <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
+        <div id="execution-results" aria-live="polite" hidden></div>
         <div id="records" class="panel-content" aria-live="polite">
           <div class="empty">正在加载来源订单…</div>
         </div>
@@ -92,7 +180,7 @@
         <div class="section-heading">
           <div class="section-title">
             <h2 id="orders-title">Gate 跟踪订单 <span id="orders-count">0 条</span></h2>
-            <p class="hint">从 Gate 获取跟踪订单 · 每 15 秒同步本地数据</p>
+            <p class="hint">每分钟独立获取 Gate 跟踪订单 · 网页每秒同步状态，可手动获取最新列表</p>
           </div>
           <button id="orders-refresh" class="primary" type="button">获取跟踪订单</button>
         </div>

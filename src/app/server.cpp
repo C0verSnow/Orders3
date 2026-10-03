@@ -62,6 +62,7 @@ Server::Server(Dashboard &dashboard, Scheduler &scheduler)
     const QList<QPair<QString, QByteArray>> assets{
         {"/", "text/html; charset=utf-8"}, {"/index.html", "text/html; charset=utf-8"},
         {"/app.js", "text/javascript; charset=utf-8"},
+        {"/flow.js", "text/javascript; charset=utf-8"},
         {"/ui.js", "text/javascript; charset=utf-8"},
         {"/settings.js", "text/javascript; charset=utf-8"},
         {"/schedule.js", "text/javascript; charset=utf-8"},

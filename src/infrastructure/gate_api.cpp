@@ -10,14 +10,19 @@
 
 namespace orders::gate {
 HttpHeaders signedGetHeaders(const QByteArray &path, const QString &key, const QString &secret) {
+    return signedHeaders("GET", path, {}, key, secret);
+}
+
+HttpHeaders signedHeaders(const QByteArray &method, const QByteArray &path,
+                          const QByteArray &body, const QString &key, const QString &secret) {
     const QByteArray timestamp = QByteArray::number(QDateTime::currentSecsSinceEpoch());
-    const QByteArray emptyHash =
-        QCryptographicHash::hash(QByteArray{}, QCryptographicHash::Sha512).toHex();
-    const QByteArray message = "GET\n" + path + "\n\n" + emptyHash + "\n" + timestamp;
+    const QByteArray bodyHash =
+        QCryptographicHash::hash(body, QCryptographicHash::Sha512).toHex();
+    const QByteArray message = method + "\n" + path + "\n\n" + bodyHash + "\n" + timestamp;
     const QByteArray signature = QMessageAuthenticationCode::hash(
         message, secret.toUtf8(), QCryptographicHash::Sha512).toHex();
     return {{"KEY", key.toUtf8()}, {"Timestamp", timestamp}, {"SIGN", signature},
-            {"Accept", "application/json"}};
+            {"Accept", "application/json"}, {"Content-Type", "application/json"}};
 }
 
 QJsonArray parseTrailingOrders(const QByteArray &body) {

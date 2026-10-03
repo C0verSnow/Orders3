@@ -1,6 +1,8 @@
 # 本地订单数据看板
 
-C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 和 macOS 默认打开系统浏览器。程序从 Supabase 读取来源 URL、抓取内容并保存到 SQLite，同时提供 Gate 跟踪订单、搜索筛选、手动刷新、Cron 定时抓取和数据库下载。
+> **仓库约定：以后不要进行本地编译验证。** 修改后使用代码阅读、静态检查、差异检查或已有远端 CI 验证；不要执行本地构建或会触发编译的测试、冒烟脚本。详细约定见 [AGENTS.md](AGENTS.md)。
+
+C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 和 macOS 默认打开系统浏览器。程序从 Supabase 读取来源 URL、抓取内容并保存到 SQLite，同时提供 Gate 跟踪订单、搜索筛选、手动刷新、Cron 定时抓取和数据库下载。Gate 列表每分钟独立刷新；来源抓取成功后自动停止符合条件的旧开仓追踪单并创建新单，具体规则见 [自动追踪订单](docs/trailing-orders.md)。
 
 运行与发布不需要 Python，也不使用 PyInstaller。网页仍使用 HTML / CSS / JavaScript，作为 Qt 资源编译进程序。旧 Python 代码保存在 `archive/python/`，仅供迁移对照，不参与构建。
 
@@ -26,7 +28,7 @@ C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 和 macOS �
 
 默认端口为 0，由系统选择空闲端口。程序打印实际地址。关闭 Windows 主窗口或在服务模式按 Ctrl+C 停止程序；关闭过程取消尚未完成的网络请求。
 
-`--cached` 跳过启动抓取，定时任务仍可执行。`--fetch-only` 抓取来源一次，`--list` 获取 Gate 跟踪订单一次。单次抓取允许位置参数指定数据库路径，只支持 `.db`、`.sqlite`、`.sqlite3`。
+`--cached` 跳过启动抓取，定时任务仍可执行。`--fetch-only` 抓取来源一次，保存后自动处理开仓追踪单，`--list` 获取 Gate 跟踪订单一次。单次抓取允许位置参数指定数据库路径，只支持 `.db`、`.sqlite`、`.sqlite3`。
 
 Windows 启动时立即展示缓存，两个抓取任务分别在后台执行；Linux 保持先抓取再打开浏览器的方式。`--desktop` 仅支持 Windows，不能与 `--browser`、`--no-browser` 或单次抓取组合使用。
 

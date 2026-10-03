@@ -17,6 +17,14 @@ Scheduler::Scheduler(Dashboard &dashboard, ScheduleConfig config, QString path)
     if (config_.enabled)
         next_ = Cron(config_.cron).nextAfter(QDateTime::currentDateTime());
     QObject::connect(&timer_, &QTimer::timeout, this, [this] { runDue(); });
+    // Gate polling continues even when the source Cron schedule is disabled.
+    ordersTimer_.setInterval(60000);
+    ordersTimer_.setTimerType(Qt::PreciseTimer);
+    QObject::connect(&ordersTimer_, &QTimer::timeout, this, [this] {
+        if (!ordersTask_.isFinished())
+            return;
+        ordersTask_ = QtConcurrent::run([this] { dashboard_.refreshOrders(); });
+    });
 }
 
 Scheduler::~Scheduler() { stop(); }
@@ -46,11 +54,16 @@ QJsonObject Scheduler::configure(const QJsonObject &payload) {
     return snapshot();
 }
 
-void Scheduler::start() { timer_.start(1000); }
+void Scheduler::start() {
+    timer_.start(1000);
+    ordersTimer_.start();
+}
 
 void Scheduler::stop() {
     timer_.stop();
+    ordersTimer_.stop();
     task_.waitForFinished();
+    ordersTask_.waitForFinished();
 }
 
 void Scheduler::runDue() {

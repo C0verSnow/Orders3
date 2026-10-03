@@ -39,7 +39,7 @@ try {
     }
     if (-not $ready) { throw "Application did not become ready" }
     if (@($data.items).Count -ne 0) { throw "Expected empty cache" }
-    foreach ($route in @("/", "/app.js", "/ui.js", "/settings.js", "/schedule.js", "/startup.js", "/style.css", "/logo.svg", "/api/orders")) {
+    foreach ($route in @("/", "/app.js", "/flow.js", "/ui.js", "/settings.js", "/schedule.js", "/startup.js", "/style.css", "/logo.svg", "/api/orders")) {
         $response = Invoke-WebRequest "$origin$route"
         if ($response.StatusCode -ne 200) { throw "Route failed: $route" }
         if (-not $response.Headers["X-Content-Type-Options"]) { throw "Missing response headers" }

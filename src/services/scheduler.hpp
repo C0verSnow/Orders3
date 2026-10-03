@@ -31,5 +31,7 @@ private:
     mutable std::mutex mutex_;
     QTimer timer_;
     QFuture<void> task_;
+    QTimer ordersTimer_;
+    QFuture<void> ordersTask_;
 };
 } // namespace orders

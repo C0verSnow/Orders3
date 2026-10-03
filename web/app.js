@@ -2,6 +2,7 @@ import { $, dateText, node, createTable, updateFetchButton } from "./ui.js";
 import { initSettings } from "./settings.js";
 import { initSchedule, applySchedule } from "./schedule.js";
 import { initStartup } from "./startup.js";
+import { initFlow, updateFlow, beginFlow, finishFlow, flowReadError } from "./flow.js";
 
 const fastStartup = document.body.classList.contains("startup-enabled");
 let items = [];
@@ -10,7 +11,8 @@ let refreshing = false;
 let loading = false;
 let updatingData = false;
 let updatingOrders = false;
-const SNAPSHOT_POLL_MS = 15000;
+let sourceGeneration = 0;
+let ordersGeneration = 0;
 const ACTIVE_POLL_MS = 1000;
 
 function bodyText(item) {
@@ -83,6 +85,22 @@ function notice(message) {
   $("notice").textContent = message || "";
   $("notice").hidden = !message;
 }
+function renderExecution(results = []) {
+  const container = $("execution-results");
+  container.replaceChildren();
+  container.hidden = !results.length;
+  if (!results.length) return;
+  const {wrapper, tbody} = createTable(["自动下单结果", "合约", "数量", "订单 ID", "说明"], "最近一次自动下单结果");
+  const labels = {created: "已创建", stopped: "已停止", skipped: "已跳过", failed: "失败"};
+  for (const result of results) {
+    const tr = node("tr");
+    for (const text of [labels[result.action] || result.action, result.contract,
+      result.amount, result.id, result.error || result.message])
+      tr.append(node("td", "", text == null ? "—" : String(text)));
+    tbody.append(tr);
+  }
+  container.append(wrapper);
+}
 function applyData(data) {
   if (!Array.isArray(data.items) || data.items.some((item) => !item || typeof item !== "object" || Array.isArray(item))) throw new Error("服务器数据格式错误");
   items = data.items;
@@ -97,23 +115,35 @@ function applyData(data) {
   updatingData = Boolean(data.refreshing);
   $("source-updated").textContent = dateText(data.updated_at);
   updateFetchButton("refresh", refreshing || updatingData, "获取订单");
-  notice(data.error || (updatingData ? "正在后台更新，当前显示本地缓存。" : ""));
+  notice(data.error || (updatingData ? data.phase === "trading"
+    ? "来源已保存，正在停止旧单并自动发布新单…" : "正在后台抓取来源，当前显示本地缓存。" : ""));
+  renderExecution(Array.isArray(data.execution) ? data.execution : []);
   render();
+  updateFlow("sources", {...data, refreshing: refreshing || updatingData});
 }
 async function loadData() {
   if (loading || refreshing) return;
   loading = true;
+  const generation = sourceGeneration;
   try {
     const response = await fetch("/api/data", {cache: "no-store"});
     const data = await response.json();
+    if (generation !== sourceGeneration) return; // Discard a snapshot predating manual fetch.
     if (!response.ok) throw new Error(data.error || "读取数据失败");
     applyData(data);
-  } catch (error) { notice(`无法读取本地数据：${error.message}`); }
+  } catch (error) {
+    if (generation !== sourceGeneration) return;
+    notice(`无法读取本地数据：${error.message}`);
+    flowReadError("sources", error.message);
+  }
   finally { loading = false; }
 }
 $("refresh").addEventListener("click", async () => {
-  if (refreshing || loading || updatingData) return;
+  if (refreshing || updatingData) return;
   refreshing = true;
+  sourceGeneration++;
+  beginFlow("sources");
+  let fetchError = "";
   updateFetchButton("refresh", true, "获取订单");
   notice("正在读取来源并抓取内容，请稍候…");
   try {
@@ -121,11 +151,12 @@ $("refresh").addEventListener("click", async () => {
     const data = await response.json();
     if (Array.isArray(data.items)) applyData(data);
     if (!response.ok) throw new Error(data.error || "抓取失败");
-    notice("抓取完成，数据库已更新。");
-  } catch (error) { notice(error.message); }
+    notice("来源已更新，自动下单处理完成。结果见下方。");
+  } catch (error) { fetchError = error.message; notice(error.message); }
   finally {
     refreshing = false;
     updateFetchButton("refresh", updatingData, "获取订单");
+    finishFlow("sources", updatingData, fetchError);
   }
 });
 $("search").addEventListener("input", render);
@@ -143,6 +174,7 @@ function applyOrders(data) {
   updatingOrders = Boolean(data.refreshing);
   updateFetchButton("orders-refresh", fetchingOrders || updatingOrders, "获取跟踪订单");
   ordersNotice(data.error || (updatingOrders ? "正在后台获取最新订单，当前显示本地缓存。" : ""));
+  updateFlow("orders", {...data, refreshing: fetchingOrders || updatingOrders});
   const container = $("orders-records");
   container.replaceChildren();
   if (!data.orders.length) {
@@ -167,17 +199,26 @@ function applyOrders(data) {
 async function loadOrders() {
   if (loadingOrders || fetchingOrders) return;
   loadingOrders = true;
+  const generation = ordersGeneration;
   try {
     const response = await fetch("/api/orders", {cache: "no-store"});
     const data = await response.json();
+    if (generation !== ordersGeneration) return;
     if (!response.ok) throw new Error(data.error || "读取订单失败");
     applyOrders(data);
-  } catch (error) { ordersNotice(error.message); }
+  } catch (error) {
+    if (generation !== ordersGeneration) return;
+    ordersNotice(error.message);
+    flowReadError("orders", error.message);
+  }
   finally { loadingOrders = false; }
 }
 $("orders-refresh").addEventListener("click", async () => {
-  if (fetchingOrders || loadingOrders || updatingOrders) return;
+  if (fetchingOrders || updatingOrders) return;
   fetchingOrders = true;
+  ordersGeneration++;
+  beginFlow("orders");
+  let fetchError = "";
   updateFetchButton("orders-refresh", true, "获取跟踪订单");
   ordersNotice("正在获取最新跟踪订单，请稍候…");
   try {
@@ -186,20 +227,23 @@ $("orders-refresh").addEventListener("click", async () => {
     if (Array.isArray(data.orders)) applyOrders(data);
     if (!response.ok) throw new Error(data.error || "获取订单失败");
     ordersNotice("订单已更新。");
-  } catch (error) { ordersNotice(error.message); }
+  } catch (error) { fetchError = error.message; ordersNotice(error.message); }
   finally {
     fetchingOrders = false;
     updateFetchButton("orders-refresh", updatingOrders, "获取跟踪订单");
+    finishFlow("orders", updatingOrders, fetchError);
   }
 });
 async function pollOrders() {
   await loadOrders();
-  setTimeout(pollOrders, updatingOrders ? ACTIVE_POLL_MS : SNAPSHOT_POLL_MS);
+  // Observe minute polling promptly, including its running/error states.
+  setTimeout(pollOrders, ACTIVE_POLL_MS);
 }
 async function pollData() {
   await loadData();
-  setTimeout(pollData, updatingData ? ACTIVE_POLL_MS : SNAPSHOT_POLL_MS);
+  setTimeout(pollData, ACTIVE_POLL_MS);
 }
+initFlow();
 initSettings();
 initSchedule();
 initStartup(fastStartup);

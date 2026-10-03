@@ -1,132 +1,313 @@
 #include "services/fetcher.hpp"
+
 #include "core/error.hpp"
-#include "infrastructure/http_client.hpp"
 #include "infrastructure/gate_api.hpp"
+#include "infrastructure/http_client.hpp"
+#include "infrastructure/storage.hpp"
+#include <QDateTime>
+#include <QRegularExpression>
+#include <cmath>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
-#include <QStringList>
-#include <QRegularExpression>
 #include <QUrlQuery>
 
 namespace orders {
 namespace {
-QJsonDocument parseJsonDocument(const QByteArray &body) {
-    QJsonParseError error;
-    const auto parsed = QJsonDocument::fromJson(body, &error);
-    if (error.error != QJsonParseError::NoError)
-        throw Error("接口返回无效 JSON：" + error.errorString());
-    return parsed;
+constexpr int kSourcePageSize = 1000;
+const QString kSourcePath = QStringLiteral("/rest/v1/1");
+const QString kGateHost = QStringLiteral("https://api.gateio.ws");
+const QByteArray kTrailingOrdersPath = "/api/v4/futures/usdt/autoorder/v1/trail/list";
+
+void ensureNotCancelled(const Config &config) {
+    if (config.cancelled && config.cancelled->load())
+        throw Error("程序正在关闭");
 }
+
 void ensureHttpSuccess(const HttpResult &result) {
     if (result.status < 200 || result.status >= 300)
         throw Error(QString("接口返回 HTTP %1").arg(result.status));
 }
-} // namespace
 
-QJsonArray parseOrders(const QString &text, int recordPosition) {
-    const auto flags = QRegularExpression::CaseInsensitiveOption;
-    const QRegularExpression start("\\b(?:contract|Symbol)[ \\t]*:[ \\t]*([^\\r\\n]+)", flags);
-    QList<QRegularExpressionMatch> matches;
-    auto iterator = start.globalMatch(text);
-    while (iterator.hasNext())
-        matches.append(iterator.next());
-    QJsonArray orders;
-    const QStringList names{"contract", "activation_price", "side", "amount", "timestamp"};
-    const QStringList labels{"(?:contract|Symbol)", "(?:activation_price|Price)", "Side",
-                             "(?:amount|Size)", "(?:Timestamp|Orders Times)"};
-    for (qsizetype index = 0; index < matches.size(); ++index) {
-        const qsizetype begin = matches[index].capturedStart();
-        const qsizetype end = index + 1 < matches.size() ? matches[index + 1].capturedStart()
-                                                       : text.size();
-        const QString block = text.mid(begin, end - begin);
-        QJsonObject order{{"record_position", recordPosition}, {"order_index", int(index)}};
-        for (qsizetype field = 0; field < names.size(); ++field) {
-            const auto found = QRegularExpression(
-                "\\b" + labels[field] + "[ \\t]*:[ \\t]*([^\\r\\n]+)", flags).match(block);
-            QJsonValue value(QJsonValue::Null);
-            if (found.hasMatch()) {
-                const QString text = found.captured(1).trimmed();
-                if (names[field] == "timestamp") {
-                    bool valid = false;
-                    const qint64 timestamp = text.toLongLong(&valid);
-                    if (valid)
-                        value = QJsonValue(timestamp);
-                } else {
-                    value = text;
-                }
-            }
-            order.insert(names[field], value);
-        }
-        orders.append(order);
+QJsonArray parseSourcePage(const QByteArray &body) {
+    QJsonParseError error;
+    const auto document = QJsonDocument::fromJson(body, &error);
+    if (error.error != QJsonParseError::NoError)
+        throw Error("接口返回无效 JSON：" + error.errorString());
+    if (!document.isArray())
+        throw Error("数据库响应应为对象数组");
+
+    const auto page = document.array();
+    for (const auto &row : page) {
+        if (!row.isObject())
+            throw Error("数据库响应包含无效来源");
     }
-    return orders;
+    return page;
 }
 
-QJsonArray fetchSources(const Config &config) {
-    if (config.supabaseUrl.isEmpty() || config.supabaseKey.isEmpty())
-        throw Error("请在程序的「连接与存储配置」中填写 Supabase 地址和密钥");
+QJsonValue parseSourceContent(const QByteArray &body) {
+    // Wrapping accepts JSON scalars as well as objects and arrays.
+    QJsonParseError error;
+    const auto document = QJsonDocument::fromJson("[" + body + "]", &error);
+    if (error.error == QJsonParseError::NoError && document.isArray()) {
+        const auto values = document.array();
+        if (values.size() == 1)
+            return values.first();
+    }
+    return QString::fromUtf8(body);
+}
+
+QUrl sourcePageUrl(const QString &base, qsizetype offset) {
+    QUrl url(base + kSourcePath);
+    QUrlQuery query;
+    query.addQueryItem("select", "*");
+    query.addQueryItem("order", "created_at.asc");
+    query.addQueryItem("offset", QString::number(offset));
+    query.addQueryItem("limit", QString::number(kSourcePageSize));
+    url.setQuery(query);
+    return url;
+}
+
+QJsonArray fetchSourceRecords(const Config &config) {
     QString base = config.supabaseUrl;
     while (base.endsWith('/'))
         base.chop(1);
-    const HttpHeaders headers{{"apikey", config.supabaseKey.toUtf8()},
-                              {"Authorization", "Bearer " + config.supabaseKey.toUtf8()}};
+    const QByteArray key = config.supabaseKey.toUtf8();
+    const HttpHeaders headers{{"apikey", key}, {"Authorization", "Bearer " + key}};
+
     QJsonArray sources;
     while (true) {
-        QUrl url(base + "/rest/v1/1");
-        QUrlQuery query;
-        query.addQueryItem("select", "*");
-        query.addQueryItem("order", "created_at.asc");
-        query.addQueryItem("offset", QString::number(sources.size()));
-        query.addQueryItem("limit", "1000");
-        url.setQuery(query);
-        const auto response = get(url, headers, false, config.cancelled);
+        ensureNotCancelled(config);
+        const auto response = get(sourcePageUrl(base, sources.size()), headers, false,
+                                  config.cancelled);
         ensureHttpSuccess(response);
-        const auto page = parseJsonDocument(response.body);
-        if (!page.isArray())
-            throw Error("数据库响应应为对象数组");
-        if (page.array().isEmpty())
-            break;
-        for (const auto &row : page.array()) {
-            if (!row.isObject())
-                throw Error("数据库响应包含无效来源");
+        const auto page = parseSourcePage(response.body);
+        // A server may cap pages below our limit; only an empty page ends pagination.
+        if (page.isEmpty())
+            return sources;
+        for (const auto &row : page)
             sources.append(row);
-        }
     }
+}
+
+QJsonObject fetchSourceContent(QJsonObject source, const Config &config) {
+    ensureNotCancelled(config);
+    // Fetch metadata describes this attempt, even if the input has stale metadata.
+    source.remove("error");
+    source.remove("status_code");
+    source.insert("data", QJsonValue::Null);
+    try {
+        // Supabase credentials must never be forwarded to a source URL.
+        const auto response = get(QUrl(source.value("url").toString()), {}, true,
+                                  config.cancelled);
+        source.insert("status_code", response.status);
+        ensureHttpSuccess(response);
+        source.insert("data", parseSourceContent(response.body));
+    } catch (const std::exception &error) {
+        source.insert("error", QString::fromUtf8(error.what()));
+    }
+    // Cancellation aborts the batch rather than becoming an individual source error.
+    ensureNotCancelled(config);
+    return source;
+}
+} // namespace
+
+QJsonArray fetchSources(const Config &config) {
+    ensureNotCancelled(config);
+    if (config.supabaseUrl.isEmpty() || config.supabaseKey.isEmpty())
+        throw Error("请在程序的「连接与存储配置」中填写 Supabase 地址和密钥");
+
+    const auto sources = fetchSourceRecords(config);
     QJsonArray results;
-    for (const auto &source : sources) {
-        QJsonObject result = source.toObject();
-        result.insert("data", QJsonValue::Null);
-        try {
-            const auto response = get(QUrl(result.value("url").toString()), {}, true,
-                                      config.cancelled);
-            result.insert("status_code", response.status);
-            ensureHttpSuccess(response);
-            // Accept JSON scalars as well as documents, as the previous implementation did.
-            QJsonParseError error;
-            const auto wrapped = QJsonDocument::fromJson("[" + response.body + "]", &error);
-            result.insert("data", error.error == QJsonParseError::NoError
-                                      && wrapped.isArray() && wrapped.array().size() == 1
-                                  ? wrapped.array().first()
-                                  : QJsonValue(QString::fromUtf8(response.body)));
-        } catch (const std::exception &error) {
-            result.insert("error", QString::fromUtf8(error.what()));
-        }
-        if (config.cancelled->load())
-            throw Error("程序正在关闭");
-        results.append(result);
-    }
+    for (const auto &source : sources)
+        results.append(fetchSourceContent(source.toObject(), config));
+    ensureNotCancelled(config);
     return results;
 }
 
 QJsonArray fetchTrailingOrders(const Config &config) {
+    // Scheduler runs this one-shot operation independently every minute.
+    ensureNotCancelled(config);
     if (config.gateKey.isEmpty() || config.gateSecret.isEmpty())
         throw Error("请在程序的「连接与存储配置」中填写 Gate API Key 和 Secret");
-    const QByteArray path = "/api/v4/futures/usdt/autoorder/v1/trail/list";
-    const auto response = get(QUrl("https://api.gateio.ws" + QString::fromUtf8(path)),
-                              gate::signedGetHeaders(path, config.gateKey, config.gateSecret),
-                              false, config.cancelled);
+
+    const auto headers = gate::signedGetHeaders(kTrailingOrdersPath, config.gateKey,
+                                               config.gateSecret);
+    const auto response = get(QUrl(kGateHost + QString::fromUtf8(kTrailingOrdersPath)),
+                              headers, false, config.cancelled);
     ensureHttpSuccess(response);
-    return gate::parseTrailingOrders(response.body);
+    const auto orders = gate::parseTrailingOrders(response.body);
+    ensureNotCancelled(config);
+    return orders;
 }
+
+
+namespace {
+const QByteArray kCreatePath = "/api/v4/futures/usdt/autoorder/v1/trail/create";
+const QByteArray kStopPath = "/api/v4/futures/usdt/autoorder/v1/trail/stop";
+constexpr qint64 kSevenDaysMs = 7LL * 24 * 60 * 60 * 1000;
+
+QString orderAmount(const QJsonValue &value) {
+    static const QRegularExpression pattern(
+        R"(^([+-]?\d+)(?:\.0+)?(?:\s+contracts?)?$)",
+        QRegularExpression::CaseInsensitiveOption);
+    const auto match = pattern.match(value.toString().trimmed());
+    bool ok = false;
+    const auto amount = match.captured(1).toLongLong(&ok);
+    if (!match.hasMatch() || !ok || amount == 0)
+        throw Error("订单数量必须为非零整数张，例如 371 Contracts 或 -371 Contracts");
+    return QString::number(amount);
+}
+
+QString orderPrice(const QJsonValue &value) {
+    static const QRegularExpression pattern(R"(^(\d+(?:\.\d+)?)(?:\s+USDT)?$)",
+                                            QRegularExpression::CaseInsensitiveOption);
+    const auto match = pattern.match(value.toString().trimmed());
+    if (!match.hasMatch())
+        throw Error("激活价格无效，例如 4071.29 USDT");
+    return match.captured(1);
+}
+
+qint64 orderTimestamp(const QJsonValue &value) {
+    const double time = value.toDouble(-1);
+    if (!value.isDouble() || !std::isfinite(time) || time < 0
+        || time > 9007199254740991.0 || std::floor(time) != time)
+        throw Error("订单缺少有效的毫秒 timestamp，无法判断是否重复");
+    return value.toInteger();
+}
+
+QJsonObject successfulResponse(const HttpResult &response) {
+    ensureHttpSuccess(response);
+    QJsonParseError error;
+    const auto document = QJsonDocument::fromJson(response.body, &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject())
+        throw Error("交易接口返回无效 JSON");
+    const auto object = document.object();
+    if (!object.value("code").isDouble() || object.value("code").toDouble() != 0)
+        throw Error("交易接口失败：" + object.value("message").toString("未知错误"));
+    return object;
+}
+} // namespace
+
+QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender &sender) {
+    ensureNotCancelled(config);
+    const auto sources = readSources(config.dataPath).orders;
+    auto trailing = readTrailingOrders(config.ordersPath).orders;
+    QJsonArray results;
+    QJsonArray candidates;
+    // Validate the entire batch before stopping any existing order.
+    for (const auto &value : sources) {
+        const auto source = value.toObject();
+        const auto contract = source.value("contract").toString().trimmed();
+        static const QRegularExpression contractPattern(R"(^[A-Z0-9]+_USDT$)");
+        if (!contractPattern.match(contract).hasMatch())
+            throw Error("订单合约无效：" + contract);
+        const auto amount = orderAmount(source.value("amount"));
+        const auto price = orderPrice(source.value("activation_price"));
+        const auto timestamp = orderTimestamp(source.value("timestamp"));
+        bool duplicate = false;
+        for (const auto &previous : trailing) {
+            const auto old = previous.toObject();
+            if (old.value("contract").toString() != contract
+                || old.value("original_status").toInt() != 4)
+                continue;
+            const auto oldAmount = orderAmount(old.value("amount"));
+            const auto oldTime = orderTimestamp(old.value("timestamp"));
+            if (amount.startsWith('-') == oldAmount.startsWith('-')
+                && std::abs(timestamp - oldTime) < kSevenDaysMs) {
+                duplicate = true;
+                break;
+            }
+        }
+        QJsonObject entry{{"contract", contract}, {"amount", amount},
+                          {"activation_price", price}, {"timestamp", timestamp},
+                          {"record_position", source.value("record_position")},
+                          {"order_index", source.value("order_index")}};
+        if (duplicate) {
+            entry.insert("action", "skipped");
+            entry.insert("message", "同合约、同方向已完成订单的时间相差不到7天");
+            results.append(entry);
+        } else {
+            candidates.append(entry);
+        }
+    }
+    if (candidates.isEmpty())
+        return results;
+    if (config.gateKey.isEmpty() || config.gateSecret.isEmpty())
+        throw Error("请在程序的「连接与存储配置」中填写 Gate API Key 和 Secret");
+    const auto send = [&](const QByteArray &path, const QJsonObject &payload) {
+        ensureNotCancelled(config);
+        const auto body = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+        const auto headers = gate::signedHeaders("POST", path, body,
+                                                 config.gateKey, config.gateSecret);
+        const auto response = sender ? sender(path, body, headers)
+            : post(QUrl(kGateHost + QString::fromUtf8(path)), body, headers, config.cancelled);
+        const auto result = successfulResponse(response);
+        // The caller records each acknowledged write before sending the next request.
+        return result;
+    };
+    for (qsizetype index = 0; index < trailing.size(); ++index) {
+        auto old = trailing[index].toObject();
+        const int status = old.value("original_status").toInt();
+        if (old.value("reduce_only").toBool() || (status != 1 && status != 2))
+            continue;
+        QJsonObject result{{"action", "stopped"}, {"id", old.value("id")},
+                           {"contract", old.value("contract")}};
+        try {
+            // Keep IDs as decimal integers in the body, without a floating-point conversion.
+            bool valid = false;
+            const qint64 id = old.value("id").toString().toLongLong(&valid);
+            if (!valid || id <= 0)
+                throw Error("旧订单 ID 无效");
+            send(kStopPath, {{"id", id}});
+            old.insert("original_status", 5);
+            old.insert("timestamp", QDateTime::currentMSecsSinceEpoch());
+            trailing[index] = old;
+            saveTrailingOrders(config.ordersPath, trailing);
+            results.append(result);
+        } catch (const std::exception &error) {
+            result.insert("action", "failed");
+            result.insert("operation", "stop");
+            result.insert("error", QString::fromUtf8(error.what()));
+            results.append(result);
+            return results; // No new orders if any old order failed to stop.
+        }
+    }
+    for (const auto &value : candidates) {
+        auto result = value.toObject();
+        const auto amount = result.value("amount").toString();
+        const QJsonObject body{{"contract", result.value("contract")}, {"amount", amount},
+            {"activation_price", result.value("activation_price")},
+            {"is_gte", amount.startsWith('-')}, {"reduce_only", false},
+            {"price_type", 3}, {"price_offset", "1%"}, {"pos_margin_mode", "cross"},
+            {"position_mode", "dual_plus"}, {"text", "apiv4"}};
+        try {
+            const auto response = send(kCreatePath, body);
+            const auto id = response.value("data").toObject().value("id").toString();
+            if (id.isEmpty())
+                throw Error("创建响应缺少订单 ID；请先核对 Gate 列表");
+            QJsonObject saved{{"id", id}, {"contract", body.value("contract")},
+                {"amount", amount}, {"activation_price", body.value("activation_price")},
+                {"reduce_only", false}, {"original_status", 1},
+                {"timestamp", QDateTime::currentMSecsSinceEpoch()}};
+            trailing.append(saved);
+            saveTrailingOrders(config.ordersPath, trailing);
+            result.insert("id", id);
+            result.insert("action", "created");
+            results.append(result);
+        } catch (const std::exception &error) {
+            result.insert("action", "failed");
+            result.insert("operation", "create");
+            result.insert("error", QString::fromUtf8(error.what()));
+            results.append(result);
+            return results; // Never automatically retry a possibly successful POST.
+        }
+    }
+    return results;
+}
+
+QJsonArray createTrailingOrders() {
+    return createTrailingOrders(Config::load());
+}
+
 } // namespace orders

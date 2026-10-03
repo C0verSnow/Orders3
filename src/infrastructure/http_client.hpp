@@ -17,4 +17,7 @@ using HttpHeaders = QList<QPair<QByteArray, QByteArray>>;
 // Each worker owns its network manager; credentials never follow redirects.
 ORDERS_CORE_EXPORT HttpResult get(const QUrl &url, const HttpHeaders &headers = {}, bool redirects = true,
                const std::shared_ptr<std::atomic<bool>> &cancelled = {});
+ORDERS_CORE_EXPORT HttpResult post(const QUrl &url, const QByteArray &body,
+               const HttpHeaders &headers = {},
+               const std::shared_ptr<std::atomic<bool>> &cancelled = {});
 } // namespace orders

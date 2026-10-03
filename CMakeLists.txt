@@ -15,6 +15,7 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS Core Network Sql Concurrent HttpServer)
 add_library(orders_core SHARED
     src/core/config.cpp
     src/core/cron.cpp
+    src/core/order_parser.cpp
     src/infrastructure/gate_api.cpp
     src/infrastructure/http_client.cpp
     src/infrastructure/storage.cpp

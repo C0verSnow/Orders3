@@ -2,6 +2,7 @@
 #include "orders_core_export.h"
 #include "core/config.hpp"
 #include <QJsonObject>
+#include <QJsonArray>
 #include <atomic>
 #include <mutex>
 
@@ -32,6 +33,10 @@ private:
     std::atomic<bool> ordersBusy_{false};
     mutable std::mutex sourceMutex_;
     mutable std::mutex ordersMutex_;
+    // Serialize polling and trading while snapshots remain readable during network I/O.
+    std::mutex gateMutex_;
+    QJsonArray executionResults_;
+    QString sourcePhase_;
     QString sourceError_;
     QString ordersError_;
 };

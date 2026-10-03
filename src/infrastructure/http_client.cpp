@@ -8,8 +8,10 @@
 #include <memory>
 
 namespace orders {
-HttpResult get(const QUrl &url, const HttpHeaders &headers, bool redirects,
-               const std::shared_ptr<std::atomic<bool>> &cancelled) {
+namespace {
+HttpResult request(const QUrl &url, const HttpHeaders &headers, bool redirects,
+                   const std::shared_ptr<std::atomic<bool>> &cancelled,
+                   const QByteArray *body) {
     if (cancelled && cancelled->load())
         throw Error("程序正在关闭");
     if (!url.isValid() || url.host().isEmpty()
@@ -23,7 +25,7 @@ HttpResult get(const QUrl &url, const HttpHeaders &headers, bool redirects,
     request.setTransferTimeout(30000);
     for (const auto &header : headers)
         request.setRawHeader(header.first, header.second);
-    std::unique_ptr<QNetworkReply> reply(manager.get(request));
+    std::unique_ptr<QNetworkReply> reply(body ? manager.post(request, *body) : manager.get(request));
     QEventLoop loop;
     QTimer deadline;
     QTimer cancellation;
@@ -51,5 +53,16 @@ HttpResult get(const QUrl &url, const HttpHeaders &headers, bool redirects,
     if (!redirects && status >= 300 && status < 400)
         throw Error("接口返回重定向，已停止请求");
     return {status, reply->readAll()};
+}
+} // namespace
+
+HttpResult get(const QUrl &url, const HttpHeaders &headers, bool redirects,
+               const std::shared_ptr<std::atomic<bool>> &cancelled) {
+    return request(url, headers, redirects, cancelled, nullptr);
+}
+
+HttpResult post(const QUrl &url, const QByteArray &body, const HttpHeaders &headers,
+                const std::shared_ptr<std::atomic<bool>> &cancelled) {
+    return request(url, headers, false, cancelled, &body);
 }
 } // namespace orders

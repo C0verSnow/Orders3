@@ -8,12 +8,18 @@
 
 来源分页采用 Supabase offset / limit；数据库密钥只发送至 Supabase。带密钥的请求拒绝重定向，目标内容请求不携带数据库凭据。Gate 的 HMAC-SHA512 签名和响应解析位于 `src/infrastructure/gate_api.*`；`services/fetcher.cpp` 负责配置检查和抓取流程，验证响应业务码、时间与字段类型后才交给存储层。
 
+订单文本解析位于 `src/core/order_parser.*`，不依赖网络、配置或存储；字段名、别名和预编译正则集中定义。`fetcher.hpp` 继续包含解析头文件，兼容已有调用方；存储层直接依赖核心解析模块。
+
+抓取服务按分页 URL 构造、来源数组校验、来源内容解码和单条抓取拆分内部函数。分页以空数组作为结束条件，兼容服务端限制页大小的情况。来源内容支持 JSON 对象、数组和标量，非 JSON 内容保留 UTF-8 文本。单条抓取覆盖旧的 `data`、`error` 和 `status_code`，保留其他来源字段；HTTP 失败保留当前状态码，网络失败不保留旧状态码。单条来源失败记入结果，分页失败或任务取消中止整批抓取。取消信号允许为空。
+
+读取函数只执行一次请求流程；Scheduler 使用独立的 60 秒定时器获取 Gate 列表，不受来源 Cron 开关影响。来源成功抓取并保存后，Dashboard 自动调用 createTrailingOrders(config)。交易与列表刷新共享互斥锁，网页读取快照不等待网络请求。创建／停止参数及失败处理见 [自动追踪订单](trailing-orders.md)。旧的 [抓取设计草稿](fetcher-design-draft.md) 仅供历史参考。
+
 ## 本地网页接口
 
 | 方法 | 路径 | 行为 |
 | --- | --- | --- |
 | GET | `/`、`/index.html` | 已嵌入的网页 |
-| GET | `/app.js`、`/ui.js`、`/settings.js`、`/schedule.js`、`/startup.js`、`/style.css`、`/logo.svg` | 已嵌入的白名单资源 |
+| GET | `/app.js`、`/flow.js`、`/ui.js`、`/settings.js`、`/schedule.js`、`/startup.js`、`/style.css`、`/logo.svg` | 已嵌入的白名单资源 |
 | GET | `/api/data` | 来源、解析订单和调度快照 |
 | POST | `/api/refresh` | 抓取来源，完成后返回快照 |
 | GET | `/api/orders` | Gate 本地订单快照 |
@@ -30,7 +36,9 @@
 
 网页使用原生 ES modules，无需额外前端构建工具。`app.js` 管理来源订单和 Gate 跟踪订单的展示、刷新与快照轮询；`ui.js` 提供表格、日期和按钮状态的公共函数；`settings.js` 管理连接配置；`schedule.js` 管理定时表单和倒计时；`startup.js` 管理启动动画和原生窗口回调。
 
-“获取订单”调用 `/api/refresh`，从 Supabase 来源解析订单；“获取跟踪订单”调用 `/api/orders/refresh`，读取 Gate 跟踪订单。两个入口保留独立状态。普通轮询每 15 秒读取本地快照，有后台任务时每秒读取；轮询不发起远程抓取。两张表共用表头、更新时间、通知和横向滚动样式，并按列数设置最小宽度。
+`flow.js` 管理 SVG/CSS 绘制的 2D 数据流交互。来源和 Gate 路径可切换，节点按钮提供读取、解析／校验与事务保存的说明；获取按钮复用原有刷新入口。运行状态与快照、请求结果联动，不模拟后端未提供的逐节点进度。演示模式仅播放视觉动画，不发送请求；动画可暂停，并尊重系统的减少动态效果设置。手动刷新开始后丢弃此前发起的快照读取结果，避免旧轮询覆盖新状态。
+
+“获取订单”调用 `/api/refresh`，从 Supabase 来源解析订单；“获取跟踪订单”调用 `/api/orders/refresh`，读取 Gate 跟踪订单。两个入口保留独立状态。网页每秒读取本地快照；远程 Gate 列表由后端每分钟获取。来源状态包含 fetching、trading、completed、failed 阶段和 execution 结果数组，网页同步动画、按钮和逐项交易结果。两张表共用表头、更新时间、通知和横向滚动样式，并按列数设置最小宽度。
 
 新增网页模块时，需要同时更新 `resources.qrc`、`Server` 静态资源白名单和发布包检查脚本。网页资源由 Qt 嵌入分发，不开放任意目录。
 
