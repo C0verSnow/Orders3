@@ -3,6 +3,7 @@ from http.server import ThreadingHTTPServer
 from io import StringIO
 from pathlib import Path
 import tempfile
+import json
 import threading
 import unittest
 from unittest.mock import patch
@@ -20,7 +21,7 @@ class StartupTests(unittest.TestCase):
             output = Path(directory) / "data.db"
             # Keep another instance listening while starting the CLI.
             with LocalHTTPServer(("127.0.0.1", 0), make_handler(Dashboard(output))) as occupied:
-                for arguments in ([], ["--port", "0"], ["--no-browser"]):
+                for arguments in ([], ["--port", "0"], ["--no-browser"], ["--cached"]):
                     with self.subTest(arguments=arguments):
                         addresses = []
 
@@ -37,18 +38,29 @@ class StartupTests(unittest.TestCase):
                                 with urlopen(address, timeout=5) as response:
                                     self.assertEqual(response.status, 200)
                                     self.assertIn(b"<html", response.read().lower())
+                                with urlopen(address + "/api/orders", timeout=5) as response:
+                                    payload = json.load(response)
+                                    self.assertEqual(payload["orders"][0]["activation_price"], "100")
                             finally:
                                 server.shutdown()
                                 thread.join()
 
                         console = StringIO()
                         with patch("orders_dashboard.cli.default_output", return_value=output), \
+                                patch("orders_dashboard.trailing.default_orders_output", return_value=Path(directory) / "orders.db"), \
+                                patch("orders_dashboard.trailing.fetch_orders", return_value=[
+                                    ("123", "BTC_USDT", "38", "100", False, 2, 1790055122058)
+                                ]) as fetch_orders, \
                                 patch("orders_dashboard.cli.load_schedule", return_value=ScheduleConfig(False)), \
                                 patch("orders_dashboard.dashboard.fetch_data", return_value=[]), \
                                 patch.object(LocalHTTPServer, "serve_forever", serve), \
                                 patch("orders_dashboard.cli.webbrowser.open") as browser, \
                                 redirect_stdout(console), redirect_stderr(StringIO()):
                             self.assertEqual(main(arguments), 0)
+                        if "--cached" in arguments:
+                            fetch_orders.assert_not_called()
+                        else:
+                            fetch_orders.assert_called_once_with()
                         self.assertEqual(len(addresses), 1)
                         self.assertIn(addresses[0], console.getvalue())
                         if "--no-browser" in arguments:
@@ -65,6 +77,29 @@ class StartupTests(unittest.TestCase):
                     redirect_stderr(StringIO()):
                 self.assertEqual(main([str(output), "--cached", "--port", str(occupied.server_port)]), 1)
                 browser.assert_not_called()
+
+    def test_orders_startup_failure_does_not_stop_server(self):
+        with tempfile.TemporaryDirectory() as directory:
+            def serve(server):
+                thread = threading.Thread(target=ThreadingHTTPServer.serve_forever,
+                                          args=(server,), daemon=True)
+                thread.start()
+                try:
+                    with urlopen(f"http://127.0.0.1:{server.server_port}/api/orders", timeout=5) as response:
+                        payload = json.load(response)
+                    self.assertEqual(payload["orders"], [])
+                    self.assertIn("offline", payload["error"])
+                finally:
+                    server.shutdown()
+                    thread.join()
+
+            with patch("orders_dashboard.cli.default_output", return_value=Path(directory) / "data.db"), \
+                    patch("orders_dashboard.trailing.default_orders_output", return_value=Path(directory) / "orders.db"), \
+                    patch("orders_dashboard.cli.load_schedule", return_value=ScheduleConfig(False)), \
+                    patch("orders_dashboard.dashboard.fetch_data", return_value=[]), \
+                    patch("orders_dashboard.trailing.fetch_orders", side_effect=ValueError("offline")), \
+                    patch.object(LocalHTTPServer, "serve_forever", serve), redirect_stdout(StringIO()):
+                self.assertEqual(main(["--no-browser"]), 0)
 
     def test_invalid_ports_are_rejected(self):
         for port in ("-1", "65536"):

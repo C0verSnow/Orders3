@@ -8,12 +8,12 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from orders_dashboard.trailing import API_PATH, fetch_orders, refresh_orders
+from orders_dashboard.trailing import API_PATH, OrdersList, fetch_orders, refresh_orders
 
 
 class TrailingTests(unittest.TestCase):
     def test_signature_and_response_fields(self):
-        order = dict(id="123", contract="BTC_USDT", amount="38", trigger_price="",
+        order = dict(id="123", contract="BTC_USDT", amount="38", activation_price="100", trigger_price="",
                      reduce_only=False, original_status=2, ignored="unused")
         response = MagicMock(status_code=200)
         response.json.return_value = dict(code=0, data={"orders": [order]}, timestamp=1790055122058)
@@ -26,7 +26,33 @@ class TrailingTests(unittest.TestCase):
         expected = hmac.new(b"test-secret", message.encode(), hashlib.sha512).hexdigest()
         self.assertEqual(get.call_args.kwargs["headers"]["SIGN"], expected)
         self.assertFalse(get.call_args.kwargs["allow_redirects"])
-        self.assertEqual(rows, [("123", "BTC_USDT", "38", "", False, 2, 1790055122058)])
+        self.assertEqual(rows, [("123", "BTC_USDT", "38", "100", False, 2, 1790055122058)])
+
+    def test_legacy_snapshot_migration_is_atomic(self):
+        old_row = ("123", "BTC_USDT", "38", "90", False, 2, 1790055122058)
+        new_row = ("123", "BTC_USDT", "38", "100", False, 2, 1790055122058)
+        with tempfile.TemporaryDirectory() as directory:
+            output = (Path(directory) / "orders.db").resolve()
+            with closing(sqlite3.connect(output)) as connection:
+                connection.execute("CREATE TABLE orders (id TEXT PRIMARY KEY, contract TEXT, "
+                                   "amount TEXT, trigger_price TEXT, reduce_only INTEGER, "
+                                   "original_status INTEGER, timestamp INTEGER)")
+                connection.execute("INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?)", old_row)
+                connection.commit()
+            cached = OrdersList(output).snapshot()["orders"][0]
+            self.assertIsNone(cached["activation_price"])
+            self.assertNotIn("trigger_price", cached)
+            with patch("orders_dashboard.trailing.fetch_orders", return_value=[new_row, new_row]):
+                with self.assertRaises(sqlite3.IntegrityError):
+                    refresh_orders(output)
+            with closing(sqlite3.connect(output)) as connection:
+                self.assertIn("trigger_price", [row[1] for row in connection.execute("PRAGMA table_info(orders)")])
+                self.assertEqual(connection.execute("SELECT * FROM orders").fetchall(), [old_row])
+            with patch("orders_dashboard.trailing.fetch_orders", return_value=[new_row]):
+                refresh_orders(output)
+            updated = OrdersList(output).snapshot()["orders"][0]
+            self.assertEqual(updated["activation_price"], "100")
+            self.assertNotIn("trigger_price", updated)
 
     def test_missing_credentials_do_not_send_request(self):
         with patch.dict(os.environ, {"API_KEY": "", "API_SECRET": ""}), \

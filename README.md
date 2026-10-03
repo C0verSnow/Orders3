@@ -84,9 +84,9 @@ $env:PYTHON = (Resolve-Path .\.venv\Scripts\python.exe).Path
 
 也可执行 `cmake -S . -B build` 和 `cmake --build build --config Release`。启动器透传全部参数并返回 Python 的退出码，运行时需要保留本仓库目录结构和 Python 依赖。仅复制可执行文件不能独立运行。
 
-直接启动网页后，点击「Gate 跟踪订单」中的「获取跟踪订单」，即可获取并展示订单，不需要传入命令行参数或填写请求参数。先在根目录 `.env` 配置 `API_KEY`、`API_SECRET`（环境变量优先）。网页启动时读取已有订单，每 15 秒同步本地快照；点击按钮才请求 Gate 最新数据。失败时显示原因并保留上次订单；此按钮独立于 URL 来源抓取和 Cron 定时任务。
+直接启动网页后，点击「Gate 跟踪订单」中的「获取跟踪订单」，即可获取并展示订单，不需要传入命令行参数或填写请求参数。先在根目录 `.env` 配置 `API_KEY`、`API_SECRET`（环境变量优先）。网页启动时自动请求 Gate 最新订单；使用 `--cached` 时只读取已有订单。网页每 15 秒同步本地快照，也可点击按钮手动更新。失败时显示原因并保留上次订单；此按钮独立于 URL 来源抓取和 Cron 定时任务。
 
-`orders::list()` 不接收参数，也不构造 `--list`，直接启动 `scripts/list.py` 获取一次订单；还可执行 `python scripts/list.py`。网页接口 `POST /api/orders/refresh` 直接调用同一 Python 订单获取逻辑，`GET /api/orders` 读取本地快照。默认保存到根目录 `data/orderslist.db` 的 `orders` 表，包含 `id`、`contract`、`amount`、`trigger_price`、`reduce_only`、`original_status` 和响应的毫秒 `timestamp`，并在网页独立表格中显示。每次成功获取后事务替换订单快照。兼容命令 `build/orders.exe --list` 或 `python scripts/run.py --list` 仍可使用，执行一次后退出；Python 命令可用位置参数指定其他 SQLite 输出路径。
+`orders::list()` 不接收参数，也不构造 `--list`，直接启动 `scripts/list.py` 获取一次订单；还可执行 `python scripts/list.py`。网页接口 `POST /api/orders/refresh` 直接调用同一 Python 订单获取逻辑，`GET /api/orders` 读取本地快照。默认保存到根目录 `data/orderslist.db` 的 `orders` 表，包含 `id`、`contract`、`amount`、`activation_price`、`reduce_only`、`original_status` 和响应的毫秒 `timestamp`，并在网页独立表格中显示。每次成功获取后事务替换订单快照，并自动迁移旧的 `trigger_price` 列；旧缓存未更新前，激活价格显示为「—」。兼容命令 `build/orders.exe --list` 或 `python scripts/run.py --list` 仍可使用，执行一次后退出；Python 命令可用位置参数指定其他 SQLite 输出路径。
 
 ## 验证
 

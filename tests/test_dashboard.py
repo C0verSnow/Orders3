@@ -75,6 +75,8 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(status, 200)
         payload = json.loads(body)
         self.assertEqual(payload["orders"][0]["contract"], "BTC_USDT")
+        self.assertEqual(payload["orders"][0]["activation_price"], "")
+        self.assertNotIn("trigger_price", payload["orders"][0])
         self.assertIs(payload["orders"][0]["reduce_only"], False)
         self.assertIsNotNone(payload["updated_at"])
         self.assertFalse(self.output.exists())

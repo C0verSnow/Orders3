@@ -237,7 +237,7 @@ function applyOrders(data) {
   const table = node("table", "data-table");
   const thead = node("thead");
   const header = node("tr");
-  for (const label of ["订单 ID", "合约", "数量", "触发价格", "仅减仓", "原始状态", "接口时间"]) {
+  for (const label of ["订单 ID", "合约", "数量", "激活价格", "仅减仓", "原始状态", "接口时间"]) {
     const th = node("th", "", label);
     th.scope = "col";
     header.append(th);
@@ -246,7 +246,7 @@ function applyOrders(data) {
   const tbody = node("tbody");
   for (const order of data.orders) {
     const tr = node("tr");
-    for (const field of ["id", "contract", "amount", "trigger_price"]) {
+    for (const field of ["id", "contract", "amount", "activation_price"]) {
       tr.append(node("td", "", order[field] === "" || order[field] == null ? "—" : String(order[field])));
     }
     tr.append(node("td", "", order.reduce_only ? "是" : "否"),

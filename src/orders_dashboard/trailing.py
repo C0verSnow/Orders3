@@ -16,8 +16,7 @@ from .config import validate_output
 
 HOST = "https://api.gateio.ws"
 API_PATH = "/api/v4/futures/usdt/autoorder/v1/trail/list"
-FIELDS = ("id", "contract", "amount", "trigger_price", "reduce_only", "original_status")
-
+FIELDS = ("id", "contract", "amount", "activation_price", "reduce_only", "original_status")
 
 def default_orders_output():
     return Path(__file__).resolve().parents[2] / "data" / "orderslist.db"
@@ -51,7 +50,7 @@ def fetch_orders():
         if not isinstance(order, dict) or any(field not in order for field in FIELDS):
             raise ValueError("订单响应缺少必需字段")
         if any(not isinstance(order[field], str) for field in FIELDS[:4]):
-            raise ValueError("订单 ID、合约、数量和触发价格必须为字符串")
+            raise ValueError("订单 ID、合约、数量和激活价格必须为字符串")
         if not order["id"] or not order["contract"]:
             raise ValueError("订单 ID 和合约不能为空")
         if type(order["reduce_only"]) is not bool or type(order["original_status"]) is not int:
@@ -67,11 +66,16 @@ def refresh_orders(output=None):
     output.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(output)) as connection:
         with connection:
+            # Include the legacy schema migration in the snapshot transaction.
+            connection.execute("BEGIN")
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(orders)")}
+            if "trigger_price" in columns and "activation_price" not in columns:
+                connection.execute("ALTER TABLE orders RENAME COLUMN trigger_price TO activation_price")
             connection.execute("""CREATE TABLE IF NOT EXISTS orders (
                 id TEXT PRIMARY KEY NOT NULL,
                 contract TEXT NOT NULL,
                 amount TEXT NOT NULL,
-                trigger_price TEXT NOT NULL,
+                activation_price TEXT NOT NULL,
                 reduce_only INTEGER NOT NULL CHECK (reduce_only IN (0, 1)),
                 original_status INTEGER NOT NULL,
                 timestamp INTEGER NOT NULL
@@ -107,6 +111,9 @@ class OrdersList:
                 connection.row_factory = sqlite3.Row
                 orders = [dict(row) for row in connection.execute("SELECT * FROM orders ORDER BY id")]
             for order in orders:
+                # A cached trigger price cannot be interpreted as an activation price.
+                order.setdefault("activation_price", None)
+                order.pop("trigger_price", None)
                 order["reduce_only"] = bool(order["reduce_only"])
             updated_at = datetime.fromtimestamp(self.output.stat().st_mtime, timezone.utc).isoformat()
         return {"orders": orders, "updated_at": updated_at,

@@ -8,6 +8,7 @@ from .config import default_output, load_schedule, validate_output
 from .dashboard import Dashboard
 from .server import LocalHTTPServer, make_handler
 from .scheduler import RefreshScheduler
+from .trailing import OrdersList
 
 
 def main(argv=None):
@@ -42,9 +43,11 @@ def main(argv=None):
         return 1 if any("error" in item for item in dashboard.snapshot()["items"]) else 0
     scheduler = RefreshScheduler(dashboard, schedule)
     dashboard.scheduler = scheduler
+    orders_list = OrdersList()
     try:
-        with LocalHTTPServer(("127.0.0.1", args.port), make_handler(dashboard)) as server:
+        with LocalHTTPServer(("127.0.0.1", args.port), make_handler(dashboard, orders_list)) as server:
             if not args.cached:
+                orders_list.refresh()
                 dashboard.refresh()
             if schedule.enabled:
                 scheduler.next_run = scheduler.next_after(schedule, scheduler.clock())
