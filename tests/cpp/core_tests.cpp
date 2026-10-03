@@ -149,7 +149,14 @@ private slots:
         const QJsonArray items{QJsonObject{{"data", "Symbol: BTC\nPrice: 1.2300"},
                                            {"status_code", 200}, {"extra", QJsonArray{1, 2}}},
                                QJsonObject{{"data", QJsonObject{{"ok", true}}}},
-                               QJsonObject{{"url", QJsonValue::Null}}};
+                               QJsonObject{{"url", QJsonValue::Null},
+                                           {"created_at", QJsonValue::Null},
+                                           {"status_code", QJsonValue::Null},
+                                           {"error", QJsonValue::Null},
+                                           {"data", QJsonValue::Null}},
+                               QJsonObject{{"url", ""}, {"created_at", ""},
+                                           {"status_code", 0}, {"error", ""}, {"data", ""}},
+                               QJsonObject{}};
         orders::saveSources(path, items);
         QCOMPARE(orders::readSources(path).items, items);
         QCOMPARE(orders::readSources(path).orders.size(), 1);

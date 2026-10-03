@@ -6,12 +6,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 include(CTest)
 include(GNUInstallDirs)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Network Sql Concurrent HttpServer)
 
-add_library(orders_core STATIC
+add_library(orders_core SHARED
     src/core/config.cpp
     src/core/cron.cpp
     src/core/parser.cpp
@@ -21,11 +22,16 @@ add_library(orders_core STATIC
     src/services/dashboard.cpp
     src/services/scheduler.cpp
 )
-target_include_directories(orders_core PUBLIC src)
+include(GenerateExportHeader)
+generate_export_header(orders_core)
+target_include_directories(orders_core PUBLIC src ${CMAKE_CURRENT_BINARY_DIR})
+set_target_properties(orders_core PROPERTIES
+    INSTALL_RPATH "$ORIGIN")
 target_link_libraries(orders_core PUBLIC Qt6::Core Qt6::Network Qt6::Sql Qt6::Concurrent)
 
 qt_add_executable(orders src/app/main.cpp src/app/server.cpp resources.qrc)
 target_link_libraries(orders PRIVATE orders_core Qt6::HttpServer)
+set_target_properties(orders PROPERTIES INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
 if(WIN32)
     find_package(Qt6 REQUIRED COMPONENTS Gui Widgets WebEngineWidgets)
     target_sources(orders PRIVATE src/ui/desktop.cpp)
@@ -47,11 +53,18 @@ endforeach()
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     qt_add_executable(orders_tests tests/cpp/core_tests.cpp)
+    set_target_properties(orders_tests PROPERTIES WIN32_EXECUTABLE FALSE)
+    if(MSVC)
+        target_compile_options(orders_tests PRIVATE /utf-8)
+    endif()
     target_link_libraries(orders_tests PRIVATE orders_core Qt6::Test)
     add_test(NAME orders_core COMMAND orders_tests)
 endif()
 
-install(TARGETS orders RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS orders orders_core
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES .env.example config.example DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES README.md docs/architecture.md docs/third-party.md
     DESTINATION ${CMAKE_INSTALL_DOCDIR})

@@ -1,4 +1,5 @@
 #pragma once
+#include "orders_core_export.h"
 #include <QByteArray>
 #include <QList>
 #include <QPair>
@@ -14,6 +15,6 @@ struct HttpResult {
 using HttpHeaders = QList<QPair<QByteArray, QByteArray>>;
 
 // Each worker owns its network manager; credentials never follow redirects.
-HttpResult get(const QUrl &url, const HttpHeaders &headers = {}, bool redirects = true,
+ORDERS_CORE_EXPORT HttpResult get(const QUrl &url, const HttpHeaders &headers = {}, bool redirects = true,
                const std::shared_ptr<std::atomic<bool>> &cancelled = {});
 } // namespace orders

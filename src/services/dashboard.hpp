@@ -1,4 +1,5 @@
 #pragma once
+#include "orders_core_export.h"
 #include "core/config.hpp"
 #include <QJsonObject>
 #include <atomic>
@@ -11,7 +12,7 @@ struct RefreshResult {
 };
 
 // Source and Gate refreshes have separate exclusion locks; SQL access is serialized per file.
-class Dashboard {
+class ORDERS_CORE_EXPORT Dashboard {
 public:
     explicit Dashboard(Config config);
     RefreshResult refreshSources();

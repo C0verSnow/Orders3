@@ -1,4 +1,5 @@
 #pragma once
+#include "orders_core_export.h"
 #include <QString>
 #include <atomic>
 #include <memory>
@@ -9,7 +10,7 @@ struct ScheduleConfig {
     QString cron = QStringLiteral("*/15 * * * *");
 };
 
-struct Config {
+struct ORDERS_CORE_EXPORT Config {
     std::shared_ptr<std::atomic<bool>> cancelled = std::make_shared<std::atomic<bool>>(false);
     QString dataPath;
     QString ordersPath;
@@ -22,7 +23,7 @@ struct Config {
     static Config load();
 };
 
-QString validateOutput(const QString &path);
-ScheduleConfig loadSchedule(const QString &path);
-void saveSchedule(const QString &path, const ScheduleConfig &config);
+ORDERS_CORE_EXPORT QString validateOutput(const QString &path);
+ORDERS_CORE_EXPORT ScheduleConfig loadSchedule(const QString &path);
+ORDERS_CORE_EXPORT void saveSchedule(const QString &path, const ScheduleConfig &config);
 } // namespace orders

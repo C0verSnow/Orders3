@@ -114,7 +114,9 @@ QJsonObject rowObject(const QSqlQuery &query) {
     QJsonObject result;
     const auto record = query.record();
     for (int column = 0; column < record.count(); ++column)
-        result.insert(record.fieldName(column), QJsonValue::fromVariant(query.value(column)));
+        result.insert(record.fieldName(column), query.isNull(column)
+                          ? QJsonValue(QJsonValue::Null)
+                          : QJsonValue::fromVariant(query.value(column)));
     return result;
 }
 
@@ -157,7 +159,8 @@ SourceSnapshot readSources(const QString &path) {
                 if (!recordFields.contains(name))
                     throw Error("缓存记录包含未知字段");
                 const QVariant stored = query.value(name);
-                item.insert(name, name == "data" && query.value("data_format").toString() == "json"
+                item.insert(name, query.isNull(name) ? QJsonValue(QJsonValue::Null)
+                                  : name == "data" && query.value("data_format").toString() == "json"
                                       ? decode(stored.toString()) : QJsonValue::fromVariant(stored));
             }
         }

@@ -106,7 +106,7 @@ CMake 是唯一构建入口。测试覆盖 Cron、字符串精度、事务回滚
 - `SHA256SUMS.txt`
 - 原有 GHCR 容器镜像
 
-Windows 使用 Qt 的 `windeployqt` 收集动态运行库和 WebEngine 资源。Linux 打包 Qt 插件与递归依赖，保留系统 glibc 依赖。包内包含多个文件，不能只复制 exe 或裸程序。
+程序动态链接 Qt 和项目核心库 `orders_core`；Windows 使用动态 MSVC 运行库（`/MD`）。Windows 发布包将 `orders_core.dll` 放在 exe 旁，并使用 Qt 的 `windeployqt` 收集动态运行库和 WebEngine 资源。Linux 发布包将 `liborders_core.so` 放在 `lib` 目录，并打包 Qt 插件与递归依赖，保留系统 glibc 依赖。包内包含多个文件，不能只复制 exe 或裸程序。
 
 ## 容器
 

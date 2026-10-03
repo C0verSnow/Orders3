@@ -29,7 +29,7 @@ jobs:
           arch: win64_msvc2022_64
           modules: 'qtwebengine qtwebchannel qtpositioning qthttpserver qtwebsockets'
           cache: true
-      - name: Compile C++ application and tests
+      - name: Compile dynamically linked C++ application and tests
         run: |
           cmake -S . -B build/native -A x64 -DBUILD_TESTING=ON
           if ($LASTEXITCODE -ne 0) { throw "CMake configure failed" }
@@ -72,7 +72,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build qt6-base-dev qt6-httpserver-dev qt6-websockets-dev qt6-base-dev-tools libqt6sql6-sqlite patchelf
-      - name: Compile C++ application and tests
+      - name: Compile dynamically linked C++ application and tests
         run: |
           cmake --preset release
           cmake --build --preset release --parallel 2

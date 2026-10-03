@@ -151,6 +151,8 @@ void saveSchedule(const QString &path, const ScheduleConfig &config) {
         if (!input.open(QIODevice::ReadOnly | QIODevice::Text))
             throw Error("无法读取原配置：" + input.errorString());
         lines = QString::fromUtf8(input.readAll()).split('\n');
+        // Windows cannot replace the destination while this read handle is open.
+        input.close();
     }
     QStringList output;
     bool inSchedule = false;

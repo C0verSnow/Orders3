@@ -1,4 +1,5 @@
 #pragma once
+#include "orders_core_export.h"
 #include <QDateTime>
 #include <QString>
 #include <array>
@@ -6,7 +7,7 @@
 
 namespace orders {
 // Five-field cron evaluated against the machine's local wall clock.
-class Cron {
+class ORDERS_CORE_EXPORT Cron {
 public:
     explicit Cron(const QString &expression);
     QDateTime nextAfter(const QDateTime &instant) const;

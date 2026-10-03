@@ -1,4 +1,5 @@
 #pragma once
+#include "orders_core_export.h"
 #include "core/config.hpp"
 #include "services/dashboard.hpp"
 #include <QDateTime>
@@ -9,7 +10,7 @@
 #include <mutex>
 
 namespace orders {
-class Scheduler : public QObject {
+class ORDERS_CORE_EXPORT Scheduler : public QObject {
 public:
     Scheduler(Dashboard &dashboard, ScheduleConfig config, QString path);
     ~Scheduler() override;
