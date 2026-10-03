@@ -143,6 +143,50 @@ private slots:
         QVERIFY(file.readAll().contains("value = 100%"));
     }
 
+    void connectionSettingsPersistWithoutOverwritingScheduleOrExposingSecrets() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.schedulePath = directory.filePath("config");
+        config.dataPath = directory.filePath("data.db");
+        config.ordersPath = directory.filePath("orders.db");
+        orders::saveSchedule(config.schedulePath, {false, "0 9 * * 1-5"});
+        orders::Dashboard dashboard(config);
+        const QJsonObject payload{{"SUPABASE_URL", "https://example.supabase.co"},
+                                  {"SUPABASE_ANON_KEY", "secret=with\"quotes"},
+                                  {"API_KEY", "gate-key"}, {"API_SECRET", "gate-secret"},
+                                  {"ORDERS_DATA_DIR", "C:\\orders data"}};
+        const auto values = dashboard.configureEnvironment(payload).value("values").toObject();
+        QVERIFY(!values.contains("SUPABASE_ANON_KEY"));
+        QVERIFY(!values.contains("API_KEY"));
+        QVERIFY(!values.contains("API_SECRET"));
+        QVERIFY(values.value("SUPABASE_ANON_KEY_SET").toBool());
+        QCOMPARE(dashboard.config().supabaseKey, payload.value("SUPABASE_ANON_KEY").toString());
+        QCOMPARE(dashboard.config().dataPath, config.dataPath); // A data directory change needs restart.
+        QCOMPARE(orders::loadEnvironmentSettings(config.schedulePath), payload);
+        QVERIFY(!orders::loadSchedule(config.schedulePath).enabled);
+        orders::saveSchedule(config.schedulePath, {true, "*/5 * * * *"});
+        QCOMPARE(orders::loadEnvironmentSettings(config.schedulePath), payload);
+        dashboard.configureEnvironment({{"SUPABASE_URL", "https://other.supabase.co"}});
+        QCOMPARE(dashboard.config().gateSecret, QString("gate-secret"));
+        dashboard.configureEnvironment({{"API_SECRET", ""}});
+        QVERIFY(dashboard.config().gateSecret.isEmpty());
+        const auto original = dashboard.config().environment;
+        QVERIFY_EXCEPTION_THROWN(dashboard.configureEnvironment({{"API_KEY", 42}}), orders::Error);
+        QVERIFY_EXCEPTION_THROWN(dashboard.configureEnvironment({{"SUPABASE_URL", "file:///tmp"}}), orders::Error);
+        QCOMPARE(dashboard.config().environment, original);
+    }
+
+    void failedConnectionSettingsSaveKeepsLiveCredentials() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.schedulePath = directory.path(); // A directory cannot be replaced by a file.
+        config.supabaseKey = "original-secret";
+        config.environment = {{"SUPABASE_ANON_KEY", "original-secret"}};
+        orders::Dashboard dashboard(config);
+        QVERIFY_EXCEPTION_THROWN(dashboard.configureEnvironment({{"SUPABASE_ANON_KEY", "new-secret"}}), orders::Error);
+        QCOMPARE(dashboard.config().supabaseKey, QString("original-secret"));
+    }
+
     void recordsRoundTripAndFailedWriteRollsBack() {
         QTemporaryDir directory;
         const QString path = directory.filePath("data.db");

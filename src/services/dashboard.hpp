@@ -20,11 +20,14 @@ public:
     QJsonObject sourceSnapshot() const;
     QJsonObject ordersSnapshot() const;
     QByteArray download() const;
-    const Config &config() const { return config_; }
+    Config config() const;
+    QJsonObject environmentSnapshot() const;
+    QJsonObject configureEnvironment(const QJsonObject &payload);
     bool sourcesBusy() const { return sourcesBusy_; }
 
 private:
     Config config_;
+    mutable std::mutex configMutex_;
     std::atomic<bool> sourcesBusy_{false};
     std::atomic<bool> ordersBusy_{false};
     mutable std::mutex sourceMutex_;

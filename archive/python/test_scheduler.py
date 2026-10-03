@@ -22,7 +22,7 @@ class SchedulerTests(unittest.TestCase):
 
     def test_config_defaults_example_and_bom(self):
         self.assertEqual(load_schedule(self.path), ScheduleConfig())
-        example = Path(__file__).resolve().parents[1] / "config.example"
+        example = Path(__file__).resolve().parents[1] / "example.config"
         self.assertEqual(load_schedule(example), ScheduleConfig())
         self.path.write_text("[schedule]\nenabled = false\ncron = 0 9 * * 1-5\n", encoding="utf-8-sig")
         self.assertEqual(load_schedule(self.path), ScheduleConfig(False, "0 9 * * 1-5"))

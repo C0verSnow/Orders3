@@ -1,7 +1,10 @@
 #include "services/dashboard.hpp"
 #include "services/fetcher.hpp"
+#include "core/error.hpp"
 #include "infrastructure/storage.hpp"
 #include <QJsonValue>
+#include <QStringList>
+#include <QUrl>
 #include <utility>
 
 namespace orders {
@@ -20,14 +23,69 @@ QJsonValue nullable(const QString &text) {
 
 Dashboard::Dashboard(Config config) : config_(std::move(config)) {}
 
+Config Dashboard::config() const {
+    std::lock_guard<std::mutex> lock(configMutex_);
+    return config_;
+}
+
+QJsonObject Dashboard::environmentSnapshot() const {
+    const auto current = config();
+    QJsonObject values;
+    for (const QString &name : {"SUPABASE_URL", "SUPABASE_ANON_KEY", "API_KEY", "API_SECRET",
+                                "ORDERS_DATA_DIR", "ORDERS_ALLOWED_ORIGIN"})
+        values.insert(name, current.environment.value(name));
+    for (const QString &name : {"SUPABASE_ANON_KEY", "API_KEY", "API_SECRET"}) {
+        values.insert(name + "_SET", !values.value(name).toString().isEmpty());
+        values.remove(name);
+    }
+    return {{"values", values}, {"config_path", current.schedulePath},
+            {"data_path", current.dataPath}};
+}
+
+QJsonObject Dashboard::configureEnvironment(const QJsonObject &payload) {
+    const QStringList names{"SUPABASE_URL", "SUPABASE_ANON_KEY", "API_KEY", "API_SECRET",
+                            "ORDERS_DATA_DIR", "ORDERS_ALLOWED_ORIGIN"};
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        Config next = config_;
+        for (auto it = payload.begin(); it != payload.end(); ++it) {
+            if (!names.contains(it.key()) || !it.value().isString())
+                throw Error("配置字段不支持或不是文本");
+            const QString value = it.value().toString().trimmed();
+            if (value.size() > 4096 || value.contains('\n') || value.contains('\r')
+                || value.contains(QChar(0)))
+                throw Error("配置内容过长或包含换行等无效字符");
+            if ((it.key() == "SUPABASE_URL" || it.key() == "ORDERS_ALLOWED_ORIGIN")
+                && !value.isEmpty()) {
+                const QUrl url(value);
+                if (!url.isValid() || url.host().isEmpty() || !url.userInfo().isEmpty()
+                    || (url.scheme() != "https" && url.scheme() != "http")
+                    || url.hasQuery() || url.hasFragment()
+                    || (it.key() == "ORDERS_ALLOWED_ORIGIN" && !url.path().isEmpty()))
+                    throw Error("请填写有效的 HTTP/HTTPS 地址；允许的网页来源不带路径");
+            }
+            next.environment.insert(it.key(), value);
+        }
+        next.supabaseUrl = next.environment.value("SUPABASE_URL").toString();
+        next.supabaseKey = next.environment.value("SUPABASE_ANON_KEY").toString();
+        next.gateKey = next.environment.value("API_KEY").toString();
+        next.gateSecret = next.environment.value("API_SECRET").toString();
+        next.allowedOrigin = next.environment.value("ORDERS_ALLOWED_ORIGIN").toString();
+        saveEnvironmentSettings(next.schedulePath, next.environment);
+        config_ = std::move(next);
+    }
+    return environmentSnapshot();
+}
+
 RefreshResult Dashboard::refreshSources() {
     if (sourcesBusy_.exchange(true))
         return {};
     BusyGuard guard(sourcesBusy_);
     try {
-        const auto items = fetchSources(config_);
+        const auto current = config();
+        const auto items = fetchSources(current);
         std::lock_guard<std::mutex> lock(sourceMutex_);
-        saveSources(config_.dataPath, items);
+        saveSources(current.dataPath, items);
         sourceError_.clear();
         return {true, true};
     } catch (const std::exception &error) {
@@ -42,9 +100,10 @@ RefreshResult Dashboard::refreshOrders() {
         return {};
     BusyGuard guard(ordersBusy_);
     try {
-        const auto items = fetchTrailingOrders(config_);
+        const auto current = config();
+        const auto items = fetchTrailingOrders(current);
         std::lock_guard<std::mutex> lock(ordersMutex_);
-        saveTrailingOrders(config_.ordersPath, items);
+        saveTrailingOrders(current.ordersPath, items);
         ordersError_.clear();
         return {true, true};
     } catch (const std::exception &error) {
@@ -56,7 +115,7 @@ RefreshResult Dashboard::refreshOrders() {
 
 QJsonObject Dashboard::sourceSnapshot() const {
     std::lock_guard<std::mutex> lock(sourceMutex_);
-    const auto snapshot = readSources(config_.dataPath);
+    const auto snapshot = readSources(config().dataPath);
     return {{"items", snapshot.items}, {"orders", snapshot.orders},
             {"updated_at", nullable(snapshot.updatedAt)}, {"error", nullable(sourceError_)},
             {"refreshing", bool(sourcesBusy_)}};
@@ -64,13 +123,13 @@ QJsonObject Dashboard::sourceSnapshot() const {
 
 QJsonObject Dashboard::ordersSnapshot() const {
     std::lock_guard<std::mutex> lock(ordersMutex_);
-    const auto snapshot = readTrailingOrders(config_.ordersPath);
+    const auto snapshot = readTrailingOrders(config().ordersPath);
     return {{"orders", snapshot.orders}, {"updated_at", nullable(snapshot.updatedAt)},
             {"error", nullable(ordersError_)}, {"refreshing", bool(ordersBusy_)}};
 }
 
 QByteArray Dashboard::download() const {
     std::lock_guard<std::mutex> lock(sourceMutex_);
-    return exportDatabase(config_.dataPath);
+    return exportDatabase(config().dataPath);
 }
 } // namespace orders

@@ -50,6 +50,33 @@ try {
     if ($schedule.enabled -or -not (Test-Path -LiteralPath $env:ORDERS_CONFIG_PATH)) {
         throw "Schedule persistence failed"
     }
+    $settings = Invoke-RestMethod "$origin/api/settings" -Method Post -Headers @{
+        Origin = $origin
+    } -ContentType "application/json" -Body '{"SUPABASE_URL":"https://example.supabase.co","SUPABASE_ANON_KEY":"smoke-fixture-secret","API_KEY":"smoke-gate-key","API_SECRET":"smoke-gate-secret"}'
+    if (-not $settings.values.SUPABASE_ANON_KEY_SET -or
+        $settings.values.PSObject.Properties.Name -contains "SUPABASE_ANON_KEY" -or
+        $settings.values.PSObject.Properties.Name -contains "API_KEY" -or
+        $settings.values.PSObject.Properties.Name -contains "API_SECRET") {
+        throw "Settings API exposed secrets or failed to save"
+    }
+    $saved = Get-Content -LiteralPath $env:ORDERS_CONFIG_PATH -Raw
+    if (-not $saved.Contains("smoke-fixture-secret") -or -not $saved.Contains("[schedule]")) {
+        throw "Connection settings persistence failed"
+    }
+    $schedule = Invoke-RestMethod "$origin/api/schedule" -Method Post -Headers @{
+        Origin = $origin
+    } -ContentType "application/json" -Body '{"enabled":false,"cron":"0 9 * * 1-5"}'
+    if (-not (Get-Content -LiteralPath $env:ORDERS_CONFIG_PATH -Raw).Contains("smoke-fixture-secret")) {
+        throw "Schedule save overwrote connection settings"
+    }
+    try {
+        Invoke-WebRequest "$origin/api/settings" -Method Post -Headers @{
+            Origin = "http://untrusted.example"
+        } -ContentType "application/json" -Body '{"API_SECRET":"replacement"}'
+        throw "Invalid origin was accepted for settings"
+    } catch {
+        if ([int]$_.Exception.Response.StatusCode -ne 403) { throw }
+    }
     try {
         Invoke-WebRequest "$origin/api/schedule" -Method Post -Headers @{
             Origin = "http://untrusted.example"

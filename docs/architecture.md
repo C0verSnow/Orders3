@@ -19,6 +19,7 @@
 | GET | `/api/orders` | Gate 本地订单快照 |
 | POST | `/api/orders/refresh` | 更新 Gate 订单，完成后返回快照 |
 | GET / POST | `/api/schedule` | 读取或保存调度配置 |
+| GET / POST | `/api/settings` | 读取或保存连接与存储配置；读取不返回密钥原文 |
 | GET | `/api/download` | 一致的 SQLite 数据库快照 |
 
 写入请求必须带与当前页面一致的 Origin；默认使用实际监听地址和端口，容器或代理可显式配置。响应保留 CSP、禁止 MIME 嗅探和禁用缓存。任意源码、密钥或文件路径不作为静态资源开放。
@@ -31,7 +32,7 @@
 
 来源替换在同一个 SQLite 事务中完成；失败时回滚。跟踪订单只在有效完整响应后事务替换，同时迁移旧列。下载采用 `VACUUM INTO` 获取独立快照，包含已经提交的 WAL 数据。
 
-现有 `.env`、根目录 `config` 和 `data/` 原样保留。发布版路径与旧单文件版本一致，默认使用用户目录 `.orders-dashboard/`。Windows 的网页内核从 Python / WebView2 改为原生 Qt WebEngine，保持窗口、启动过渡和数据库保存交互。
+现有 `.env`、根目录 `config` 和 `data/` 继续兼容。程序页面把连接与存储设置原子保存到 `config` 的 `[environment]` 段，字段值使用 JSON 字符串编码；与 `[schedule]` 相互保留。保存失败不更新内存配置。连接设置立即生效，抓取任务使用开始时的配置副本；数据目录在重启后生效。程序保存的字段优先于环境变量和 `.env`，配置文件位置仍由启动环境的 `ORDERS_CONFIG_PATH` 决定。发布版路径与旧单文件版本一致，默认使用用户目录 `.orders-dashboard/`。Windows 的网页内核从 Python / WebView2 改为原生 Qt WebEngine，保持窗口、启动过渡和数据库保存交互。
 
 ## 历史实现
 

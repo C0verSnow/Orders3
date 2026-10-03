@@ -28,7 +28,7 @@ void success(const HttpResult &result) {
 
 QJsonArray fetchSources(const Config &config) {
     if (config.supabaseUrl.isEmpty() || config.supabaseKey.isEmpty())
-        throw Error("请在 .env 中设置 SUPABASE_URL 和 SUPABASE_ANON_KEY");
+        throw Error("请在程序的「连接与存储配置」中填写 Supabase 地址和密钥");
     QString base = config.supabaseUrl;
     while (base.endsWith('/'))
         base.chop(1);
@@ -84,7 +84,7 @@ QJsonArray fetchSources(const Config &config) {
 
 QJsonArray fetchTrailingOrders(const Config &config) {
     if (config.gateKey.isEmpty() || config.gateSecret.isEmpty())
-        throw Error("请在 .env 或环境变量中设置 API_KEY 和 API_SECRET");
+        throw Error("请在程序的「连接与存储配置」中填写 Gate API Key 和 Secret");
     const QByteArray path = "/api/v4/futures/usdt/autoorder/v1/trail/list";
     const QByteArray timestamp = QByteArray::number(QDateTime::currentSecsSinceEpoch());
     const QByteArray emptyHash =

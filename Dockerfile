@@ -7,7 +7,7 @@ WORKDIR /build
 COPY CMakeLists.txt resources.qrc ./
 COPY src ./src
 COPY web ./web
-COPY .env.example config.example README.md ./
+COPY example.env example.config README.md ./
 COPY docs ./docs
 RUN cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_INSTALL_LIBDIR=lib \
     && cmake --build build --parallel 2 \

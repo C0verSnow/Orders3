@@ -9,7 +9,7 @@ if (-not $env:QT_ROOT_DIR -or -not $env:VCToolsRedistDir) {
 
 & cmake --install $BuildDirectory --config Release --prefix $PackageDirectory
 if ($LASTEXITCODE -ne 0) { throw "CMake install failed" }
-$binaryDirectory = (Resolve-Path -LiteralPath (Join-Path $PackageDirectory "bin")).Path
+$binaryDirectory = (Resolve-Path -LiteralPath $PackageDirectory).Path
 $executable = Join-Path $binaryDirectory "orders.exe"
 $coreLibrary = Join-Path $binaryDirectory "orders_core.dll"
 # windeployqt follows Qt dependencies, but does not recurse through our own DLL.

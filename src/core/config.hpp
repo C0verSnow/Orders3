@@ -1,6 +1,7 @@
 #pragma once
 #include "orders_core_export.h"
 #include <QString>
+#include <QJsonObject>
 #include <atomic>
 #include <memory>
 
@@ -20,10 +21,13 @@ struct ORDERS_CORE_EXPORT Config {
     QString gateKey;
     QString gateSecret;
     QString allowedOrigin;
+    QJsonObject environment;
     static Config load();
 };
 
 ORDERS_CORE_EXPORT QString validateOutput(const QString &path);
 ORDERS_CORE_EXPORT ScheduleConfig loadSchedule(const QString &path);
 ORDERS_CORE_EXPORT void saveSchedule(const QString &path, const ScheduleConfig &config);
+ORDERS_CORE_EXPORT QJsonObject loadEnvironmentSettings(const QString &path);
+ORDERS_CORE_EXPORT void saveEnvironmentSettings(const QString &path, const QJsonObject &settings);
 } // namespace orders

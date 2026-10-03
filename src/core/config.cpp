@@ -9,6 +9,9 @@
 #include <QSaveFile>
 #include <QStringList>
 #include <QTextStream>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonParseError>
 
 namespace orders {
 namespace {
@@ -79,19 +82,110 @@ Config Config::load() {
     const QString root = configRoot();
     loadEnvironment(root + "/.env");
     const bool checkout = QFileInfo::exists(root + "/CMakeLists.txt");
-    const QString dataDirectory = expandPath(qEnvironmentVariable(
-        "ORDERS_DATA_DIR", checkout ? root + "/data" : QDir::homePath() + "/.orders-dashboard"));
+    const QString defaultDataDirectory = expandPath(
+        checkout ? root + "/data" : QDir::homePath() + "/.orders-dashboard");
     Config result;
-    result.dataPath = dataDirectory + "/data.db";
-    result.ordersPath = dataDirectory + "/orderslist.db";
+    result.dataPath = defaultDataDirectory + "/data.db";
+    result.ordersPath = defaultDataDirectory + "/orderslist.db";
     result.schedulePath = expandPath(qEnvironmentVariable(
         "ORDERS_CONFIG_PATH", checkout ? root + "/config" : QDir::homePath() + "/.orders-dashboard/config"));
-    result.supabaseUrl = qEnvironmentVariable("SUPABASE_URL");
-    result.supabaseKey = qEnvironmentVariable("SUPABASE_ANON_KEY");
-    result.gateKey = qEnvironmentVariable("API_KEY").trimmed();
-    result.gateSecret = qEnvironmentVariable("API_SECRET").trimmed();
-    result.allowedOrigin = qEnvironmentVariable("ORDERS_ALLOWED_ORIGIN");
+    result.environment = loadEnvironmentSettings(result.schedulePath);
+    const auto value = [&](const char *name) {
+        if (!result.environment.contains(name))
+            result.environment.insert(name, qEnvironmentVariable(name));
+        return result.environment.value(name).toString();
+    };
+    result.supabaseUrl = value("SUPABASE_URL");
+    result.supabaseKey = value("SUPABASE_ANON_KEY");
+    result.gateKey = value("API_KEY").trimmed();
+    result.gateSecret = value("API_SECRET").trimmed();
+    result.allowedOrigin = value("ORDERS_ALLOWED_ORIGIN");
+    const QString savedDataDirectory = value("ORDERS_DATA_DIR");
+    if (!savedDataDirectory.isEmpty()) {
+        result.dataPath = expandPath(savedDataDirectory) + "/data.db";
+        result.ordersPath = expandPath(savedDataDirectory) + "/orderslist.db";
+    }
     return result;
+}
+
+namespace {
+void saveSection(const QString &path, const QString &section, const QStringList &values) {
+    QStringList lines;
+    QFile input(path);
+    if (input.exists()) {
+        if (!input.open(QIODevice::ReadOnly | QIODevice::Text))
+            throw Error("无法读取原配置：" + input.errorString());
+        lines = QString::fromUtf8(input.readAll()).split('\n');
+        input.close();
+    }
+    QStringList output;
+    bool inSection = false;
+    for (const QString &line : lines) {
+        QString trimmed = line.trimmed();
+        trimmed.remove(QChar(0xfeff));
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+            inSection = trimmed == "[" + section + "]";
+            if (inSection)
+                continue;
+        }
+        if (!inSection)
+            output.append(line);
+    }
+    output.append("[" + section + "]");
+    output.append(values);
+    output.append("");
+    if (!QDir().mkpath(QFileInfo(path).absolutePath()))
+        throw Error("无法创建配置目录");
+    QSaveFile target(path);
+    if (!target.open(QIODevice::WriteOnly))
+        throw Error("无法保存配置：" + target.errorString());
+    target.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    const QByteArray content = output.join('\n').toUtf8();
+    if (target.write(content) != content.size() || !target.commit())
+        throw Error("无法保存配置：" + target.errorString());
+}
+} // namespace
+
+QJsonObject loadEnvironmentSettings(const QString &path) {
+    QFile file(path);
+    if (!file.exists())
+        return {};
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        throw Error("无法读取程序配置：" + file.errorString());
+    QJsonObject result;
+    bool inSection = false;
+    QTextStream stream(&file);
+    while (!stream.atEnd()) {
+        QString line = stream.readLine().trimmed();
+        line.remove(QChar(0xfeff));
+        if (line.isEmpty() || line.startsWith('#') || line.startsWith(';'))
+            continue;
+        if (line.startsWith('[') && line.endsWith(']')) {
+            inSection = line == "[environment]";
+            continue;
+        }
+        if (!inSection)
+            continue;
+        const auto split = line.indexOf('=');
+        QJsonParseError error;
+        const auto value = QJsonDocument::fromJson(
+            ("[" + line.mid(split + 1).trimmed() + "]").toUtf8(), &error);
+        if (split < 1 || error.error != QJsonParseError::NoError || !value.isArray()
+            || value.array().size() != 1 || !value.array().at(0).isString())
+            throw Error("程序配置格式错误");
+        result.insert(line.left(split).trimmed(), value.array().at(0));
+    }
+    return result;
+}
+
+void saveEnvironmentSettings(const QString &path, const QJsonObject &settings) {
+    QStringList values;
+    for (auto it = settings.begin(); it != settings.end(); ++it) {
+        // JSON strings preserve quotes, equals signs and Windows backslashes in INI values.
+        const QByteArray encoded = QJsonDocument(QJsonArray{it.value()}).toJson(QJsonDocument::Compact);
+        values.append(it.key() + " = " + QString::fromUtf8(encoded.mid(1, encoded.size() - 2)));
+    }
+    saveSection(path, "environment", values);
 }
 
 QString validateOutput(const QString &path) {
@@ -145,36 +239,7 @@ ScheduleConfig loadSchedule(const QString &path) {
 
 void saveSchedule(const QString &path, const ScheduleConfig &config) {
     Cron(config.cron).nextAfter(QDateTime::currentDateTime());
-    QStringList lines;
-    QFile input(path);
-    if (input.exists()) {
-        if (!input.open(QIODevice::ReadOnly | QIODevice::Text))
-            throw Error("无法读取原配置：" + input.errorString());
-        lines = QString::fromUtf8(input.readAll()).split('\n');
-        // Windows cannot replace the destination while this read handle is open.
-        input.close();
-    }
-    QStringList output;
-    bool inSchedule = false;
-    for (const QString &line : lines) {
-        QString trimmed = line.trimmed();
-        trimmed.remove(QChar(0xfeff));
-        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-            inSchedule = trimmed == "[schedule]";
-            if (inSchedule)
-                continue;
-        }
-        if (!inSchedule)
-            output.append(line);
-    }
-    output.append(QStringList{"[schedule]",
-                             QString("enabled = %1").arg(config.enabled ? "true" : "false"),
-                             "cron = " + config.cron, ""});
-    if (!QDir().mkpath(QFileInfo(path).absolutePath()))
-        throw Error("无法创建配置目录");
-    QSaveFile target(path);
-    if (!target.open(QIODevice::WriteOnly)
-        || target.write(output.join('\n').toUtf8()) < 0 || !target.commit())
-        throw Error("无法保存定时配置：" + target.errorString());
+    saveSection(path, "schedule", {QString("enabled = %1").arg(config.enabled ? "true" : "false"),
+                                   "cron = " + config.cron});
 }
 } // namespace orders

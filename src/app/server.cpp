@@ -90,6 +90,28 @@ Server::Server(Dashboard &dashboard, Scheduler &scheduler)
         return guarded([&] { return json(dashboard_.ordersSnapshot()); });
     });
     http_.route("/api/schedule", Method::Get, [this] { return json(scheduler_.snapshot()); });
+    http_.route("/api/settings", Method::Get, [this](const QHttpServerRequest &request) {
+        const QString requestOrigin = QString::fromUtf8(request.value("Origin"));
+        // Same-origin GETs omit Origin; reject explicit foreign origins.
+        if (!requestOrigin.isEmpty() && !authorized(request))
+            return error("请从本地页面读取配置", Status::Forbidden);
+        return guarded([&] { return json(dashboard_.environmentSnapshot()); });
+    });
+    http_.route("/api/settings", Method::Post, [this](const QHttpServerRequest &request) {
+        if (!authorized(request))
+            return error("请从本地页面发起操作", Status::Forbidden);
+        if (request.body().isEmpty() || request.body().size() > 32768)
+            return error("配置请求大小必须在 1 到 32768 字节之间", Status::BadRequest);
+        QJsonParseError parseError;
+        const auto payload = QJsonDocument::fromJson(request.body(), &parseError);
+        if (parseError.error != QJsonParseError::NoError || !payload.isObject())
+            return error("配置必须为有效 JSON 对象", Status::BadRequest);
+        try {
+            return json(dashboard_.configureEnvironment(payload.object()));
+        } catch (const std::exception &exception) {
+            return error(QString::fromUtf8(exception.what()), Status::BadRequest);
+        }
+    });
     http_.route("/api/download", Method::Get, [this] {
         return guarded([&] {
             if (!QFileInfo::exists(dashboard_.config().dataPath))
@@ -139,8 +161,8 @@ Server::Server(Dashboard &dashboard, Scheduler &scheduler)
 }
 
 bool Server::authorized(const QHttpServerRequest &request) const {
-    const QString expected = dashboard_.config().allowedOrigin.isEmpty()
-                                 ? origin_ : dashboard_.config().allowedOrigin;
+    const auto config = dashboard_.config();
+    const QString expected = config.allowedOrigin.isEmpty() ? origin_ : config.allowedOrigin;
     return QString::fromUtf8(request.value("Origin")) == expected;
 }
 

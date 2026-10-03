@@ -42,18 +42,18 @@ jobs:
       - name: Run native regression tests
         run: ./scripts/test.ps1
       - name: Assemble native release directory
-        run: ./scripts/package-windows.ps1
+        run: ./scripts/package-windows.ps1 -PackageDirectory dist/windows-artifact/orders-windows-x64
       - name: Create Windows archive
-        run: Compress-Archive -Path dist/orders-windows-x64 -DestinationPath dist/orders-windows-x64.zip
+        run: Compress-Archive -Path dist/windows-artifact/orders-windows-x64 -DestinationPath dist/orders-windows-x64.zip
       - name: Check extracted archive without the Qt development environment
         run: |
           $archiveCheck = Join-Path $env:RUNNER_TEMP ("orders-archive-" + [guid]::NewGuid())
           Expand-Archive -LiteralPath dist/orders-windows-x64.zip -DestinationPath $archiveCheck
-          ./scripts/smoke.ps1 -Executable (Join-Path $archiveCheck "orders-windows-x64/bin/orders.exe")
+          ./scripts/smoke.ps1 -Executable (Join-Path $archiveCheck "orders-windows-x64/orders.exe")
       - uses: actions/upload-artifact@v7.0.1
         with:
-          name: native-windows-x64
-          path: dist/orders-windows-x64.zip
+          name: orders-windows-x64
+          path: dist/windows-artifact
           if-no-files-found: error
           retention-days: 14
 
@@ -79,10 +79,14 @@ jobs:
         run: bash scripts/package-linux.sh build/release
       - name: Check packaged application outside checkout
         run: bash scripts/smoke-linux.sh dist/orders-linux-x64/bin/orders
+      - name: Stage Linux artifact without a nested archive
+        run: |
+          mkdir -p dist/linux-artifact
+          cp -a dist/orders-linux-x64 dist/linux-artifact/
       - uses: actions/upload-artifact@v7.0.1
         with:
-          name: native-linux-x64
-          path: dist/orders-linux-x64.tar.gz
+          name: orders-linux-x64
+          path: dist/linux-artifact
           if-no-files-found: error
           retention-days: 14
 
@@ -182,8 +186,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8.0.1
         with:
-          pattern: native-*
-          merge-multiple: true
+          pattern: orders-*
+          merge-multiple: false
           path: release
       - name: Create checksums and publish release assets
         shell: bash
@@ -194,6 +198,11 @@ jobs:
         run: |
           set -euo pipefail
           cd release
+          cd orders-windows-x64
+          zip -r ../orders-windows-x64.zip orders-windows-x64
+          cd ..
+          chmod +x orders-linux-x64/orders-linux-x64/bin/orders
+          tar -C orders-linux-x64 -czf orders-linux-x64.tar.gz orders-linux-x64
           test -s orders-windows-x64.zip
           test -s orders-linux-x64.tar.gz
           sha256sum orders-windows-x64.zip orders-linux-x64.tar.gz > SHA256SUMS.txt

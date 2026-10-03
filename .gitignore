@@ -14,8 +14,8 @@ data/
 data.json
 tests/artifacts/
 .env.*
-!.env.example
 *.env
+!example.env
 *.db
 *.db-*
 *.sqlite

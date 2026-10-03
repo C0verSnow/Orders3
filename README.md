@@ -8,19 +8,19 @@ C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 默认打�
 
 解压后运行：
 
-- Windows：`orders-windows-x64/bin/orders.exe`。包内包含 Qt WebEngine，保留整个解压目录；无需安装 WebView2。
+- Windows：`orders-windows-x64/orders.exe`。包内包含 Qt WebEngine，保留整个解压目录；无需安装 WebView2。
 - Linux：`orders-linux-x64/bin/orders`。包内包含 Qt 与相关运行库，面向 Ubuntu 24.04 x64 或兼容环境，需要 glibc 2.39+；浏览器模式需要系统提供 `xdg-open`。
 
-把包内 `bin/.env.example` 复制为同目录的 `bin/.env`，填写 Supabase 和 Gate 配置。环境变量优先于文件。发布版默认在用户目录 `.orders-dashboard/` 保存数据库和定时配置。
+启动后在「连接与存储配置」中填写 Supabase 地址、密钥以及 Gate API Key / Secret，点击「保存程序配置」即可，无需创建或打开 `.env`。连接配置立即生效，正在执行的任务使用原配置；更改数据目录需要重启，不会自动搬移已有数据库。密钥不回显，留空保留原值，勾选清除可删除。发布版默认在用户目录 `.orders-dashboard/` 保存数据库和配置。Windows 的 exe、DLL、Qt 插件与 `example.env`、`example.config` 均位于解压后的程序目录内。
 
 ```powershell
 # Windows 示例
-.\bin\orders.exe --cached
-.\bin\orders.exe --browser
-.\bin\orders.exe --no-browser --port 8090
-.\bin\orders.exe --fetch-only
-.\bin\orders.exe --list
-.\bin\orders.exe "D:\my data\results.db" --cached
+.\orders-windows-x64\orders.exe --cached
+.\orders-windows-x64\orders.exe --browser
+.\orders-windows-x64\orders.exe --no-browser --port 8090
+.\orders-windows-x64\orders.exe --fetch-only
+.\orders-windows-x64\orders.exe --list
+.\orders-windows-x64\orders.exe "D:\my data\results.db" --cached
 ```
 
 默认端口为 0，由系统选择空闲端口。程序打印实际地址。关闭 Windows 主窗口或在服务模式按 Ctrl+C 停止程序；关闭过程取消尚未完成的网络请求。
@@ -31,17 +31,17 @@ Windows 启动时立即展示缓存，两个抓取任务分别在后台执行；
 
 ## 配置与数据
 
-`.env.example` 列出配置字段：
+`example.env` 列出兼容的环境变量字段；`example.config` 是程序配置示例。日常设置使用程序页面：
 
 | 配置 | 用途 |
 | --- | --- |
 | `SUPABASE_URL`、`SUPABASE_ANON_KEY` | 来源数据读取 |
 | `API_KEY`、`API_SECRET` | Gate 跟踪订单读取 |
 | `ORDERS_DATA_DIR` | 两个 SQLite 数据库的保存目录 |
-| `ORDERS_CONFIG_PATH` | 定时配置文件路径 |
+| `ORDERS_CONFIG_PATH` | 程序与定时配置文件路径（启动前通过环境变量指定，页面显示实际位置） |
 | `ORDERS_ALLOWED_ORIGIN` | 使用代理或不同访问地址时，允许的网页来源 |
 
-源码目录构建时自动寻找仓库配置，默认使用 `data/data.db`、`data/orderslist.db` 和根目录 `config`；发布包使用用户目录。可执行文件旁的 `.env` 优先于仓库配置。
+源码目录构建时自动寻找仓库配置，默认使用 `data/data.db`、`data/orderslist.db` 和根目录 `config`；发布包使用用户目录。可执行文件旁的 `.env` 优先于仓库配置。程序页面保存的 `[environment]` 配置优先于同名环境变量；未保存的字段依次读取环境变量、旧 `.env`。`ORDERS_CONFIG_PATH` 是启动时定位配置文件的变量，不在页面修改。原有 `.env` 和 `config` 继续兼容。
 
 旧的 `record_json` 缓存、当前结构化来源表以及旧跟踪订单表均可读取。旧 `trigger_price` 缓存不会误作激活价格显示，下次成功获取时迁移。订单金额和价格始终保留字符串精度。抓取或数据库写入失败保留之前的快照。数据格式见 [数据库说明](docs/database.md)。
 
@@ -99,7 +99,7 @@ CMake 是唯一构建入口。测试覆盖 Cron、字符串精度、事务回滚
 
 ## CI 与发布
 
-`.github/workflows/build.yml` 在 Windows 和 Linux 编译 C++、执行测试并组装运行库。普通推送和 PR 上传构建附件；`v*` 标签在两端及容器检查通过后发布：
+`.github/workflows/build.yml` 在 Windows 和 Linux 编译 C++、执行测试并组装运行库。普通推送和 PR 直接上传程序文件夹：Windows 下载为 `orders-windows-x64.zip`，Linux 下载为 `orders-linux-x64.zip`，各自包含同名目录，不再嵌套第二层压缩包。Linux 构建附件 ZIP 解压后需要在程序目录执行 `chmod +x bin/orders`；正式 Release 的 `.tar.gz` 保留可执行权限。`v*` 标签在两端及容器检查通过后发布：
 
 - `orders-windows-x64.zip`
 - `orders-linux-x64.tar.gz`

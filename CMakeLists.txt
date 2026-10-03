@@ -61,10 +61,14 @@ if(BUILD_TESTING)
     add_test(NAME orders_core COMMAND orders_tests)
 endif()
 
+if(WIN32)
+    set(CMAKE_INSTALL_BINDIR ".")
+endif()
+
 install(TARGETS orders orders_core
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES .env.example config.example DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES example.env example.config DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES README.md docs/architecture.md docs/third-party.md
     DESTINATION ${CMAKE_INSTALL_DOCDIR})

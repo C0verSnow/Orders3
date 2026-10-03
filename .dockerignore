@@ -3,8 +3,8 @@
 !.dockerignore
 !CMakeLists.txt
 !resources.qrc
-!.env.example
-!config.example
+!example.env
+!example.config
 !README.md
 !src/
 !src/app/
