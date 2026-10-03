@@ -98,7 +98,9 @@ QString encode(const QJsonValue &value) {
 }
 
 QVariant sqlValue(const QJsonValue &value) {
-    return value.isNull() || value.isUndefined() ? QVariant{} : value.toVariant();
+    if (value.isNull() || value.isUndefined())
+        return QVariant(QMetaType::fromType<QString>());
+    return value.toVariant();
 }
 
 QStringList columns(QSqlDatabase &db, const QString &table) {
