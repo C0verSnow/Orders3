@@ -65,14 +65,14 @@ src/
   infrastructure/   HTTP 客户端、SQLite 连接和事务
   services/         抓取业务、刷新状态和定时调度
   ui/               Windows 原生窗口与启动动画
-web/                现有看板资源，编译嵌入程序
+web/                模块化网页脚本和共享样式，编译嵌入程序
 tests/cpp/          C++ 回归测试
 scripts/            CMake 构建、打包和 CI 运行检查
 docs/               架构、数据格式、第三方组件说明
 archive/python/     原实现及原测试，供历史对照
 ```
 
-架构与接口见 [工程说明](docs/architecture.md)。格式规则为 `.editorconfig` 和 `.clang-format`。
+来源订单和 Gate 跟踪订单保留独立获取入口，共用页面布局与表格样式。前端按配置、定时、启动动画和公共 UI 拆分模块；Gate 签名及响应解析归入基础层。架构与接口见 [工程说明](docs/architecture.md)。格式规则为 `.editorconfig` 和 `.clang-format`。
 
 ## 构建与测试
 

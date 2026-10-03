@@ -6,7 +6,7 @@
   <title>Orders / 抓取数据看板</title>
   <link rel="icon" href="/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
-  <script src="/app.js" defer></script>
+  <script src="/app.js" type="module"></script>
 </head>
 <body>
   <div id="startup" class="startup" role="status" aria-label="正在启动 Orders">
@@ -57,18 +57,55 @@
       <p>最近定时执行：<span id="schedule-last">—</span></p>
       <p id="schedule-notice" class="notice" role="status" aria-live="polite" hidden></p>
     </section>
-    <section class="results" aria-labelledby="results-title">
-      <div class="section-heading"><h2 id="results-title">来源与订单表格 <span id="count">0</span></h2><span class="hint">每个订单一行 · 每 15 秒同步</span><button id="refresh" class="primary" type="button">获取数据</button></div>
-      <div class="toolbar"><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="搜索 URL、交易对或抓取内容…" aria-label="搜索抓取结果"></label><label class="filter">状态 <select id="filter"><option value="all">全部状态</option><option value="success">仅成功</option><option value="failed">仅失败</option></select></label><a class="download" href="/api/download" download="data.db">↓ 导出 data.db</a></div>
-      <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
-      <div id="records" aria-live="polite"><div class="empty">正在加载抓取结果…</div></div>
-    </section>
-    <section class="results" aria-labelledby="orders-title">
-      <div class="section-heading"><h2 id="orders-title">Gate 跟踪订单 <span id="orders-count">0 条</span></h2><button id="orders-refresh" class="primary" type="button">获取跟踪订单</button></div>
-      <p class="hint">启动时自动获取订单，也可点击按钮更新；最近更新：<span id="orders-updated">—</span></p>
-      <p id="orders-notice" class="notice" role="status" aria-live="polite" hidden></p>
-      <div id="orders-records" aria-live="polite"><div class="empty">正在加载订单列表…</div></div>
-    </section>
+    <div class="order-panels">
+      <section class="results order-panel" aria-labelledby="results-title">
+        <div class="section-heading">
+          <div class="section-title">
+            <h2 id="results-title">来源订单 <span id="count">0</span></h2>
+            <p class="hint">从来源内容解析订单 · 每 15 秒同步本地数据</p>
+          </div>
+          <button id="refresh" class="primary" type="button">获取订单</button>
+        </div>
+        <div class="panel-meta">
+          <span>最近更新：<time id="source-updated">—</time></span>
+          <a class="download" href="/api/download" download="data.db">↓ 导出数据库</a>
+        </div>
+        <div class="toolbar">
+          <label class="search">
+            <span aria-hidden="true">⌕</span>
+            <input id="search" type="search" placeholder="搜索 URL、交易对或抓取内容…" aria-label="搜索来源订单">
+          </label>
+          <label class="filter">状态
+            <select id="filter">
+              <option value="all">全部状态</option>
+              <option value="success">仅成功</option>
+              <option value="failed">仅失败</option>
+            </select>
+          </label>
+        </div>
+        <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
+        <div id="records" class="panel-content" aria-live="polite">
+          <div class="empty">正在加载来源订单…</div>
+        </div>
+      </section>
+      <section class="results order-panel" aria-labelledby="orders-title">
+        <div class="section-heading">
+          <div class="section-title">
+            <h2 id="orders-title">Gate 跟踪订单 <span id="orders-count">0 条</span></h2>
+            <p class="hint">从 Gate 获取跟踪订单 · 每 15 秒同步本地数据</p>
+          </div>
+          <button id="orders-refresh" class="primary" type="button">获取跟踪订单</button>
+        </div>
+        <div class="panel-meta">
+          <span>最近更新：<time id="orders-updated">—</time></span>
+          <span>启动时自动获取，也可手动更新</span>
+        </div>
+        <p id="orders-notice" class="notice" role="status" aria-live="polite" hidden></p>
+        <div id="orders-records" class="panel-content" aria-live="polite">
+          <div class="empty">正在加载跟踪订单…</div>
+        </div>
+      </section>
+    </div>
     <footer><span>ORDERS / 本地抓取看板</span><span>内容来自抓取来源 · 时间按浏览器时区显示</span></footer>
   </main>
 </body>

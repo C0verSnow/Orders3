@@ -2,6 +2,10 @@
   <qresource prefix="/web">
     <file alias="index.html">web/index.html</file>
     <file alias="app.js">web/app.js</file>
+    <file alias="ui.js">web/ui.js</file>
+    <file alias="settings.js">web/settings.js</file>
+    <file alias="schedule.js">web/schedule.js</file>
+    <file alias="startup.js">web/startup.js</file>
     <file alias="style.css">web/style.css</file>
     <file alias="logo.svg">web/logo.svg</file>
     <file alias="logo.ico">src/ui/logo.ico</file>

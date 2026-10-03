@@ -61,7 +61,11 @@ Server::Server(Dashboard &dashboard, Scheduler &scheduler)
     using Method = QHttpServerRequest::Method;
     const QList<QPair<QString, QByteArray>> assets{
         {"/", "text/html; charset=utf-8"}, {"/index.html", "text/html; charset=utf-8"},
-        {"/app.js", "text/javascript; charset=utf-8"}, {"/style.css", "text/css; charset=utf-8"},
+        {"/app.js", "text/javascript; charset=utf-8"},
+        {"/ui.js", "text/javascript; charset=utf-8"},
+        {"/settings.js", "text/javascript; charset=utf-8"},
+        {"/schedule.js", "text/javascript; charset=utf-8"},
+        {"/startup.js", "text/javascript; charset=utf-8"}, {"/style.css", "text/css; charset=utf-8"},
         {"/logo.svg", "image/svg+xml"}};
     for (const auto &asset : assets) {
         http_.route(asset.first, Method::Get, [asset] {
@@ -115,7 +119,7 @@ Server::Server(Dashboard &dashboard, Scheduler &scheduler)
     http_.route("/api/download", Method::Get, [this] {
         return guarded([&] {
             if (!QFileInfo::exists(dashboard_.config().dataPath))
-                return error("尚未生成数据库，请先重新抓取", Status::NotFound);
+                return error("尚未生成数据库，请先获取订单", Status::NotFound);
             auto response = body("application/vnd.sqlite3", dashboard_.download());
             header(response, "Content-Disposition", "attachment; filename=\"data.db\"");
             return response;

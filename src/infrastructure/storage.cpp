@@ -1,6 +1,6 @@
 #include "infrastructure/storage.hpp"
 #include "core/error.hpp"
-#include "core/parser.hpp"
+#include "services/fetcher.hpp"
 
 #include <QDateTime>
 #include <QDir>
@@ -9,6 +9,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QPair>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -170,8 +171,24 @@ SourceSnapshot readSources(const QString &path) {
     }
     if (!columns(db, "orders").isEmpty()) {
         execute(query, "SELECT * FROM orders ORDER BY record_position, order_index");
-        while (query.next())
-            snapshot.orders.append(rowObject(query));
+        while (query.next()) {
+            auto order = rowObject(query);
+            for (const auto &field : {qMakePair(QStringLiteral("symbol"), QStringLiteral("contract")),
+                                      qMakePair(QStringLiteral("price"), QStringLiteral("activation_price")),
+                                      qMakePair(QStringLiteral("size"), QStringLiteral("amount")),
+                                      qMakePair(QStringLiteral("orders_time"), QStringLiteral("timestamp"))}) {
+                if (!order.contains(field.second) && order.contains(field.first))
+                    order.insert(field.second, order.value(field.first));
+                order.remove(field.first);
+            }
+            order.remove("value");
+            if (order.value("timestamp").isString()) {
+                bool valid = false;
+                const qint64 timestamp = order.value("timestamp").toString().toLongLong(&valid);
+                order.insert("timestamp", valid ? QJsonValue(timestamp) : QJsonValue(QJsonValue::Null));
+            }
+            snapshot.orders.append(order);
+        }
     } else {
         for (qsizetype position = 0; position < snapshot.items.size(); ++position) {
             const auto data = snapshot.items[position].toObject().value("data");
@@ -201,8 +218,8 @@ void saveSources(const QString &path, const QJsonArray &items) {
         extra_json TEXT NOT NULL, present_fields TEXT NOT NULL))");
     execute(query, R"(CREATE TABLE orders (
         record_position INTEGER NOT NULL REFERENCES records(position),
-        order_index INTEGER NOT NULL, symbol TEXT NOT NULL, price TEXT, side TEXT,
-        size TEXT, value TEXT, orders_time TEXT,
+        order_index INTEGER NOT NULL, contract TEXT NOT NULL, activation_price TEXT, side TEXT,
+        amount TEXT, timestamp INTEGER,
         PRIMARY KEY (record_position, order_index)))");
     for (qsizetype index = 0; index < items.size(); ++index) {
         if (!items[index].isObject())
@@ -229,10 +246,10 @@ void saveSources(const QString &path, const QJsonArray &items) {
         prepared(query);
         if (data.isString()) {
             for (const auto &value : parseOrders(data.toString(), int(index))) {
-                prepare(query, "INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                prepare(query, "INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?)");
                 const auto order = value.toObject();
-                for (const QString &field : {"record_position", "order_index", "symbol", "price",
-                                             "side", "size", "value", "orders_time"})
+                for (const QString &field : {"record_position", "order_index", "contract", "activation_price",
+                                             "side", "amount", "timestamp"})
                     query.addBindValue(sqlValue(order.value(field)));
                 prepared(query);
             }

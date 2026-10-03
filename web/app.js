@@ -1,86 +1,18 @@
-"use strict";
-const $ = (id) => document.getElementById(id);
+import { $, dateText, node, createTable, updateFetchButton } from "./ui.js";
+import { initSettings } from "./settings.js";
+import { initSchedule, applySchedule } from "./schedule.js";
+import { initStartup } from "./startup.js";
+
 const fastStartup = document.body.classList.contains("startup-enabled");
 let items = [];
 let orderRows = [];
 let refreshing = false;
 let loading = false;
-let scheduleDirty = false;
-let savingSchedule = false;
-let currentSchedule = null;
 let updatingData = false;
 let updatingOrders = false;
-const dateFormat = new Intl.DateTimeFormat("zh-CN", {dateStyle: "medium", timeStyle: "medium"});
-const secretFields = [
-  ["SUPABASE_ANON_KEY", "supabase-key"], ["API_KEY", "gate-key"], ["API_SECRET", "gate-secret"]
-];
-function settingsNotice(message) {
-  $("settings-notice").textContent = message || "";
-  $("settings-notice").hidden = !message;
-}
-function applySettings(settings) {
-  const values = settings.values;
-  $("settings-url").value = values.SUPABASE_URL || "";
-  $("settings-data-dir").value = values.ORDERS_DATA_DIR || "";
-  $("settings-origin").value = values.ORDERS_ALLOWED_ORIGIN || "";
-  for (const [name, id] of secretFields) {
-    $("settings-" + id).value = "";
-    $("settings-" + id).placeholder = values[name + "_SET"] ? "已配置；留空保留，输入可替换" : "尚未配置，请填写";
-    $("settings-clear-" + id).checked = false;
-  }
-  $("settings-path").textContent = settings.config_path;
-  $("settings-status").textContent = values.SUPABASE_URL && values.SUPABASE_ANON_KEY_SET ? "来源连接已配置" : "请先填写来源连接信息";
-}
-async function loadSettings() {
-  try {
-    const response = await fetch("/api/settings", {cache: "no-store"});
-    const settings = await response.json();
-    if (!response.ok) throw new Error(settings.error || "读取配置失败");
-    applySettings(settings);
-    $("settings-save").disabled = false;
-  } catch (error) { settingsNotice(error.message + "，刷新页面后重试。"); }
-}
-$("settings-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const payload = {
-    SUPABASE_URL: $("settings-url").value.trim(),
-    ORDERS_DATA_DIR: $("settings-data-dir").value.trim(),
-    ORDERS_ALLOWED_ORIGIN: $("settings-origin").value.trim()
-  };
-  for (const [name, id] of secretFields) {
-    const value = $("settings-" + id).value.trim();
-    if ($("settings-clear-" + id).checked) payload[name] = "";
-    else if (value) payload[name] = value;
-  }
-  const controls = Array.from($("settings-form").elements);
-  controls.forEach((control) => { control.disabled = true; });
-  $("settings-save").textContent = "正在保存…";
-  try {
-    const response = await fetch("/api/settings", {
-      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)
-    });
-    const settings = await response.json();
-    if (!response.ok) throw new Error(settings.error || "保存失败");
-    applySettings(settings);
-    settingsNotice("配置已保存。连接设置立即生效，数据目录重启后生效。");
-  } catch (error) { settingsNotice(error.message); }
-  finally {
-    controls.forEach((control) => { control.disabled = false; });
-    $("settings-save").textContent = "保存程序配置";
-  }
-});
-loadSettings();
-function dateText(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : dateFormat.format(date);
-}
-function node(tag, className, text) {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  if (text !== undefined) element.textContent = text;
-  return element;
-}
+const SNAPSHOT_POLL_MS = 15000;
+const ACTIVE_POLL_MS = 1000;
+
 function bodyText(item) {
   return typeof item.data === "string" ? item.data : JSON.stringify(item.data, null, 2) ?? "";
 }
@@ -97,27 +29,21 @@ function render() {
   container.replaceChildren();
   if (!visible.length) {
     $("count").textContent = `0 / ${items.length} 来源`;
-    container.append(node("div", "empty", items.length ? "没有匹配的结果，试试其他关键词或状态。" : "暂无抓取数据，点击「重新抓取」获取来源内容。"));
+    container.append(node("div", "empty", items.length ? "没有匹配的结果，试试其他关键词或状态。" : "暂无来源订单，点击「获取订单」加载数据。"));
     return;
   }
-  const wrapper = node("div", "table-scroll");
-  wrapper.tabIndex = 0;
-  wrapper.setAttribute("role", "region");
-  wrapper.setAttribute("aria-label", "抓取结果表格，可横向滚动查看全部列");
-  const table = node("table", "data-table");
-  const caption = node("caption", "sr-only", "来源及订单数据，每个订单一行；无订单的来源保留一行。");
-  const thead = node("thead");
-  const header = node("tr");
-  for (const label of ["来源", "状态", "交易对", "方向", "价格", "数量", "金额", "订单时间", "来源创建时间", "抓取内容"]) {
-    const th = node("th", "", label);
-    th.scope = "col";
-    header.append(th);
-  }
-  thead.append(header);
-  const tbody = node("tbody");
+  const {wrapper, tbody} = createTable(
+    ["来源", "状态", "交易对", "方向", "价格", "数量", "订单时间", "来源创建时间", "抓取内容"],
+    "来源及订单数据，每个订单一行；无订单的来源保留一行。", "source-table");
   let rowCount = 0;
+  const ordersBySource = new Map();
+  for (const order of orderRows) {
+    const group = ordersBySource.get(order.record_position) || [];
+    group.push(order);
+    ordersBySource.set(order.record_position, group);
+  }
   for (const {item, position} of visible) {
-    const orders = orderRows.filter((order) => order.record_position === position);
+    const orders = ordersBySource.get(position) || [];
     for (const order of orders.length ? orders : [{}]) {
       rowCount++;
       const tr = node("tr");
@@ -132,11 +58,11 @@ function render() {
       status.append(node("span", `badge${failed(item) ? " failed" : ""}`, `${failed(item) ? "失败" : "成功"} · ${item.status_code ?? "无状态码"}`));
       if (item.error) status.append(node("p", "error-text", item.error));
       tr.append(source, status);
-      for (const name of ["symbol", "side", "price", "size", "value"]) {
-        tr.append(node("td", name === "symbol" ? "table-symbol" : "", order[name] || "—"));
+      for (const name of ["contract", "side", "activation_price", "amount"]) {
+        tr.append(node("td", name === "contract" ? "table-symbol" : "", order[name] || "—"));
       }
-      const timestamp = order.orders_time;
-      tr.append(node("td", "table-date", timestamp && /^\d+$/.test(timestamp) ? dateText(Number(timestamp)) : timestamp || "—"));
+      const timestamp = order.timestamp;
+      tr.append(node("td", "table-date", timestamp != null ? dateText(Number(timestamp)) : "—"));
       tr.append(node("td", "table-date", dateText(item.created_at)));
       const content = node("td", "table-content");
       const text = bodyText(item);
@@ -151,40 +77,11 @@ function render() {
     }
   }
   $("count").textContent = `${visible.length} / ${items.length} 来源 · ${rowCount} 行`;
-  table.append(caption, thead, tbody);
-  wrapper.append(table);
   container.append(wrapper);
 }
 function notice(message) {
   $("notice").textContent = message || "";
   $("notice").hidden = !message;
-}
-function scheduleNotice(message) {
-  $("schedule-notice").textContent = message || "";
-  $("schedule-notice").hidden = !message;
-}
-function updateCountdown() {
-  const next = currentSchedule?.enabled && currentSchedule.next_run ? new Date(currentSchedule.next_run).getTime() : NaN;
-  const seconds = Math.ceil((next - Date.now()) / 1000);
-  $("schedule-countdown").textContent = !Number.isFinite(next) ? "无待执行任务" : seconds <= 0 ? "等待执行及状态同步" : `剩余 ${Math.floor(seconds / 3600)} 小时 ${Math.floor(seconds % 3600 / 60)} 分 ${seconds % 60} 秒`;
-}
-function applySchedule(schedule, running = false) {
-  currentSchedule = schedule;
-  $("schedule-status").textContent = schedule?.enabled ? (running ? "正在抓取" : "已启用 · 服务器本地时间") : "已停用";
-  $("schedule-next").textContent = dateText(schedule?.next_run);
-  const results = {completed: "完成", error: "失败", busy: "已有抓取任务，已跳过"};
-  $("schedule-last").textContent = dateText(schedule?.last_run) + (schedule?.last_result ? `（${results[schedule.last_result] || schedule.last_result}）` : "");
-  // Polling must not overwrite a user's unfinished changes.
-  if (!scheduleDirty && !savingSchedule) {
-    $("schedule-enabled").checked = Boolean(schedule?.enabled);
-    $("schedule-cron").value = schedule?.cron || "";
-    syncPreset();
-  }
-  updateCountdown();
-}
-function syncPreset() {
-  const expression = $("schedule-cron").value.trim();
-  $("schedule-preset").value = Array.from($("schedule-preset").options).some((option) => option.value === expression) ? expression : "";
 }
 function applyData(data) {
   if (!Array.isArray(data.items) || data.items.some((item) => !item || typeof item !== "object" || Array.isArray(item))) throw new Error("服务器数据格式错误");
@@ -197,11 +94,9 @@ function applyData(data) {
   $("updated").textContent = data.updated_at && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString("zh-CN", {hour12: false}) : "—";
   $("update-date").textContent = data.updated_at ? date.toLocaleDateString("zh-CN") : "尚未生成 data.db 数据库";
   applySchedule(data.schedule, data.refreshing);
-  updatingData = fastStartup && Boolean(data.refreshing);
-  if (fastStartup) {
-    $("refresh").disabled = refreshing || updatingData;
-    $("refresh").textContent = updatingData ? "↻ 后台更新中…" : "↻ 重新抓取";
-  }
+  updatingData = Boolean(data.refreshing);
+  $("source-updated").textContent = dateText(data.updated_at);
+  updateFetchButton("refresh", refreshing || updatingData, "获取订单");
   notice(data.error || (updatingData ? "正在后台更新，当前显示本地缓存。" : ""));
   render();
 }
@@ -217,10 +112,9 @@ async function loadData() {
   finally { loading = false; }
 }
 $("refresh").addEventListener("click", async () => {
-  if (refreshing || loading) return;
+  if (refreshing || loading || updatingData) return;
   refreshing = true;
-  $("refresh").disabled = true;
-  $("refresh").textContent = "↻ 正在抓取…";
+  updateFetchButton("refresh", true, "获取订单");
   notice("正在读取来源并抓取内容，请稍候…");
   try {
     const response = await fetch("/api/refresh", {method: "POST"});
@@ -231,55 +125,11 @@ $("refresh").addEventListener("click", async () => {
   } catch (error) { notice(error.message); }
   finally {
     refreshing = false;
-    $("refresh").disabled = false;
-    $("refresh").textContent = "↻ 重新抓取";
+    updateFetchButton("refresh", updatingData, "获取订单");
   }
 });
 $("search").addEventListener("input", render);
 $("filter").addEventListener("change", render);
-$("schedule-preset").addEventListener("change", () => {
-  if ($("schedule-preset").value) $("schedule-cron").value = $("schedule-preset").value;
-  scheduleDirty = true;
-  scheduleNotice("配置尚未保存。");
-});
-for (const id of ["schedule-cron", "schedule-enabled"]) {
-  $(id).addEventListener("input", () => {
-    scheduleDirty = true;
-    syncPreset();
-    scheduleNotice("配置尚未保存。");
-  });
-}
-$("schedule-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (savingSchedule) return;
-  const expression = $("schedule-cron").value.trim();
-  if (expression.split(/\s+/).length !== 5) {
-    scheduleNotice("Cron 必须包含五段：分 时 日 月 星期。");
-    return;
-  }
-  savingSchedule = true;
-  const controls = Array.from($("schedule-form").elements);
-  const enabled = $("schedule-enabled").checked;
-  controls.forEach((control) => { control.disabled = true; });
-  $("schedule-save").textContent = "正在保存…";
-  try {
-    const response = await fetch("/api/schedule", {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({enabled, cron: expression})
-    });
-    const schedule = await response.json();
-    if (!response.ok) throw new Error(schedule.error || "保存失败");
-    scheduleDirty = false;
-    savingSchedule = false;
-    applySchedule(schedule);
-    scheduleNotice("配置已保存到 config，并立即生效。正在执行的抓取会正常完成。");
-  } catch (error) { scheduleNotice(error.message); }
-  finally {
-    savingSchedule = false;
-    controls.forEach((control) => { control.disabled = false; });
-    $("schedule-save").textContent = "保存定时配置";
-  }
-});
 let fetchingOrders = false;
 let loadingOrders = false;
 function ordersNotice(message) {
@@ -290,11 +140,8 @@ function applyOrders(data) {
   if (!Array.isArray(data.orders)) throw new Error("订单列表格式错误");
   $("orders-count").textContent = `${data.orders.length} 条`;
   $("orders-updated").textContent = dateText(data.updated_at);
-  updatingOrders = fastStartup && Boolean(data.refreshing);
-  if (fastStartup) {
-    $("orders-refresh").disabled = fetchingOrders || updatingOrders;
-    $("orders-refresh").textContent = updatingOrders ? "后台获取订单中…" : "获取跟踪订单";
-  }
+  updatingOrders = Boolean(data.refreshing);
+  updateFetchButton("orders-refresh", fetchingOrders || updatingOrders, "获取跟踪订单");
   ordersNotice(data.error || (updatingOrders ? "正在后台获取最新订单，当前显示本地缓存。" : ""));
   const container = $("orders-records");
   container.replaceChildren();
@@ -302,20 +149,9 @@ function applyOrders(data) {
     container.append(node("div", "empty", data.updated_at ? "目前没有跟踪订单。" : "点击「获取跟踪订单」加载列表。"));
     return;
   }
-  const wrapper = node("div", "table-scroll");
-  wrapper.tabIndex = 0;
-  wrapper.setAttribute("role", "region");
-  wrapper.setAttribute("aria-label", "Gate 跟踪订单表格，可横向滚动查看全部列");
-  const table = node("table", "data-table");
-  const thead = node("thead");
-  const header = node("tr");
-  for (const label of ["订单 ID", "合约", "数量", "激活价格", "仅减仓", "原始状态", "接口时间"]) {
-    const th = node("th", "", label);
-    th.scope = "col";
-    header.append(th);
-  }
-  thead.append(header);
-  const tbody = node("tbody");
+  const {wrapper, tbody} = createTable(
+    ["订单 ID", "合约", "数量", "激活价格", "仅减仓", "原始状态", "接口时间"],
+    "Gate 跟踪订单", "trailing-table");
   for (const order of data.orders) {
     const tr = node("tr");
     for (const field of ["id", "contract", "amount", "activation_price"]) {
@@ -326,8 +162,6 @@ function applyOrders(data) {
       node("td", "table-date", dateText(order.timestamp)));
     tbody.append(tr);
   }
-  table.append(thead, tbody);
-  wrapper.append(table);
   container.append(wrapper);
 }
 async function loadOrders() {
@@ -342,10 +176,9 @@ async function loadOrders() {
   finally { loadingOrders = false; }
 }
 $("orders-refresh").addEventListener("click", async () => {
-  if (fetchingOrders || loadingOrders) return;
+  if (fetchingOrders || loadingOrders || updatingOrders) return;
   fetchingOrders = true;
-  $("orders-refresh").disabled = true;
-  $("orders-refresh").textContent = "正在获取订单…";
+  updateFetchButton("orders-refresh", true, "获取跟踪订单");
   ordersNotice("正在获取最新跟踪订单，请稍候…");
   try {
     const response = await fetch("/api/orders/refresh", {method: "POST"});
@@ -356,78 +189,19 @@ $("orders-refresh").addEventListener("click", async () => {
   } catch (error) { ordersNotice(error.message); }
   finally {
     fetchingOrders = false;
-    $("orders-refresh").disabled = false;
-    $("orders-refresh").textContent = "获取跟踪订单";
+    updateFetchButton("orders-refresh", updatingOrders, "获取跟踪订单");
   }
 });
 async function pollOrders() {
   await loadOrders();
-  setTimeout(pollOrders, updatingOrders ? 1000 : 15000);
+  setTimeout(pollOrders, updatingOrders ? ACTIVE_POLL_MS : SNAPSHOT_POLL_MS);
 }
 async function pollData() {
   await loadData();
-  setTimeout(pollData, updatingData ? 1000 : 15000);
+  setTimeout(pollData, updatingData ? ACTIVE_POLL_MS : SNAPSHOT_POLL_MS);
 }
-if (fastStartup) {
-  pollOrders();
-  pollData();
-} else {
-  loadOrders();
-  setInterval(loadOrders, 15000);
-  loadData();
-  setInterval(loadData, 15000);
-}
-setInterval(updateCountdown, 1000);
-// The native splash and this overlay share a centered, stationary logo.
-// Move that same silhouette into the header, with a brief squash before release.
-let startupStarted = false;
-let startupInteracted = false;
-for (const event of ["pointerdown", "keydown"]) {
-  document.addEventListener(event, () => { startupInteracted = true; }, {once: true, capture: true});
-}
-window.beginStartupTransition = async () => {
-  if (startupStarted) return;
-  startupStarted = true;
-  const overlay = $("startup");
-  if (!overlay) return;
-  if (!startupInteracted) {
-    document.body.tabIndex = -1;
-    document.body.focus({preventScroll: true});
-  }
-  if (!fastStartup || matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    overlay.remove();
-    return;
-  }
-  const mark = overlay.querySelector(".startup-mark");
-  const source = mark.getBoundingClientRect();
-  const target = document.querySelector(".brand img").getBoundingClientRect();
-  const dx = target.x - source.x;
-  const dy = target.y - source.y;
-  const scale = target.width / source.width;
-  mark.style.transformOrigin = "top left";
-  document.body.classList.add("startup-running");
-  const options = {duration: 720, easing: "cubic-bezier(.4,0,.2,1)", fill: "forwards"};
-  const motion = mark.animate([
-    {transform: "translate(0,0) scale(1,1)", offset: 0},
-    {transform: "translate(-3px,4px) scale(1.07,.90)", offset: .16},
-    {transform: `translate(${dx}px,${dy}px) scale(${scale})`, offset: 1},
-  ], options);
-  // Fade the background separately so the moving logo stays solid.
-  overlay.animate([{backgroundColor: "#f6f8f5"}, {backgroundColor: "transparent"}], options);
-  for (const text of overlay.querySelectorAll(".startup-wordmark,.startup-caption")) {
-    text.animate([{opacity: 1, transform: "translateY(0)"},
-                  {opacity: 0, transform: "translateY(-8px) scale(.96)"}],
-                 {duration: 260, easing: "ease-in", fill: "forwards"});
-  }
-  try { await motion.finished; } finally {
-    document.body.classList.remove("startup-running");
-    overlay.remove();
-  }
-};
-const desktopStartup = new URLSearchParams(location.search).get("desktop") === "1";
-if (!desktopStartup) {
-  if (document.readyState === "complete") window.beginStartupTransition();
-  else window.addEventListener("load", window.beginStartupTransition, {once: true});
-}
-// Recover if a host callback fails; never leave the homepage covered indefinitely.
-setTimeout(window.beginStartupTransition, 2500);
+initSettings();
+initSchedule();
+initStartup(fastStartup);
+pollOrders();
+pollData();

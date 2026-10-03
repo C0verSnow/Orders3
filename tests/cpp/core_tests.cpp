@@ -1,7 +1,6 @@
 #include "core/config.hpp"
 #include "core/cron.hpp"
 #include "core/error.hpp"
-#include "core/parser.hpp"
 #include "infrastructure/storage.hpp"
 #include "infrastructure/http_client.hpp"
 #include "services/dashboard.hpp"
@@ -110,10 +109,40 @@ private slots:
             "Symbol: BTC_USDT\nPrice: 0.0000000123\nSize: 3 contracts\n"
             "Orders Times: 1720000000123\nSymbol: ETH_USDT\nSide: buy", 7);
         QCOMPARE(rows.size(), 2);
-        QCOMPARE(rows[0].toObject().value("price").toString(), QString("0.0000000123"));
-        QCOMPARE(rows[0].toObject().value("size").toString(), QString("3 contracts"));
-        QVERIFY(rows[1].toObject().value("price").isNull());
+        QCOMPARE(rows[0].toObject().value("activation_price").toString(), QString("0.0000000123"));
+        QCOMPARE(rows[0].toObject().value("amount").toString(), QString("3 contracts"));
+        QVERIFY(rows[1].toObject().value("activation_price").isNull());
         QCOMPARE(rows[1].toObject().value("record_position").toInt(), 7);
+    }
+
+    void parserReadsOrderAlerts() {
+        const QString alert = QString::fromUtf8(
+            "🚀 ====== Order Alert ====== \r\n"
+            "✨  contract            : XAU_USDT \r\n"
+            "💰  activation_price    : 4071.29 USDT \r\n"
+            "📈  side                : Open Long \r\n"
+            "📦  amount              : 371 Contracts \r\n"
+            "📦  value               : 151.21 U \r\n"
+            "   ====================== \r\n\r\n\r\n"
+            "Timestamp: 1791011512347 \r\n");
+        const auto rows = orders::parseOrders(
+            alert + "contract: BTC_USDT\nactivation_price: 0.0000000123 USDT\n"
+                    "side: Open Short\namount: 2 Contracts\nvalue: 0.10 U\n", 7);
+        QCOMPARE(rows.size(), 2);
+        const auto first = rows[0].toObject();
+        QCOMPARE(first.value("contract").toString(), QString("XAU_USDT"));
+        QCOMPARE(first.value("activation_price").toString(), QString("4071.29 USDT"));
+        QCOMPARE(first.value("side").toString(), QString("Open Long"));
+        QCOMPARE(first.value("amount").toString(), QString("371 Contracts"));
+        QVERIFY(!first.contains("value"));
+        QCOMPARE(first.value("timestamp").toInteger(), qint64(1791011512347));
+        QCOMPARE(first.value("record_position").toInt(), 7);
+        QCOMPARE(first.value("order_index").toInt(), 0);
+        const auto second = rows[1].toObject();
+        QCOMPARE(second.value("contract").toString(), QString("BTC_USDT"));
+        QCOMPARE(second.value("activation_price").toString(), QString("0.0000000123 USDT"));
+        QVERIFY(second.value("timestamp").isNull());
+        QCOMPARE(second.value("order_index").toInt(), 1);
     }
 
     void cronCalendarAndDayOrSemantics() {
