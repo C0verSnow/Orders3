@@ -157,8 +157,14 @@ SourceSnapshot readSources(const QString &path) {
                 if (!recordFields.contains(name))
                     throw Error("缓存记录包含未知字段");
                 const QVariant stored = query.value(name);
-                item.insert(name, name == "data" && query.value("data_format").toString() == "json"
-                                      ? decode(stored.toString()) : QJsonValue::fromVariant(stored));
+                // SQL NULL must round-trip as JSON null; some Qt SQLite drivers return a null
+                // QString for NULL TEXT columns, which fromVariant would turn into "".
+                if (query.isNull(name))
+                    item.insert(name, QJsonValue::Null);
+                else
+                    item.insert(name, name == "data" && query.value("data_format").toString() == "json"
+                                          ? decode(stored.toString())
+                                          : QJsonValue::fromVariant(stored));
             }
         }
         snapshot.items.append(item);
