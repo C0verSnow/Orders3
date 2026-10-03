@@ -86,7 +86,7 @@ Config Config::load() {
         checkout ? root + "/data" : QDir::homePath() + "/.orders-dashboard");
     Config result;
     result.dataPath = defaultDataDirectory + "/data.db";
-    result.ordersPath = defaultDataDirectory + "/orderslist.db";
+    result.ordersPath = result.dataPath;
     result.schedulePath = expandPath(qEnvironmentVariable(
         "ORDERS_CONFIG_PATH", checkout ? root + "/config" : QDir::homePath() + "/.orders-dashboard/config"));
     result.environment = loadEnvironmentSettings(result.schedulePath);
@@ -103,7 +103,7 @@ Config Config::load() {
     const QString savedDataDirectory = value("ORDERS_DATA_DIR");
     if (!savedDataDirectory.isEmpty()) {
         result.dataPath = expandPath(savedDataDirectory) + "/data.db";
-        result.ordersPath = expandPath(savedDataDirectory) + "/orderslist.db";
+        result.ordersPath = result.dataPath;
     }
     return result;
 }

@@ -222,6 +222,43 @@ private slots:
         QCOMPARE(orders::readTrailingOrders(path).orders, QJsonArray{order});
     }
 
+    void sourcesAndTrailingOrdersShareDatabase() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("data.db");
+        const QJsonArray items{QJsonObject{{"data", "Symbol: BTC\nPrice: 1.2300"}}};
+        const QJsonObject order{{"id", "001"}, {"contract", "BTC_USDT"}, {"amount", "1.000"},
+                                {"activation_price", "0.00001"}, {"reduce_only", false},
+                                {"original_status", 0}, {"timestamp", 1720000000123.0}};
+        orders::saveTrailingOrders(path, QJsonArray{order});
+        QVERIFY(orders::readSources(path).items.isEmpty());
+        orders::saveSources(path, items);
+        QCOMPARE(orders::readTrailingOrders(path).orders, QJsonArray{order});
+        orders::saveTrailingOrders(path, {});
+        QCOMPARE(orders::readSources(path).items, items);
+        QCOMPARE(orders::readSources(path).orders.size(), 1);
+        orders::saveTrailingOrders(path, QJsonArray{order});
+        QVERIFY_EXCEPTION_THROWN(orders::saveSources(path, QJsonArray{12}), orders::Error);
+        QVERIFY_EXCEPTION_THROWN(orders::saveTrailingOrders(path, QJsonArray{order, order}),
+                                 orders::Error);
+        QCOMPARE(orders::readSources(path).items, items);
+        QCOMPARE(orders::readTrailingOrders(path).orders, QJsonArray{order});
+        QFile exported(directory.filePath("export.db"));
+        QVERIFY(exported.open(QIODevice::WriteOnly));
+        exported.write(orders::exportDatabase(path));
+        exported.close();
+        QCOMPARE(orders::readSources(exported.fileName()).items, items);
+        QCOMPARE(orders::readTrailingOrders(exported.fileName()).orders, QJsonArray{order});
+    }
+
+    void sourcesWithoutTrailingTableHaveEmptyTrailingSnapshot() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("data.db");
+        orders::saveSources(path, {});
+        const auto snapshot = orders::readTrailingOrders(path);
+        QVERIFY(snapshot.orders.isEmpty());
+        QVERIFY(snapshot.updatedAt.isEmpty());
+    }
+
     void legacyRecordsAndTrailingMigration() {
         QTemporaryDir directory;
         const QString source = directory.filePath("old.db");
@@ -241,10 +278,10 @@ private slots:
             db.setDatabaseName(trailing);
             QVERIFY(db.open());
             QSqlQuery query(db);
-            QVERIFY(query.exec("CREATE TABLE orders (id TEXT PRIMARY KEY, contract TEXT, amount TEXT,"
+            QVERIFY(query.exec("CREATE TABLE orderslist (id TEXT PRIMARY KEY, contract TEXT, amount TEXT,"
                                "trigger_price TEXT, reduce_only INTEGER, original_status INTEGER,"
                                "timestamp INTEGER)"));
-            QVERIFY(query.exec("INSERT INTO orders VALUES ('1','BTC','1','10',0,0,1000)"));
+            QVERIFY(query.exec("INSERT INTO orderslist VALUES ('1','BTC','1','10',0,0,1000)"));
         }
         QSqlDatabase::removeDatabase("trailing-test");
         QVERIFY(orders::readTrailingOrders(trailing).orders[0].toObject()

@@ -119,19 +119,16 @@ int main(int argc, char *argv[]) {
 #endif
         auto config = orders::Config::load();
         if (!positional.isEmpty()) {
-            if (parser.isSet("list"))
-                config.ordersPath = orders::validateOutput(positional.first());
-            else
-                config.dataPath = orders::validateOutput(positional.first());
+            config.dataPath = orders::validateOutput(positional.first());
+            config.ordersPath = config.dataPath;
         }
-        if (config.dataPath == config.ordersPath)
-            throw orders::Error("来源数据库与跟踪订单数据库必须使用不同路径");
         orders::Dashboard dashboard(config);
         if (parser.isSet("list")) {
             const auto result = dashboard.refreshOrders();
             if (!result.success)
                 throw orders::Error(dashboard.ordersSnapshot().value("error").toString());
-            std::cout << "已保存订单：" << config.ordersPath.toUtf8().constData() << '\n';
+            std::cout << "已保存订单：" << config.ordersPath.toUtf8().constData()
+                      << "（orderslist 表）\n";
             return 0;
         }
         if (parser.isSet("fetch-only")) {

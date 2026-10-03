@@ -42,9 +42,9 @@ Windows 启动时立即展示缓存，两个抓取任务分别在后台执行；
 | `ORDERS_CONFIG_PATH` | 程序与定时配置文件路径（启动前通过环境变量指定，页面显示实际位置） |
 | `ORDERS_ALLOWED_ORIGIN` | 使用代理或不同访问地址时，允许的网页来源 |
 
-源码目录构建时自动寻找仓库配置，默认使用 `data/data.db`、`data/orderslist.db` 和根目录 `config`；发布包使用用户目录。可执行文件旁的 `.env` 优先于仓库配置。程序页面保存的 `[environment]` 配置优先于同名环境变量；未保存的字段依次读取环境变量、旧 `.env`。`ORDERS_CONFIG_PATH` 是启动时定位配置文件的变量，不在页面修改。原有 `.env` 和 `config` 继续兼容。
+源码目录构建时自动寻找仓库配置，默认使用 `data/data.db` 和根目录 `config`；来源记录保存在 `records`、`orders` 表，Gate 跟踪订单保存在同一数据库的 `orderslist` 表；发布包使用用户目录。`--list` 和普通抓取的位置参数均指定这个共享数据库。可执行文件旁的 `.env` 优先于仓库配置。程序页面保存的 `[environment]` 配置优先于同名环境变量；未保存的字段依次读取环境变量、旧 `.env`。`ORDERS_CONFIG_PATH` 是启动时定位配置文件的变量，不在页面修改。原有 `.env` 和 `config` 继续兼容。
 
-旧的 `record_json` 缓存、当前结构化来源表以及旧跟踪订单表均可读取。旧 `trigger_price` 缓存不会误作激活价格显示，下次成功获取时迁移。订单金额和价格始终保留字符串精度。抓取或数据库写入失败保留之前的快照。数据格式见 [数据库说明](docs/database.md)。
+旧的 `record_json` 缓存、当前结构化来源表以及 `orderslist` 跟踪订单表均可读取。`orderslist` 中旧 `trigger_price` 缓存不会误作激活价格显示，下次成功获取时迁移。原独立的 `orderslist.db` 不再读写。订单金额和价格始终保留字符串精度。抓取或数据库写入失败保留之前的快照。数据格式见 [数据库说明](docs/database.md)。
 
 定时配置为 INI：
 

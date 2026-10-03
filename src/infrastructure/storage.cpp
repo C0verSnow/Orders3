@@ -139,6 +139,8 @@ SourceSnapshot readSources(const QString &path) {
     Database database(path, true);
     auto &db = database.connection();
     const auto recordColumns = columns(db, "records");
+    if (recordColumns.isEmpty())
+        return snapshot;
     QSqlQuery query(db);
     execute(query, "SELECT * FROM records ORDER BY position");
     while (query.next()) {
@@ -244,8 +246,10 @@ TrailingSnapshot readTrailingOrders(const QString &path) {
     if (!QFileInfo::exists(path))
         return snapshot;
     Database database(path, true);
+    if (columns(database.connection(), "orderslist").isEmpty())
+        return snapshot;
     QSqlQuery query(database.connection());
-    execute(query, "SELECT * FROM orders ORDER BY id");
+    execute(query, "SELECT * FROM orderslist ORDER BY id");
     while (query.next()) {
         auto order = rowObject(query);
         if (!order.contains("activation_price"))
@@ -264,18 +268,18 @@ void saveTrailingOrders(const QString &path, const QJsonArray &orders) {
     auto &db = database.connection();
     Transaction transaction(db);
     QSqlQuery query(db);
-    const auto existing = columns(db, "orders");
+    const auto existing = columns(db, "orderslist");
     if (existing.contains("trigger_price") && !existing.contains("activation_price"))
-        execute(query, "ALTER TABLE orders RENAME COLUMN trigger_price TO activation_price");
-    execute(query, R"(CREATE TABLE IF NOT EXISTS orders (
+        execute(query, "ALTER TABLE orderslist RENAME COLUMN trigger_price TO activation_price");
+    execute(query, R"(CREATE TABLE IF NOT EXISTS orderslist (
         id TEXT PRIMARY KEY NOT NULL, contract TEXT NOT NULL, amount TEXT NOT NULL,
         activation_price TEXT NOT NULL,
         reduce_only INTEGER NOT NULL CHECK (reduce_only IN (0, 1)),
         original_status INTEGER NOT NULL, timestamp INTEGER NOT NULL))");
-    execute(query, "DELETE FROM orders");
+    execute(query, "DELETE FROM orderslist");
     for (const auto &value : orders) {
         const auto order = value.toObject();
-        prepare(query, R"(INSERT INTO orders
+        prepare(query, R"(INSERT INTO orderslist
             (id, contract, amount, activation_price, reduce_only, original_status, timestamp)
             VALUES (?, ?, ?, ?, ?, ?, ?))");
         for (const QString &field : {"id", "contract", "amount", "activation_price", "reduce_only",
