@@ -1,4 +1,4 @@
-import { $, dateText, node, createTable, updateFetchButton } from "./ui.js";
+import { $, dateText, node, createTable, updateFetchButton, initWorkspace } from "./ui.js";
 import { initSettings } from "./settings.js";
 import { initSchedule, applySchedule } from "./schedule.js";
 import { initStartup } from "./startup.js";
@@ -14,6 +14,26 @@ let updatingOrders = false;
 let sourceGeneration = 0;
 let ordersGeneration = 0;
 const ACTIVE_POLL_MS = 1000;
+let sourceSyncTimer;
+let sourceSchedule = null;
+let sourceTableSnapshot;
+let sourceReadFailed = false;
+
+function scheduleSourceSync(schedule = sourceSchedule) {
+  sourceSchedule = schedule;
+  clearTimeout(sourceSyncTimer);
+  const nextRun = schedule?.enabled ? new Date(schedule.next_run).getTime() : NaN;
+  if (!sourceReadFailed && !refreshing && !updatingData && (!schedule?.next_run || !Number.isFinite(nextRun))) return;
+  // Read shortly after the server's scheduler tick, then follow an active fetch to completion.
+  const delay = sourceReadFailed ? 5000 : refreshing || updatingData ? ACTIVE_POLL_MS
+    : Math.max(ACTIVE_POLL_MS, nextRun - Date.now() + 1200);
+  sourceSyncTimer = setTimeout(() => {
+    // Long waits exceed the browser timer limit; re-arm without reading data early.
+    if (!sourceReadFailed && !refreshing && !updatingData && Date.now() < nextRun) scheduleSourceSync();
+    else if (loading || refreshing) scheduleSourceSync();
+    else loadData();
+  }, Math.min(delay, 2147483647));
+}
 
 function bodyText(item) {
   return typeof item.data === "string" ? item.data : JSON.stringify(item.data, null, 2) ?? "";
@@ -27,6 +47,7 @@ function render() {
   const visible = items.map((item, position) => ({item, position})).filter(({item}) =>
     (filter === "all" || failed(item) === (filter === "failed")) && JSON.stringify(item).toLowerCase().includes(query));
   const container = $("records");
+  const scrollLeft = container.querySelector(".table-scroll")?.scrollLeft || 0;
   const openRecords = new Set(Array.from(container.querySelectorAll("details[open]")).map((el) => el.dataset.key));
   container.replaceChildren();
   if (!visible.length) {
@@ -80,6 +101,7 @@ function render() {
   }
   $("count").textContent = `${visible.length} / ${items.length} 来源 · ${rowCount} 行`;
   container.append(wrapper);
+  wrapper.scrollLeft = scrollLeft;
 }
 function notice(message) {
   $("notice").textContent = message || "";
@@ -111,14 +133,18 @@ function applyData(data) {
   const date = new Date(data.updated_at);
   $("updated").textContent = data.updated_at && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString("zh-CN", {hour12: false}) : "—";
   $("update-date").textContent = data.updated_at ? date.toLocaleDateString("zh-CN") : "尚未生成 data.db 数据库";
-  applySchedule(data.schedule, data.refreshing);
   updatingData = Boolean(data.refreshing);
+  applySchedule(data.schedule, data.refreshing);
   $("source-updated").textContent = dateText(data.updated_at);
   updateFetchButton("refresh", refreshing || updatingData, "获取订单");
   notice(data.error || (updatingData ? data.phase === "trading"
     ? "来源已保存，正在停止旧单并自动发布新单…" : "正在后台抓取来源，当前显示本地缓存。" : ""));
   renderExecution(Array.isArray(data.execution) ? data.execution : []);
-  render();
+  const tableSnapshot = JSON.stringify([items, orderRows]);
+  if (tableSnapshot !== sourceTableSnapshot) {
+    sourceTableSnapshot = tableSnapshot;
+    render();
+  }
   updateFlow("sources", {...data, refreshing: refreshing || updatingData});
 }
 async function loadData() {
@@ -131,12 +157,17 @@ async function loadData() {
     if (generation !== sourceGeneration) return; // Discard a snapshot predating manual fetch.
     if (!response.ok) throw new Error(data.error || "读取数据失败");
     applyData(data);
+    sourceReadFailed = false;
   } catch (error) {
     if (generation !== sourceGeneration) return;
+    sourceReadFailed = true;
     notice(`无法读取本地数据：${error.message}`);
     flowReadError("sources", error.message);
   }
-  finally { loading = false; }
+  finally {
+    loading = false;
+    scheduleSourceSync();
+  }
 }
 $("refresh").addEventListener("click", async () => {
   if (refreshing || updatingData) return;
@@ -149,7 +180,10 @@ $("refresh").addEventListener("click", async () => {
   try {
     const response = await fetch("/api/refresh", {method: "POST"});
     const data = await response.json();
-    if (Array.isArray(data.items)) applyData(data);
+    if (Array.isArray(data.items)) {
+      applyData(data);
+      sourceReadFailed = false;
+    }
     if (!response.ok) throw new Error(data.error || "抓取失败");
     notice("来源已更新，自动下单处理完成。结果见下方。");
   } catch (error) { fetchError = error.message; notice(error.message); }
@@ -157,6 +191,7 @@ $("refresh").addEventListener("click", async () => {
     refreshing = false;
     updateFetchButton("refresh", updatingData, "获取订单");
     finishFlow("sources", updatingData, fetchError);
+    scheduleSourceSync();
   }
 });
 $("search").addEventListener("input", render);
@@ -239,13 +274,10 @@ async function pollOrders() {
   // Observe minute polling promptly, including its running/error states.
   setTimeout(pollOrders, ACTIVE_POLL_MS);
 }
-async function pollData() {
-  await loadData();
-  setTimeout(pollData, ACTIVE_POLL_MS);
-}
+initWorkspace();
 initFlow();
 initSettings();
-initSchedule();
+initSchedule(scheduleSourceSync);
 initStartup(fastStartup);
 pollOrders();
-pollData();
+loadData();

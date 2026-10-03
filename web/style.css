@@ -13,6 +13,95 @@ body {
   margin: 0;
 }
 
+/* Leave a book-sized gap below the floating workspace control. */
+:root {
+  --workspace-bottom: clamp(64px, 12vh, 112px);
+}
+
+.workspace-view[hidden] {
+  display: none;
+}
+
+.workspace-switch {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  bottom: calc(var(--workspace-bottom) + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  width: 264px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, .9);
+  border-radius: 999px;
+  background: rgba(241, 246, 238, .94);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 12px 36px rgba(34, 53, 46, .14), 0 2px 6px rgba(34, 53, 46, .06);
+}
+
+.workspace-indicator {
+  position: absolute;
+  inset: 6px auto 6px 6px;
+  width: calc(50% - 6px);
+  border-radius: 999px;
+  background: #223e30;
+  box-shadow: 0 3px 8px rgba(34, 62, 48, .18);
+  transition: transform 260ms cubic-bezier(.22, 1, .36, 1);
+  pointer-events: none;
+}
+
+.workspace-switch[data-active="config"] .workspace-indicator {
+  transform: translateX(100%);
+}
+
+.workspace-segment {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 48px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #68796c;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 180ms ease;
+}
+
+.workspace-segment[aria-selected="true"] {
+  color: #fff;
+}
+
+.workspace-segment[aria-selected="false"]:hover {
+  color: #223e30;
+}
+
+.workspace-segment:focus-visible {
+  outline: 2px solid #7eab51;
+  outline-offset: 8px;
+}
+
+.workspace-segment svg {
+  width: 19px;
+  height: 19px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (max-width: 600px), (max-height: 500px) {
+  :root { --workspace-bottom: 40px; }
+  .workspace-switch { width: 240px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-indicator, .workspace-segment { transition: none; }
+}
+
 button,input,select {
   font: inherit;
 }
@@ -73,7 +162,7 @@ a {
 main {
   max-width: 1320px;
   margin: 0 auto;
-  padding: 52px 5vw 24px;
+  padding: 52px 5vw calc(var(--workspace-bottom) + 100px);
 }
 
 .heading {
@@ -371,7 +460,7 @@ footer {
 
 @media(max-width:760px) {
   main {
-    padding: 30px 20px;
+    padding: 30px 20px calc(var(--workspace-bottom) + 100px);
   }
   .topbar {
     padding: 0 20px;

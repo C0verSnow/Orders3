@@ -3,6 +3,7 @@ import { $, dateText } from "./ui.js";
 let scheduleDirty = false;
 let savingSchedule = false;
 let currentSchedule = null;
+let onScheduleChange = () => {};
 
 function scheduleNotice(message) {
   $("schedule-notice").textContent = message || "";
@@ -26,13 +27,15 @@ export function applySchedule(schedule, running = false) {
     syncPreset();
   }
   updateCountdown();
+  onScheduleChange(schedule);
 }
 function syncPreset() {
   const expression = $("schedule-cron").value.trim();
   $("schedule-preset").value = Array.from($("schedule-preset").options).some((option) => option.value === expression) ? expression : "";
 }
 
-export function initSchedule() {
+export function initSchedule(onChange = () => {}) {
+  onScheduleChange = onChange;
   $("schedule-preset").addEventListener("change", () => {
     if ($("schedule-preset").value) $("schedule-cron").value = $("schedule-preset").value;
     scheduleDirty = true;

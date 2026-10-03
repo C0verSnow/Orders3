@@ -19,6 +19,7 @@
     <span class="connection"><span class="dot"></span> 本地数据服务</span>
   </header>
   <main>
+    <div id="workspace-live" class="workspace-view" role="tabpanel" aria-labelledby="segment-live" tabindex="0">
     <div class="heading">
       <div><p class="eyebrow">DATA WORKSPACE / 数据工作台</p><h1>抓取数据，一目了然<span>。</span></h1><p class="subtitle">集中查看 URL 抓取结果，追踪订单信息与来源状态。</p></div>
     </div>
@@ -115,35 +116,6 @@
       </div>
       <p id="flow-detail" class="flow-detail">从 Supabase 分页读取来源地址，再逐条抓取内容。</p>
     </section>
-    <section class="results settings-panel" aria-labelledby="settings-title">
-      <div class="section-heading"><h2 id="settings-title">连接与存储配置</h2><span id="settings-status" class="hint" role="status">等待配置加载</span></div>
-      <form id="settings-form" class="settings-form">
-        <label>Supabase 地址 <input id="settings-url" type="url" placeholder="https://your-project.supabase.co" maxlength="4096"></label>
-        <label>Supabase 密钥 <input id="settings-supabase-key" type="password" autocomplete="new-password" maxlength="4096"><span><input id="settings-clear-supabase-key" type="checkbox"> 清除已保存密钥</span></label>
-        <label>Gate API Key <input id="settings-gate-key" type="password" autocomplete="new-password" maxlength="4096"><span><input id="settings-clear-gate-key" type="checkbox"> 清除已保存密钥</span></label>
-        <label>Gate API Secret <input id="settings-gate-secret" type="password" autocomplete="new-password" maxlength="4096"><span><input id="settings-clear-gate-secret" type="checkbox"> 清除已保存密钥</span></label>
-        <label>数据保存目录（可选） <input id="settings-data-dir" type="text" placeholder="留空使用默认目录" maxlength="4096"></label>
-        <label>允许的网页来源（可选） <input id="settings-origin" type="url" placeholder="留空使用本地页面地址" maxlength="4096"></label>
-        <button id="settings-save" class="primary" type="submit" disabled>保存程序配置</button>
-      </form>
-      <p>首次使用请填写连接信息。密钥留空保留原值，勾选清除可删除。保存后连接配置立即生效，可点击抓取按钮获取数据；正在执行的任务使用原配置。</p>
-      <p>数据目录在重启后生效，不会搬移已有数据库。网页来源只在使用代理时填写，保存后请用对应地址访问。</p>
-      <p>配置保存位置：<span id="settings-path">—</span></p>
-      <p id="settings-notice" class="notice" role="status" aria-live="polite" hidden></p>
-    </section>
-    <section class="results schedule-panel" aria-labelledby="schedule-title">
-      <div class="section-heading"><h2 id="schedule-title">定时抓取</h2><span id="schedule-status" class="hint" role="status">等待配置加载</span></div>
-      <form id="schedule-form" class="schedule-form">
-        <label class="schedule-toggle"><input id="schedule-enabled" type="checkbox"> 启用定时任务</label>
-        <label>常用周期 <select id="schedule-preset"><option value="">自定义</option><option value="* * * * *">每分钟</option><option value="*/5 * * * *">每 5 分钟</option><option value="*/15 * * * *">每 15 分钟</option><option value="0 * * * *">每小时</option><option value="0 9 * * *">每天 09:00</option></select></label>
-        <label class="schedule-expression">Cron 表达式 <input id="schedule-cron" type="text" required maxlength="256" placeholder="*/15 * * * *" aria-describedby="schedule-help"></label>
-        <button id="schedule-save" class="primary" type="submit">保存定时配置</button>
-      </form>
-      <p id="schedule-help" class="hint">五段：分 时 日 月 星期；按电脑本地时间执行。保存后立即生效，自动写入程序配置文件。</p>
-      <p>下次执行：<span id="schedule-next">—</span> · <span id="schedule-countdown">—</span></p>
-      <p>最近定时执行：<span id="schedule-last">—</span></p>
-      <p id="schedule-notice" class="notice" role="status" aria-live="polite" hidden></p>
-    </section>
     <div class="order-panels">
       <section class="results order-panel" aria-labelledby="results-title">
         <div class="section-heading">
@@ -194,7 +166,53 @@
         </div>
       </section>
     </div>
+    </div>
+    <div id="workspace-config" class="workspace-view" role="tabpanel" aria-labelledby="segment-config" tabindex="0" hidden>
+      <div class="heading">
+        <div><p class="eyebrow">WORKSPACE SETTINGS / 工作台配置</p><h1>让数据按你的节奏抵达<span>。</span></h1><p class="subtitle">管理定时抓取、服务连接与数据存储。</p></div>
+      </div>
+    <section class="results settings-panel" aria-labelledby="settings-title">
+      <div class="section-heading"><h2 id="settings-title">连接与存储配置</h2><span id="settings-status" class="hint" role="status">等待配置加载</span></div>
+      <form id="settings-form" class="settings-form">
+        <label>Supabase 地址 <input id="settings-url" type="url" placeholder="https://your-project.supabase.co" maxlength="4096"></label>
+        <label>Supabase 密钥 <input id="settings-supabase-key" type="password" autocomplete="new-password" maxlength="4096"><span><input id="settings-clear-supabase-key" type="checkbox"> 清除已保存密钥</span></label>
+        <label>Gate API Key <input id="settings-gate-key" type="password" autocomplete="new-password" maxlength="4096"><span><input id="settings-clear-gate-key" type="checkbox"> 清除已保存密钥</span></label>
+        <label>Gate API Secret <input id="settings-gate-secret" type="password" autocomplete="new-password" maxlength="4096"><span><input id="settings-clear-gate-secret" type="checkbox"> 清除已保存密钥</span></label>
+        <label>数据保存目录（可选） <input id="settings-data-dir" type="text" placeholder="留空使用默认目录" maxlength="4096"></label>
+        <label>允许的网页来源（可选） <input id="settings-origin" type="url" placeholder="留空使用本地页面地址" maxlength="4096"></label>
+        <button id="settings-save" class="primary" type="submit" disabled>保存程序配置</button>
+      </form>
+      <p>首次使用请填写连接信息。密钥留空保留原值，勾选清除可删除。保存后连接配置立即生效，可点击抓取按钮获取数据；正在执行的任务使用原配置。</p>
+      <p>数据目录在重启后生效，不会搬移已有数据库。网页来源只在使用代理时填写，保存后请用对应地址访问。</p>
+      <p>配置保存位置：<span id="settings-path">—</span></p>
+      <p id="settings-notice" class="notice" role="status" aria-live="polite" hidden></p>
+    </section>
+    <section class="results schedule-panel" aria-labelledby="schedule-title">
+      <div class="section-heading"><h2 id="schedule-title">定时抓取</h2><span id="schedule-status" class="hint" role="status">等待配置加载</span></div>
+      <form id="schedule-form" class="schedule-form">
+        <label class="schedule-toggle"><input id="schedule-enabled" type="checkbox"> 启用定时任务</label>
+        <label>常用周期 <select id="schedule-preset"><option value="">自定义</option><option value="* * * * *">每分钟</option><option value="*/5 * * * *">每 5 分钟</option><option value="*/15 * * * *">每 15 分钟</option><option value="0 * * * *">每小时</option><option value="0 9 * * *">每天 09:00</option></select></label>
+        <label class="schedule-expression">Cron 表达式 <input id="schedule-cron" type="text" required maxlength="256" placeholder="*/15 * * * *" aria-describedby="schedule-help"></label>
+        <button id="schedule-save" class="primary" type="submit">保存定时配置</button>
+      </form>
+      <p id="schedule-help" class="hint">五段：分 时 日 月 星期；按电脑本地时间执行。保存后立即生效，自动写入程序配置文件。</p>
+      <p>下次执行：<span id="schedule-next">—</span> · <span id="schedule-countdown">—</span></p>
+      <p>最近定时执行：<span id="schedule-last">—</span></p>
+      <p id="schedule-notice" class="notice" role="status" aria-live="polite" hidden></p>
+    </section>
+    </div>
     <footer><span>ORDERS / 本地抓取看板</span><span>内容来自抓取来源 · 时间按浏览器时区显示</span></footer>
   </main>
+  <div class="workspace-switch" role="tablist" aria-label="切换工作台" data-active="live">
+    <span class="workspace-indicator" aria-hidden="true"></span>
+    <button id="segment-live" class="workspace-segment" type="button" role="tab" aria-selected="true" aria-controls="workspace-live" tabindex="0" data-view="live">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V9m8 10V5m8 14v-7M3 21h18"/></svg>
+      <span>实盘</span>
+    </button>
+    <button id="segment-config" class="workspace-segment" type="button" role="tab" aria-selected="false" aria-controls="workspace-config" tabindex="-1" data-view="config">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 3v18m7-18v18m7-18v18M2 8h6m1 8h6m1-9h6"/></svg>
+      <span>配置</span>
+    </button>
+  </div>
 </body>
 </html>

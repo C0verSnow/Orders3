@@ -1,4 +1,42 @@
 export const $ = (id) => document.getElementById(id);
+
+export function initWorkspace() {
+  const control = document.querySelector(".workspace-switch");
+  const tabs = Array.from(control.querySelectorAll('[role="tab"]'));
+  const scrollPositions = new Map();
+  let active = "live";
+
+  function select(tab) {
+    const view = tab.dataset.view;
+    if (view === active) return;
+    scrollPositions.set(active, window.scrollY);
+    active = view;
+    control.dataset.active = view;
+    for (const item of tabs) {
+      const selected = item === tab;
+      item.setAttribute("aria-selected", String(selected));
+      item.tabIndex = selected ? 0 : -1;
+      $(item.getAttribute("aria-controls")).hidden = !selected;
+    }
+    window.scrollTo({top: scrollPositions.get(view) || 0, behavior: "instant"});
+  }
+
+  for (const tab of tabs) {
+    tab.addEventListener("click", () => select(tab));
+    tab.addEventListener("keydown", (event) => {
+      const index = tabs.indexOf(tab);
+      let next;
+      if (event.key === "ArrowRight") next = tabs[(index + 1) % tabs.length];
+      else if (event.key === "ArrowLeft") next = tabs[(index + tabs.length - 1) % tabs.length];
+      else if (event.key === "Home") next = tabs[0];
+      else if (event.key === "End") next = tabs[tabs.length - 1];
+      else return;
+      event.preventDefault();
+      next.focus({preventScroll: true});
+      select(next);
+    });
+  }
+}
 const dateFormat = new Intl.DateTimeFormat("zh-CN", {dateStyle: "medium", timeStyle: "medium"});
 
 export function dateText(value) {
