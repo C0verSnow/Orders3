@@ -1,5 +1,6 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
+const fastStartup = document.body.classList.contains("startup-enabled");
 let items = [];
 let orderRows = [];
 let refreshing = false;
@@ -7,6 +8,8 @@ let loading = false;
 let scheduleDirty = false;
 let savingSchedule = false;
 let currentSchedule = null;
+let updatingData = false;
+let updatingOrders = false;
 const dateFormat = new Intl.DateTimeFormat("zh-CN", {dateStyle: "medium", timeStyle: "medium"});
 function dateText(value) {
   if (!value) return "—";
@@ -135,7 +138,12 @@ function applyData(data) {
   $("updated").textContent = data.updated_at && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString("zh-CN", {hour12: false}) : "—";
   $("update-date").textContent = data.updated_at ? date.toLocaleDateString("zh-CN") : "尚未生成 data.db 数据库";
   applySchedule(data.schedule, data.refreshing);
-  notice(data.error);
+  updatingData = fastStartup && Boolean(data.refreshing);
+  if (fastStartup) {
+    $("refresh").disabled = refreshing || updatingData;
+    $("refresh").textContent = updatingData ? "↻ 后台更新中…" : "↻ 重新抓取";
+  }
+  notice(data.error || (updatingData ? "正在后台更新，当前显示本地缓存。" : ""));
   render();
 }
 async function loadData() {
@@ -223,7 +231,12 @@ function applyOrders(data) {
   if (!Array.isArray(data.orders)) throw new Error("订单列表格式错误");
   $("orders-count").textContent = `${data.orders.length} 条`;
   $("orders-updated").textContent = dateText(data.updated_at);
-  ordersNotice(data.error);
+  updatingOrders = fastStartup && Boolean(data.refreshing);
+  if (fastStartup) {
+    $("orders-refresh").disabled = fetchingOrders || updatingOrders;
+    $("orders-refresh").textContent = updatingOrders ? "后台获取订单中…" : "获取跟踪订单";
+  }
+  ordersNotice(data.error || (updatingOrders ? "正在后台获取最新订单，当前显示本地缓存。" : ""));
   const container = $("orders-records");
   container.replaceChildren();
   if (!data.orders.length) {
@@ -288,8 +301,74 @@ $("orders-refresh").addEventListener("click", async () => {
     $("orders-refresh").textContent = "获取跟踪订单";
   }
 });
-loadOrders();
-setInterval(loadOrders, 15000);
-loadData();
-setInterval(loadData, 15000);
+async function pollOrders() {
+  await loadOrders();
+  setTimeout(pollOrders, updatingOrders ? 1000 : 15000);
+}
+async function pollData() {
+  await loadData();
+  setTimeout(pollData, updatingData ? 1000 : 15000);
+}
+if (fastStartup) {
+  pollOrders();
+  pollData();
+} else {
+  loadOrders();
+  setInterval(loadOrders, 15000);
+  loadData();
+  setInterval(loadData, 15000);
+}
 setInterval(updateCountdown, 1000);
+// The native splash and this overlay share a centered, stationary logo.
+// Move that same silhouette into the header, with a brief squash before release.
+let startupStarted = false;
+let startupInteracted = false;
+for (const event of ["pointerdown", "keydown"]) {
+  document.addEventListener(event, () => { startupInteracted = true; }, {once: true, capture: true});
+}
+window.beginStartupTransition = async () => {
+  if (startupStarted) return;
+  startupStarted = true;
+  const overlay = $("startup");
+  if (!overlay) return;
+  if (!startupInteracted) {
+    document.body.tabIndex = -1;
+    document.body.focus({preventScroll: true});
+  }
+  if (!fastStartup || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    overlay.remove();
+    return;
+  }
+  const mark = overlay.querySelector(".startup-mark");
+  const source = mark.getBoundingClientRect();
+  const target = document.querySelector(".brand img").getBoundingClientRect();
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const scale = target.width / source.width;
+  mark.style.transformOrigin = "top left";
+  document.body.classList.add("startup-running");
+  const options = {duration: 720, easing: "cubic-bezier(.4,0,.2,1)", fill: "forwards"};
+  const motion = mark.animate([
+    {transform: "translate(0,0) scale(1,1)", offset: 0},
+    {transform: "translate(-3px,4px) scale(1.07,.90)", offset: .16},
+    {transform: `translate(${dx}px,${dy}px) scale(${scale})`, offset: 1},
+  ], options);
+  // Fade the background separately so the moving logo stays solid.
+  overlay.animate([{backgroundColor: "#f6f8f5"}, {backgroundColor: "transparent"}], options);
+  for (const text of overlay.querySelectorAll(".startup-wordmark,.startup-caption")) {
+    text.animate([{opacity: 1, transform: "translateY(0)"},
+                  {opacity: 0, transform: "translateY(-8px) scale(.96)"}],
+                 {duration: 260, easing: "ease-in", fill: "forwards"});
+  }
+  try { await motion.finished; } finally {
+    document.body.classList.remove("startup-running");
+    overlay.remove();
+  }
+};
+const desktopStartup = new URLSearchParams(location.search).get("desktop") === "1";
+if (!desktopStartup) {
+  if (document.readyState === "complete") window.beginStartupTransition();
+  else window.addEventListener("load", window.beginStartupTransition, {once: true});
+}
+// Recover if a host callback fails; never leave the homepage covered indefinitely.
+setTimeout(window.beginStartupTransition, 2500);

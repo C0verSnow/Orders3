@@ -6,9 +6,14 @@ add_executable(orders
     native/launcher.hpp
     native/main.cpp
     native/main.hpp
+    native/splash.hpp
 )
 target_compile_features(orders PRIVATE cxx_std_17)
 set_target_properties(orders PROPERTIES CXX_EXTENSIONS OFF)
+if(WIN32)
+    set_target_properties(orders PROPERTIES WIN32_EXECUTABLE TRUE)
+    target_link_libraries(orders PRIVATE user32 gdi32)
+endif()
 if(MSVC)
     target_compile_options(orders PRIVATE /W4 /utf-8)
 else()

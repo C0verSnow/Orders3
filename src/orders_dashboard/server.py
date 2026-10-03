@@ -63,7 +63,10 @@ def make_handler(dashboard, orders_list=None):
                         self.send_body(200, "application/vnd.sqlite3", dashboard.output.read_bytes(), "data.db")
                 elif path in assets:
                     filename, content_type = assets[path]
-                    self.send_body(200, content_type, (root / filename).read_bytes())
+                    body = (root / filename).read_bytes()
+                    if filename == "index.html" and os.name == "nt":
+                        body = body.replace(b"<body>", b'<body class="startup-enabled">')
+                    self.send_body(200, content_type, body)
                 else:
                     self.send_json(404, {"error": "未找到资源"})
             except (OSError, ValueError, sqlite3.Error) as error:
@@ -75,7 +78,7 @@ def make_handler(dashboard, orders_list=None):
                 self.send_json(404, {"error": "未找到资源"})
                 return
             # Browser mutations must originate from this local page.
-            expected_origin = f"http://127.0.0.1:{self.server.server_port}"
+            expected_origin = os.environ.get("ORDERS_ALLOWED_ORIGIN") or f"http://127.0.0.1:{self.server.server_port}"
             if self.headers.get("Origin") != expected_origin:
                 self.send_json(403, {"error": "请从本地页面发起操作"})
                 return

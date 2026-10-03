@@ -2,11 +2,13 @@
 #include "launcher.hpp"
 
 #include <cerrno>
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
+#include "splash.hpp"
 
 #ifdef _WIN32
 #include <process.h>
@@ -60,7 +62,70 @@ static int run_python(const char* script_file, int argc = 0, char* argv[] = null
         std::vector<std::string> values = {interpreter, script_name};
         for (int index = 1; index < argc; ++index) values.emplace_back(argv[index]);
 #ifdef _WIN32
+        if (std::string(script_file) == "run.py") {
+            bool desktop = true;
+            for (int index = 1; index < argc; ++index) {
+                const std::string option = argv[index];
+                if (option == "--browser" || option == "--no-browser" ||
+                    option == "--fetch-only" || option == "--list" ||
+                    option == "--desktop" || option == "--help" || option == "-h") desktop = false;
+            }
+            if (desktop) values.emplace_back("--desktop");
+        }
+        const bool desktop_mode = std::find(values.begin(), values.end(), "--desktop") != values.end();
+        if (!desktop_mode) {
+            if (!AttachConsole(ATTACH_PARENT_PROCESS)) AllocConsole();
+            FILE* stream = nullptr;
+            freopen_s(&stream, "CONOUT$", "w", stdout);
+            freopen_s(&stream, "CONOUT$", "w", stderr);
+        }
+        StartupSplash splash(desktop_mode);
         for (std::string& value : values) value = quote_argument(value);
+        if (desktop_mode) {
+            // The job owns the entire Python/WebView process tree.
+            HANDLE job = CreateJobObjectW(nullptr, nullptr);
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            if (!job || !SetInformationJobObject(job, JobObjectExtendedLimitInformation,
+                                                &limits, sizeof(limits))) {
+                if (job) CloseHandle(job);
+                MessageBoxW(nullptr, L"无法创建独立窗口进程。", L"Orders", MB_OK | MB_ICONERROR);
+                return 1;
+            }
+            auto start = [&](const std::string& executable, PROCESS_INFORMATION& process) {
+                std::string command = quote_argument(executable);
+                for (std::size_t index = 1; index < values.size(); ++index) command += " " + values[index];
+                STARTUPINFOA startup{};
+                startup.cb = sizeof(startup);
+                return CreateProcessA(nullptr, command.data(), nullptr, nullptr, FALSE,
+                                      CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, nullptr,
+                                      &startup, &process);
+            };
+            PROCESS_INFORMATION process{};
+            bool launched = start(interpreter, process);
+            if (!launched && GetLastError() == ERROR_FILE_NOT_FOUND && !(configured && *configured))
+                launched = start("py", process);
+            if (!launched || !AssignProcessToJobObject(job, process.hProcess)) {
+                if (launched) {
+                    TerminateProcess(process.hProcess, 1);
+                    CloseHandle(process.hThread);
+                    CloseHandle(process.hProcess);
+                }
+                CloseHandle(job);
+                MessageBoxW(nullptr, L"无法启动 Python 独立窗口，请检查 Python 和窗口依赖。",
+                            L"Orders", MB_OK | MB_ICONERROR);
+                return 1;
+            }
+            ResumeThread(process.hThread);
+            CloseHandle(process.hThread);
+            splash.wait_for_process(process.hProcess);
+            DWORD result = 1;
+            GetExitCodeProcess(process.hProcess, &result);
+            if (result == STILL_ACTIVE) result = 0;
+            CloseHandle(process.hProcess);
+            CloseHandle(job);
+            return static_cast<int>(result);
+        }
 #endif
         std::vector<const char*> arguments;
         for (const std::string& value : values) arguments.push_back(value.c_str());

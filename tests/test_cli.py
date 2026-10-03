@@ -5,14 +5,28 @@ from pathlib import Path
 import tempfile
 import json
 import threading
+import time
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 from urllib.request import urlopen
 
 from orders_dashboard.cli import main
 from orders_dashboard.config import ScheduleConfig
 from orders_dashboard.server import LocalHTTPServer, make_handler
 from orders_dashboard.dashboard import Dashboard
+
+
+def wait_for_orders(address):
+    deadline = time.monotonic() + 3
+    while True:
+        with urlopen(address + "/api/orders", timeout=2) as response:
+            payload = json.load(response)
+        if not payload["refreshing"]:
+            return payload
+        if time.monotonic() >= deadline:
+            raise AssertionError("Background orders refresh did not finish")
+        time.sleep(.01)
 
 
 class StartupTests(unittest.TestCase):
@@ -38,8 +52,8 @@ class StartupTests(unittest.TestCase):
                                 with urlopen(address, timeout=5) as response:
                                     self.assertEqual(response.status, 200)
                                     self.assertIn(b"<html", response.read().lower())
-                                with urlopen(address + "/api/orders", timeout=5) as response:
-                                    payload = json.load(response)
+                                payload = wait_for_orders(address)
+                                if "--cached" not in arguments:
                                     self.assertEqual(payload["orders"][0]["activation_price"], "100")
                             finally:
                                 server.shutdown()
@@ -85,8 +99,7 @@ class StartupTests(unittest.TestCase):
                                           args=(server,), daemon=True)
                 thread.start()
                 try:
-                    with urlopen(f"http://127.0.0.1:{server.server_port}/api/orders", timeout=5) as response:
-                        payload = json.load(response)
+                    payload = wait_for_orders(f"http://127.0.0.1:{server.server_port}")
                     self.assertEqual(payload["orders"], [])
                     self.assertIn("offline", payload["error"])
                 finally:
@@ -100,6 +113,67 @@ class StartupTests(unittest.TestCase):
                     patch("orders_dashboard.trailing.fetch_orders", side_effect=ValueError("offline")), \
                     patch.object(LocalHTTPServer, "serve_forever", serve), redirect_stdout(StringIO()):
                 self.assertEqual(main(["--no-browser"]), 0)
+
+    def test_page_and_cache_are_available_while_network_is_blocked(self):
+        release = threading.Event()
+        sources_started = threading.Event()
+        orders_started = threading.Event()
+        sources_finished = threading.Event()
+        orders_finished = threading.Event()
+
+        def refresh(started, finished):
+            started.set()
+            release.wait(5)
+            finished.set()
+
+        def serve(server):
+            self.assertTrue(sources_started.wait(1))
+            self.assertTrue(orders_started.wait(1))
+            thread = threading.Thread(target=ThreadingHTTPServer.serve_forever,
+                                      args=(server,), daemon=True)
+            thread.start()
+            try:
+                address = f"http://127.0.0.1:{server.server_port}"
+                with urlopen(address, timeout=1) as response:
+                    self.assertEqual(response.status, 200)
+                with urlopen(address + "/api/data", timeout=1) as response:
+                    self.assertEqual(json.load(response)["items"], [])
+                self.assertFalse(release.is_set())
+            finally:
+                release.set()
+                self.assertTrue(sources_finished.wait(1))
+                self.assertTrue(orders_finished.wait(1))
+                server.shutdown()
+                thread.join()
+
+        with tempfile.TemporaryDirectory() as directory, \
+                patch("orders_dashboard.cli.default_output", return_value=Path(directory) / "data.db"), \
+                patch("orders_dashboard.cli.os", SimpleNamespace(name="nt")), \
+                patch("orders_dashboard.cli.load_schedule", return_value=ScheduleConfig(False)), \
+                patch("orders_dashboard.cli.Dashboard.refresh", side_effect=lambda: refresh(sources_started, sources_finished)), \
+                patch("orders_dashboard.cli.OrdersList.refresh", side_effect=lambda: refresh(orders_started, orders_finished)), \
+                patch.object(LocalHTTPServer, "serve_forever", serve), redirect_stdout(StringIO()):
+            self.assertEqual(main(["--no-browser"]), 0)
+
+    def test_linux_keeps_sequential_fetch_and_browser_startup(self):
+        events = []
+        with tempfile.TemporaryDirectory() as directory, \
+                patch("orders_dashboard.cli.os", SimpleNamespace(name="posix")), \
+                patch("orders_dashboard.cli.default_output", return_value=Path(directory) / "data.db"), \
+                patch("orders_dashboard.cli.load_schedule", return_value=ScheduleConfig(False)), \
+                patch("orders_dashboard.cli.OrdersList.refresh", side_effect=lambda: events.append("orders")), \
+                patch("orders_dashboard.cli.Dashboard.refresh", side_effect=lambda: events.append("sources")), \
+                patch("orders_dashboard.cli.webbrowser.open", side_effect=lambda address: events.append("browser")), \
+                patch.object(LocalHTTPServer, "serve_forever", lambda server: events.append("serve")), \
+                redirect_stdout(StringIO()):
+            self.assertEqual(main([]), 0)
+        self.assertEqual(events, ["orders", "sources", "browser", "serve"])
+
+    def test_linux_rejects_desktop_option(self):
+        with patch("orders_dashboard.cli.os", SimpleNamespace(name="posix")), \
+                redirect_stderr(StringIO()), self.assertRaises(SystemExit) as error:
+            main(["--desktop"])
+        self.assertEqual(error.exception.code, 2)
 
     def test_invalid_ports_are_rejected(self):
         for port in ("-1", "65536"):

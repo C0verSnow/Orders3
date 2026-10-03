@@ -12,13 +12,15 @@ from datetime import datetime, timezone
 
 import requests
 
-from .config import validate_output
+from .config import default_output, validate_output
 
 HOST = "https://api.gateio.ws"
 API_PATH = "/api/v4/futures/usdt/autoorder/v1/trail/list"
 FIELDS = ("id", "contract", "amount", "activation_price", "reduce_only", "original_status")
 
 def default_orders_output():
+    if getattr(sys, "frozen", False) or os.environ.get("ORDERS_DATA_DIR"):
+        return default_output().parent / "orderslist.db"
     return Path(__file__).resolve().parents[2] / "data" / "orderslist.db"
 
 

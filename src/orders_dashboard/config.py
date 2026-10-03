@@ -1,5 +1,6 @@
 """Environment settings and runtime paths."""
 import os
+import sys
 from configparser import ConfigParser, Error as ConfigError
 from dataclasses import dataclass
 from datetime import datetime
@@ -9,12 +10,21 @@ import tempfile
 from croniter import croniter, CroniterError
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env", encoding="utf-8-sig")
+def runtime_root():
+    """Keep user configuration outside a frozen executable's unpack directory."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[2]
+
+
+load_dotenv(runtime_root() / ".env", encoding="utf-8-sig")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
 
-CONFIG_PATH = Path(__file__).resolve().parents[2] / "config"
+CONFIG_PATH = Path(os.environ.get("ORDERS_CONFIG_PATH") or
+                   (Path.home() / ".orders-dashboard" / "config"
+                    if getattr(sys, "frozen", False) else runtime_root() / "config"))
 
 
 @dataclass(frozen=True)
@@ -64,6 +74,7 @@ def save_schedule(config, path=None):
     parser.set("schedule", "cron", config.cron)
     temporary = None
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
                                          suffix=".tmp", delete=False) as target:
             temporary = Path(target.name)
@@ -78,7 +89,9 @@ def default_output():
     configured = os.environ.get("ORDERS_DATA_DIR")
     if configured:
         return Path(configured).expanduser().resolve() / "data.db"
-    repository = Path(__file__).resolve().parents[2]
+    if getattr(sys, "frozen", False):
+        return Path.home() / ".orders-dashboard" / "data.db"
+    repository = runtime_root()
     directory = repository / "data" if (repository / "pyproject.toml").is_file() else Path.home() / ".orders-dashboard"
     return directory / "data.db"
 
