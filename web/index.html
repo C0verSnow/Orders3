@@ -3,40 +3,40 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Orders / 抓取数据看板</title>
+  <title>特洛伊资本</title>
   <link rel="icon" href="/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" type="module"></script>
 </head>
 <body>
-  <div id="startup" class="startup" role="status" aria-label="正在启动 Orders">
+  <div id="startup" class="startup" role="status" aria-label="正在启动特洛伊资本">
     <div class="startup-mark"><img src="/logo.svg" alt="" width="80" height="80"></div>
-    <span class="startup-wordmark">orders<span>.</span></span>
-    <span class="startup-caption">你的数据工作台</span>
+    <span class="startup-wordmark">Troy Capitalize</span>
+    <span class="startup-caption">特洛伊资本 · 实盘工作台</span>
   </div>
   <header class="topbar">
-    <a class="brand" href="/"><img src="/logo.svg" alt="" width="34" height="34"><span>orders<span class="brand-dot">.</span></span></a>
-    <span class="connection"><span class="dot"></span> 本地数据服务</span>
+    <a class="brand" href="/"><img src="/logo.svg" alt="" width="34" height="34"><span>Troy Capitalize</span></a>
+    <span class="connection"><span class="dot"></span> Troy Capitalize Service</span>
   </header>
   <main>
     <div id="workspace-live" class="workspace-view" role="tabpanel" aria-labelledby="segment-live" tabindex="0">
     <div class="heading">
-      <div><p class="eyebrow">DATA WORKSPACE / 数据工作台</p><h1>抓取数据，一目了然<span>。</span></h1><p class="subtitle">集中查看 URL 抓取结果，追踪订单信息与来源状态。</p></div>
+      <div><p class="eyebrow">TROY CAPITALIZE / 实盘工作台</p><h1>实盘数据，一目了然<span>。</span></h1><p class="subtitle">集中查看实盘订单、自动下单结果与 Gate 跟踪订单，掌握交易执行情况。</p></div>
     </div>
     <section class="stats" aria-label="数据概览">
-      <article><span>抓取来源</span><strong id="total">—</strong><small>全部数据记录</small></article>
-      <article><span><i class="dot"></i> 成功</span><strong id="success">—</strong><small>已获取来源内容</small></article>
-      <article><span><i class="dot red"></i> 失败</span><strong id="failed">—</strong><small>需要检查的来源</small></article>
+      <article><span>订单数据源</span><strong id="total">—</strong><small>已接入的数据源</small></article>
+      <article><span><i class="dot"></i> 成功</span><strong id="success">—</strong><small>订单数据获取正常</small></article>
+      <article><span><i class="dot red"></i> 失败</span><strong id="failed">—</strong><small>订单数据获取异常</small></article>
       <article class="updated"><span>最近更新</span><strong id="updated">—</strong><small id="update-date">等待数据加载</small></article>
     </section>
     <section id="flow-panel" class="results flow-panel" aria-labelledby="flow-title" data-channel="sources" data-state="idle" data-demo="false" data-motion="true">
       <div class="section-heading">
         <div class="section-title">
-          <p class="eyebrow">LIVE FLOW / 数据流</p>
-          <h2 id="flow-title">看见数据抵达的过程</h2>
-          <p class="hint">选择流程、查看节点，再获取最新数据。</p>
+          <p class="eyebrow">ORDER FLOW / 订单流程</p>
+          <h2 id="flow-title">掌握订单执行流程</h2>
+          <p class="hint">查看订单获取与处理流程，掌握实盘数据更新情况。</p>
         </div>
-        <span id="flow-state" class="flow-state" role="status" aria-live="polite">等待本地数据</span>
+        <span id="flow-state" class="flow-state" role="status" aria-live="polite">等待订单数据</span>
       </div>
       <div class="flow-toolbar">
         <div class="flow-switch" role="group" aria-label="选择数据流程">
@@ -51,8 +51,8 @@
       </div>
       <figure class="flow-scene">
         <svg class="flow-map" viewBox="0 0 960 360" role="img" aria-labelledby="flow-map-title flow-map-description">
-          <title id="flow-map-title">来源和 Gate 订单汇入本地数据库</title>
-          <desc id="flow-map-description">上方路径：读取来源、抓取内容、解析订单；下方路径：读取 Gate 列表、校验响应。两条路径都保存到本地 SQLite 数据库。</desc>
+          <title id="flow-map-title">来源订单与 Gate 跟踪订单更新至实盘看板</title>
+          <desc id="flow-map-description">上方路径：获取来源订单、解析交易信息；下方路径：获取 Gate 跟踪订单、校验订单信息。处理结果保存后更新实盘看板。</desc>
           <defs>
             <pattern id="flow-grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#dfe7dc"/></pattern>
           </defs>
@@ -67,7 +67,7 @@
               <rect class="flow-icon" x="18" y="19" width="26" height="26" rx="7"/>
               <path class="flow-icon-line" d="M 24 28 H 38 M 24 35 H 34"/>
               <text class="flow-card-kicker" x="56" y="36">01 / SOURCE</text>
-              <text class="flow-card-title" x="18" y="72">读取来源 · 抓取内容</text>
+              <text class="flow-card-title" x="18" y="72">获取实盘订单数据</text>
             </g>
             <g class="flow-card" transform="translate(340 55)">
               <rect width="206" height="100" rx="18"/>
@@ -100,8 +100,8 @@
             <rect width="218" height="134" rx="22"/>
             <ellipse class="flow-db-icon" cx="109" cy="28" rx="20" ry="7"/>
             <path class="flow-icon-line" d="M 89 28 V 49 C 89 59 129 59 129 49 V 28 M 89 39 C 89 49 129 49 129 39"/>
-            <text class="flow-card-title" x="109" y="84" text-anchor="middle">本地 SQLite</text>
-            <text class="flow-card-kicker" x="109" y="109" text-anchor="middle">保存快照 · 更新看板</text>
+            <text class="flow-card-title" x="109" y="84" text-anchor="middle">实盘订单记录</text>
+            <text class="flow-card-kicker" x="109" y="109" text-anchor="middle">保存订单 · 更新看板</text>
           </g>
         </svg>
         <figcaption id="flow-caption">高亮路径对应当前选择的流程；动画表示任务运行，不表示逐节点进度。</figcaption>
@@ -114,14 +114,14 @@
         </div>
         <span id="flow-summary" class="hint">等待数据加载</span>
       </div>
-      <p id="flow-detail" class="flow-detail">从 Supabase 分页读取来源地址，再逐条抓取内容。</p>
+      <p id="flow-detail" class="flow-detail">获取已配置的订单数据，解析交易信息并更新实盘记录。</p>
     </section>
     <div class="order-panels">
       <section class="results order-panel" aria-labelledby="results-title">
         <div class="section-heading">
           <div class="section-title">
             <h2 id="results-title">来源订单 <span id="count">0</span></h2>
-            <p class="hint">抓取来源成功后自动下单 · 网页每秒同步状态，抓取由按钮或定时任务触发</p>
+            <p class="hint">抓取来源成功后自动下单</p>
           </div>
           <button id="refresh" class="primary" type="button">获取订单</button>
         </div>
@@ -132,7 +132,7 @@
         <div class="toolbar">
           <label class="search">
             <span aria-hidden="true">⌕</span>
-            <input id="search" type="search" placeholder="搜索 URL、交易对或抓取内容…" aria-label="搜索来源订单">
+            <input id="search" type="search" placeholder="搜索数据源、交易对或订单内容…" aria-label="搜索来源订单">
           </label>
           <label class="filter">状态
             <select id="filter">
@@ -152,13 +152,13 @@
         <div class="section-heading">
           <div class="section-title">
             <h2 id="orders-title">Gate 跟踪订单 <span id="orders-count">0 条</span></h2>
-            <p class="hint">每分钟独立获取 Gate 跟踪订单 · 网页每秒同步状态，可手动获取最新列表</p>
+            <p class="hint">每分钟更新 Gate 跟踪订单</p>
           </div>
           <button id="orders-refresh" class="primary" type="button">获取跟踪订单</button>
         </div>
         <div class="panel-meta">
           <span>最近更新：<time id="orders-updated">—</time></span>
-          <span>启动时自动获取，也可手动更新</span>
+          <span>仅显示状态码非 5 的订单</span>
         </div>
         <p id="orders-notice" class="notice" role="status" aria-live="polite" hidden></p>
         <div id="orders-records" class="panel-content" aria-live="polite">
@@ -169,7 +169,7 @@
     </div>
     <div id="workspace-config" class="workspace-view" role="tabpanel" aria-labelledby="segment-config" tabindex="0" hidden>
       <div class="heading">
-        <div><p class="eyebrow">WORKSPACE SETTINGS / 工作台配置</p><h1>让数据按你的节奏抵达<span>。</span></h1><p class="subtitle">管理定时抓取、服务连接与数据存储。</p></div>
+        <div><p class="eyebrow">WORKSPACE SETTINGS / 工作台配置</p><h1>按交易节奏管理实盘<span>。</span></h1><p class="subtitle">设置订单更新周期、交易接口与数据保存位置。</p></div>
       </div>
     <section class="results settings-panel" aria-labelledby="settings-title">
       <div class="section-heading"><h2 id="settings-title">连接与存储配置</h2><span id="settings-status" class="hint" role="status">等待配置加载</span></div>
@@ -182,13 +182,13 @@
         <label>允许的网页来源（可选） <input id="settings-origin" type="url" placeholder="留空使用本地页面地址" maxlength="4096"></label>
         <button id="settings-save" class="primary" type="submit" disabled>保存程序配置</button>
       </form>
-      <p>首次使用请填写连接信息。密钥留空保留原值，勾选清除可删除。保存后连接配置立即生效，可点击抓取按钮获取数据；正在执行的任务使用原配置。</p>
+      <p>首次使用请填写连接信息。密钥留空保留原值，勾选清除可删除。保存后连接配置立即生效，可点击获取订单按钮更新数据；正在执行的任务使用原配置。</p>
       <p>数据目录在重启后生效，不会搬移已有数据库。网页来源只在使用代理时填写，保存后请用对应地址访问。</p>
       <p>配置保存位置：<span id="settings-path">—</span></p>
       <p id="settings-notice" class="notice" role="status" aria-live="polite" hidden></p>
     </section>
     <section class="results schedule-panel" aria-labelledby="schedule-title">
-      <div class="section-heading"><h2 id="schedule-title">定时抓取</h2><span id="schedule-status" class="hint" role="status">等待配置加载</span></div>
+      <div class="section-heading"><h2 id="schedule-title">定时更新订单</h2><span id="schedule-status" class="hint" role="status">等待配置加载</span></div>
       <form id="schedule-form" class="schedule-form">
         <label class="schedule-toggle"><input id="schedule-enabled" type="checkbox"> 启用定时任务</label>
         <label>常用周期 <select id="schedule-preset"><option value="">自定义</option><option value="* * * * *">每分钟</option><option value="*/5 * * * *">每 5 分钟</option><option value="*/15 * * * *">每 15 分钟</option><option value="0 * * * *">每小时</option><option value="0 9 * * *">每天 09:00</option></select></label>
@@ -201,7 +201,7 @@
       <p id="schedule-notice" class="notice" role="status" aria-live="polite" hidden></p>
     </section>
     </div>
-    <footer><span>ORDERS / 本地抓取看板</span><span>内容来自抓取来源 · 时间按浏览器时区显示</span></footer>
+    <footer><span>TROY CAPITALIZE / 特洛伊资本</span><span>实盘订单与交易执行记录 · 时间按浏览器时区显示</span></footer>
   </main>
   <div class="workspace-switch" role="tablist" aria-label="切换工作台" data-active="live">
     <span class="workspace-indicator" aria-hidden="true"></span>

@@ -16,9 +16,9 @@ function updateCountdown() {
 }
 export function applySchedule(schedule, running = false) {
   currentSchedule = schedule;
-  $("schedule-status").textContent = schedule?.enabled ? (running ? "正在抓取" : "已启用 · 服务器本地时间") : "已停用";
+  $("schedule-status").textContent = schedule?.enabled ? (running ? "正在更新订单" : "已启用 · 服务器本地时间") : "已停用";
   $("schedule-next").textContent = dateText(schedule?.next_run);
-  const results = {completed: "完成", error: "失败", busy: "已有抓取任务，已跳过"};
+  const results = {completed: "完成", error: "失败", busy: "已有订单更新任务，已跳过"};
   $("schedule-last").textContent = dateText(schedule?.last_run) + (schedule?.last_result ? `（${results[schedule.last_result] || schedule.last_result}）` : "");
   // Polling must not overwrite a user's unfinished changes.
   if (!scheduleDirty && !savingSchedule) {
@@ -71,7 +71,7 @@ export function initSchedule(onChange = () => {}) {
       scheduleDirty = false;
       savingSchedule = false;
       applySchedule(schedule);
-      scheduleNotice("配置已保存到 config，并立即生效。正在执行的抓取会正常完成。");
+      scheduleNotice("配置已保存到 config，并立即生效。正在执行的订单更新会正常完成。");
     } catch (error) { scheduleNotice(error.message); }
     finally {
       savingSchedule = false;

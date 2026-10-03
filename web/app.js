@@ -13,7 +13,8 @@ let updatingData = false;
 let updatingOrders = false;
 let sourceGeneration = 0;
 let ordersGeneration = 0;
-const ACTIVE_POLL_MS = 1000;
+const TASK_SYNC_MS = 5000;
+const ORDERS_SYNC_MS = 60000;
 let sourceSyncTimer;
 let sourceSchedule = null;
 let sourceTableSnapshot;
@@ -25,8 +26,8 @@ function scheduleSourceSync(schedule = sourceSchedule) {
   const nextRun = schedule?.enabled ? new Date(schedule.next_run).getTime() : NaN;
   if (!sourceReadFailed && !refreshing && !updatingData && (!schedule?.next_run || !Number.isFinite(nextRun))) return;
   // Read shortly after the server's scheduler tick, then follow an active fetch to completion.
-  const delay = sourceReadFailed ? 5000 : refreshing || updatingData ? ACTIVE_POLL_MS
-    : Math.max(ACTIVE_POLL_MS, nextRun - Date.now() + 1200);
+  const delay = sourceReadFailed ? 5000 : refreshing || updatingData ? TASK_SYNC_MS
+    : Math.max(TASK_SYNC_MS, nextRun - Date.now() + 1200);
   sourceSyncTimer = setTimeout(() => {
     // Long waits exceed the browser timer limit; re-arm without reading data early.
     if (!sourceReadFailed && !refreshing && !updatingData && Date.now() < nextRun) scheduleSourceSync();
@@ -51,13 +52,13 @@ function render() {
   const openRecords = new Set(Array.from(container.querySelectorAll("details[open]")).map((el) => el.dataset.key));
   container.replaceChildren();
   if (!visible.length) {
-    $("count").textContent = `0 / ${items.length} 来源`;
+    $("count").textContent = `0 / ${items.length} 数据源`;
     container.append(node("div", "empty", items.length ? "没有匹配的结果，试试其他关键词或状态。" : "暂无来源订单，点击「获取订单」加载数据。"));
     return;
   }
   const {wrapper, tbody} = createTable(
-    ["来源", "状态", "交易对", "方向", "价格", "数量", "订单时间", "来源创建时间", "抓取内容"],
-    "来源及订单数据，每个订单一行；无订单的来源保留一行。", "source-table");
+    ["数据源", "状态", "交易对", "方向", "价格", "数量", "订单时间", "数据源创建时间", "订单内容"],
+    "实盘订单数据，每个订单一行；无订单的数据源保留一行。", "source-table");
   let rowCount = 0;
   const ordersBySource = new Map();
   for (const order of orderRows) {
@@ -99,7 +100,7 @@ function render() {
       tbody.append(tr);
     }
   }
-  $("count").textContent = `${visible.length} / ${items.length} 来源 · ${rowCount} 行`;
+  $("count").textContent = `${visible.length} / ${items.length} 数据源 · ${rowCount} 行`;
   container.append(wrapper);
   wrapper.scrollLeft = scrollLeft;
 }
@@ -108,11 +109,13 @@ function notice(message) {
   $("notice").hidden = !message;
 }
 function renderExecution(results = []) {
+  // Results are appended in execution order; discard the oldest rows from the view.
+  results = results.slice(-10);
   const container = $("execution-results");
   container.replaceChildren();
   container.hidden = !results.length;
   if (!results.length) return;
-  const {wrapper, tbody} = createTable(["自动下单结果", "合约", "数量", "订单 ID", "说明"], "最近一次自动下单结果");
+  const {wrapper, tbody} = createTable(["自动下单结果", "合约", "数量", "订单 ID", "说明"], "最近 10 条自动下单结果");
   const labels = {created: "已创建", stopped: "已停止", skipped: "已跳过", failed: "失败"};
   for (const result of results) {
     const tr = node("tr");
@@ -138,7 +141,7 @@ function applyData(data) {
   $("source-updated").textContent = dateText(data.updated_at);
   updateFetchButton("refresh", refreshing || updatingData, "获取订单");
   notice(data.error || (updatingData ? data.phase === "trading"
-    ? "来源已保存，正在停止旧单并自动发布新单…" : "正在后台抓取来源，当前显示本地缓存。" : ""));
+    ? "来源已保存，正在停止旧单并自动发布新单…" : "正在更新来源订单，当前显示上次记录。" : ""));
   renderExecution(Array.isArray(data.execution) ? data.execution : []);
   const tableSnapshot = JSON.stringify([items, orderRows]);
   if (tableSnapshot !== sourceTableSnapshot) {
@@ -176,7 +179,7 @@ $("refresh").addEventListener("click", async () => {
   beginFlow("sources");
   let fetchError = "";
   updateFetchButton("refresh", true, "获取订单");
-  notice("正在读取来源并抓取内容，请稍候…");
+  notice("正在获取实盘订单并处理自动下单，请稍候…");
   try {
     const response = await fetch("/api/refresh", {method: "POST"});
     const data = await response.json();
@@ -185,7 +188,7 @@ $("refresh").addEventListener("click", async () => {
       sourceReadFailed = false;
     }
     if (!response.ok) throw new Error(data.error || "抓取失败");
-    notice("来源已更新，自动下单处理完成。结果见下方。");
+    notice("订单数据已更新，自动下单处理完成。结果见下方。");
   } catch (error) { fetchError = error.message; notice(error.message); }
   finally {
     refreshing = false;
@@ -204,22 +207,23 @@ function ordersNotice(message) {
 }
 function applyOrders(data) {
   if (!Array.isArray(data.orders)) throw new Error("订单列表格式错误");
-  $("orders-count").textContent = `${data.orders.length} 条`;
+  const visibleOrders = data.orders.filter((order) => Number(order.original_status) !== 5);
+  $("orders-count").textContent = `${visibleOrders.length} 条`;
   $("orders-updated").textContent = dateText(data.updated_at);
   updatingOrders = Boolean(data.refreshing);
   updateFetchButton("orders-refresh", fetchingOrders || updatingOrders, "获取跟踪订单");
   ordersNotice(data.error || (updatingOrders ? "正在后台获取最新订单，当前显示本地缓存。" : ""));
-  updateFlow("orders", {...data, refreshing: fetchingOrders || updatingOrders});
+  updateFlow("orders", {...data, orders: visibleOrders, refreshing: fetchingOrders || updatingOrders});
   const container = $("orders-records");
   container.replaceChildren();
-  if (!data.orders.length) {
+  if (!visibleOrders.length) {
     container.append(node("div", "empty", data.updated_at ? "目前没有跟踪订单。" : "点击「获取跟踪订单」加载列表。"));
     return;
   }
   const {wrapper, tbody} = createTable(
     ["订单 ID", "合约", "数量", "激活价格", "仅减仓", "原始状态", "接口时间"],
     "Gate 跟踪订单", "trailing-table");
-  for (const order of data.orders) {
+  for (const order of visibleOrders) {
     const tr = node("tr");
     for (const field of ["id", "contract", "amount", "activation_price"]) {
       tr.append(node("td", "", order[field] === "" || order[field] == null ? "—" : String(order[field])));
@@ -271,8 +275,8 @@ $("orders-refresh").addEventListener("click", async () => {
 });
 async function pollOrders() {
   await loadOrders();
-  // Observe minute polling promptly, including its running/error states.
-  setTimeout(pollOrders, ACTIVE_POLL_MS);
+  // Sync the cached Gate list once per minute; manual requests update immediately.
+  setTimeout(pollOrders, ORDERS_SYNC_MS);
 }
 initWorkspace();
 initFlow();

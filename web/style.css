@@ -463,8 +463,11 @@ footer {
     padding: 30px 20px calc(var(--workspace-bottom) + 100px);
   }
   .topbar {
-    padding: 0 20px;
-    height: 70px;
+    padding: 14px 20px;
+    min-height: 70px;
+    height: auto;
+    flex-wrap: wrap;
+    gap: 8px 16px;
   }
   .heading {
     align-items: flex-start;
@@ -506,6 +509,10 @@ footer {
   }
   h1 {
     font-size: 27px;
+  }
+  .brand {
+    font-size: 20px;
+    letter-spacing: -.5px;
   }
   .connection {
     font-size: 10px;

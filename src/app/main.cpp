@@ -81,11 +81,11 @@ int main(int argc, char *argv[]) {
 #else
     application = std::make_unique<QCoreApplication>(argc, argv);
 #endif
-    QCoreApplication::setApplicationName("orders");
+    QCoreApplication::setApplicationName("特洛伊资本");
     QCoreApplication::setApplicationVersion("0.2.0");
     QCoreApplication::setOrganizationName("OrdersDashboard");
     QCommandLineParser parser;
-    parser.setApplicationDescription("本地订单数据看板（C++ / Qt，无 Python 运行时）");
+    parser.setApplicationDescription("特洛伊资本 · 实盘订单看板");
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addPositionalArgument("output", "SQLite 输出文件路径", "[output]");

@@ -54,10 +54,10 @@ QPixmap splashImage() {
     painter.setPen(QColor("#22352e"));
     QFont title("Segoe UI", 24, QFont::Bold);
     painter.setFont(title);
-    painter.drawText(QRect(0, 161, 420, 46), Qt::AlignCenter, "orders.");
+    painter.drawText(QRect(0, 161, 420, 46), Qt::AlignCenter, "Troy Capitalize");
     painter.setFont(QFont("Segoe UI", 10));
     painter.setPen(QColor("#82927e"));
-    painter.drawText(QRect(0, 214, 420, 30), Qt::AlignCenter, "你的数据工作台");
+    painter.drawText(QRect(0, 214, 420, 30), Qt::AlignCenter, "特洛伊资本 · 实盘工作台");
     return image;
 }
 } // namespace
@@ -67,7 +67,7 @@ int runDesktop(const QUrl &address) {
     QApplication::setWindowIcon(icon);
     QMainWindow window;
     window.setWindowIcon(icon);
-    window.setWindowTitle("Orders · 本地订单看板");
+    window.setWindowTitle("特洛伊资本");
     window.resize(1200, 820);
     window.setMinimumSize(720, 520);
     auto *profile = new QWebEngineProfile("OrdersDashboard", &window);
@@ -118,7 +118,7 @@ int runDesktop(const QUrl &address) {
     QObject::connect(view, &QWebEngineView::loadFinished, &window, [&](bool loaded) {
         showWindow();
         if (!loaded)
-            QMessageBox::warning(&window, "Orders", "看板加载失败，请关闭窗口后重新启动。");
+            QMessageBox::warning(&window, "特洛伊资本", "看板加载失败，请关闭窗口后重新启动。");
     });
     QTimer::singleShot(15000, &window, showWindow);
     QUrl url = address;

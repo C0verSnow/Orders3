@@ -1,19 +1,19 @@
 import { $, dateText } from "./ui.js";
 
 const channels = {
-  sources: {ready: false, busy: false, phase: "", error: "", updated: null, summary: "等待来源数据加载"},
+  sources: {ready: false, busy: false, phase: "", error: "", updated: null, summary: "等待来源订单加载"},
   orders: {ready: false, busy: false, error: "", updated: null, summary: "等待 Gate 数据加载"}
 };
 const descriptions = {
   sources: {
-    input: "从 Supabase 分页读取来源地址，再逐条抓取内容。单个来源失败会记录错误，其他来源继续处理。",
+    input: "获取已配置的订单数据并解析交易信息。单个数据源异常会记录原因，其他数据源继续处理。",
     process: "从文本中识别交易对、方向、价格、数量和时间。价格与带单位的数量保留原文，缺失字段显示为 —。",
-    store: "保存来源和解析订单后自动下单：先跳过7天内同合约同方向的已完成订单，再停止未完成的开仓追踪单，最后发布新单。执行结果显示在来源区域。"
+    store: "保存来源和解析订单后自动下单：先跳过7天内同合约同方向的已完成订单，再停止未完成的开仓追踪单，最后发布新单。执行结果在来源订单区域仅显示最近 10 条。"
   },
   orders: {
-    input: "使用已保存的 Gate 配置，每分钟独立获取跟踪订单列表；不受来源定时任务开关影响。网页每秒同步本地状态。",
+    input: "使用已保存的 Gate 配置，每分钟获取并更新跟踪订单列表，也可点击按钮更新。列表隐藏状态码为 5 的订单。",
     process: "校验接口响应和订单字段，整理为看板可读的列表，保留价格与数量的字符串精度。",
-    store: "完整列表校验通过后，事务更新本地跟踪订单快照。获取失败时继续展示已保存的订单。"
+    store: "完整列表校验通过后，保存最新跟踪订单记录。获取失败时继续展示已保存的订单。"
   }
 };
 let selected = "sources";
@@ -31,7 +31,7 @@ function renderFlow() {
   $("flow-state").textContent = demo ? "动画演示 · 不发起请求"
     : current.busy ? current.phase === "trading" ? "来源已保存 · 正在自动下单" : "正在获取 · 当前显示缓存"
     : current.error ? "获取异常 · 可查看下方提示"
-    : current.updated ? "本地快照已就绪" : current.ready ? "等待首次获取" : "等待本地数据";
+    : current.updated ? "实盘记录已更新" : current.ready ? "等待首次获取" : "等待订单数据";
   $("flow-summary").textContent = current.summary;
   $("flow-detail").textContent = descriptions[selected][step];
   $("flow-caption").textContent = demo
@@ -62,11 +62,11 @@ export function updateFlow(channel, snapshot) {
   current.updated = snapshot.updated_at;
   if (channel === "sources") {
     const failures = snapshot.items.filter((item) => item.error || Number(item.status_code) >= 400).length;
-    current.summary = `${snapshot.items.length} 个来源 · ${snapshot.orders?.length || 0} 条解析订单 · ${failures} 个异常来源`;
+    current.summary = `${snapshot.items.length} 个数据源 · ${snapshot.orders?.length || 0} 条解析订单 · ${failures} 个异常数据源`;
     const execution = snapshot.execution || [];
     if (execution.length) current.summary += ` · 已创建 ${execution.filter((row) => row.action === "created").length} · 跳过 ${execution.filter((row) => row.action === "skipped").length}`;
   } else {
-    current.summary = `${snapshot.orders.length} 条跟踪订单 · 本地快照`;
+    current.summary = `${snapshot.orders.length} 条跟踪订单 · 实盘记录`;
   }
   renderFlow();
 }

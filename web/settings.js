@@ -19,7 +19,7 @@ export function initSettings() {
       $("settings-clear-" + id).checked = false;
     }
     $("settings-path").textContent = settings.config_path;
-    $("settings-status").textContent = values.SUPABASE_URL && values.SUPABASE_ANON_KEY_SET ? "来源连接已配置" : "请先填写来源连接信息";
+    $("settings-status").textContent = values.SUPABASE_URL && values.SUPABASE_ANON_KEY_SET ? "订单数据连接已配置" : "请先填写订单数据连接信息";
   }
   async function loadSettings() {
     try {
