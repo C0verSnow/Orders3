@@ -255,7 +255,13 @@ jobs:
         run: |
           set -euo pipefail
           verify_container() {
-            docker run -d --platform "$1" --name orders-ci -p 127.0.0.1:8090:8090 "$2" --host 0.0.0.0 --port 8090 --no-browser --cached
+            local platform="$1" image="$2" mode="$3"
+            if [[ "$mode" == manual ]]; then
+              # Exercise the user's exact command from the image's default working directory.
+              docker run -d --platform "$platform" --name orders-ci -p 127.0.0.1:8090:8090 --entrypoint /bin/sh "$image" -c 'exec ./orders'
+            else
+              docker run -d --platform "$platform" --name orders-ci -p 127.0.0.1:8090:8090 "$image"
+            fi
             trap 'docker logs orders-ci; docker rm -f orders-ci' EXIT
             # Docker can reset connections before the HTTP event loop is ready.
             ready=false
@@ -284,8 +290,10 @@ jobs:
             docker rm -f orders-ci
             trap - EXIT
           }
-          verify_container linux/amd64 orders-dashboard:ci
-          verify_container linux/arm64 orders-dashboard:ci-arm64
+          verify_container linux/amd64 orders-dashboard:ci automatic
+          verify_container linux/amd64 orders-dashboard:ci manual
+          verify_container linux/arm64 orders-dashboard:ci-arm64 automatic
+          verify_container linux/arm64 orders-dashboard:ci-arm64 manual
       - name: Log in to GHCR
         if: needs.publication.outputs.enabled == 'true'
         uses: docker/login-action@v4.6.0

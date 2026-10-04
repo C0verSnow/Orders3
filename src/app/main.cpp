@@ -90,8 +90,10 @@ int main(int argc, char *argv[]) {
     parser.addVersionOption();
     parser.addPositionalArgument("output", "SQLite 输出文件路径", "[output]");
     parser.addOptions({
-        {"port", "监听端口，0 自动分配", "port", "0"},
-        {"host", "监听 IP，默认仅本机", "host", "127.0.0.1"},
+        {"port", "监听端口，默认读取 ORDERS_PORT，0 自动分配", "port",
+         qEnvironmentVariable("ORDERS_PORT", "0")},
+        {"host", "监听 IP，默认读取 ORDERS_HOST，否则仅本机", "host",
+         qEnvironmentVariable("ORDERS_HOST", "127.0.0.1")},
         {"cached", "启动时展示缓存，跳过远程抓取"},
         {"fetch-only", "抓取来源一次，保存数据库并自动处理开仓追踪单"},
         {"list", "只获取 Gate 跟踪订单"},
@@ -100,6 +102,8 @@ int main(int argc, char *argv[]) {
         {"desktop", "使用 Windows 独立窗口"}
     });
     parser.process(*application);
+    const bool openBrowser = !parser.isSet("no-browser")
+        && (parser.isSet("browser") || qEnvironmentVariable("ORDERS_NO_BROWSER") != "1");
     try {
         const auto positional = parser.positionalArguments();
         if (positional.size() > 1)
@@ -151,15 +155,10 @@ int main(int argc, char *argv[]) {
         const QUrl address = server.listen(parser.value("host"), quint16(port));
         std::cout << "本地看板：" << address.toString().toUtf8().constData() << std::endl;
         if (!parser.isSet("cached")) {
-#ifdef Q_OS_WIN
             auto sources = QtConcurrent::run([&dashboard] { dashboard.refreshSources(); });
             auto trailing = QtConcurrent::run([&dashboard] { dashboard.refreshOrders(); });
             Q_UNUSED(sources);
             Q_UNUSED(trailing);
-#else
-            dashboard.refreshSources();
-            dashboard.refreshOrders();
-#endif
         }
         scheduler.start();
         std::signal(SIGINT, stopSignal);
@@ -179,7 +178,7 @@ int main(int argc, char *argv[]) {
         if (desktop) {
             result = orders::runDesktop(address);
         } else {
-            if (!parser.isSet("no-browser")) {
+            if (openBrowser) {
                 // QCoreApplication keeps service mode free of GUI initialization.
                 QProcess::startDetached("rundll32.exe",
                                         {"url.dll,FileProtocolHandler", address.toString()});
@@ -187,7 +186,7 @@ int main(int argc, char *argv[]) {
             result = application->exec();
         }
 #else
-        if (!parser.isSet("no-browser"))
+        if (openBrowser)
 #ifdef Q_OS_MACOS
             QProcess::startDetached("open", {address.toString()});
 #else

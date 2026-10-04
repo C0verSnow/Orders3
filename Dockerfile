@@ -22,12 +22,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && mkdir /data && chown orders:orders /data
 COPY --from=builder /opt/orders /opt/orders
 ENV ORDERS_DATA_DIR=/data \
-    ORDERS_CONFIG_PATH=/data/config
-WORKDIR /opt/orders
+    ORDERS_CONFIG_PATH=/data/config \
+    ORDERS_HOST=0.0.0.0 \
+    ORDERS_PORT=8090 \
+    ORDERS_NO_BROWSER=1
+WORKDIR /opt/orders/bin
 USER orders
 VOLUME ["/data"]
 EXPOSE 8090
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD curl --fail --silent http://127.0.0.1:8090/api/data > /dev/null || exit 1
 ENTRYPOINT ["/opt/orders/bin/orders"]
-CMD ["--host", "0.0.0.0", "--port", "8090", "--no-browser"]
+CMD []

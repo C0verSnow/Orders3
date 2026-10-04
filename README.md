@@ -30,7 +30,7 @@ C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 和 macOS �
 
 `--cached` 跳过启动抓取，定时任务仍可执行。`--fetch-only` 抓取来源一次，保存后自动处理开仓追踪单，`--list` 获取 Gate 跟踪订单一次。单次抓取允许位置参数指定数据库路径，只支持 `.db`、`.sqlite`、`.sqlite3`。
 
-Windows 启动时立即展示缓存，两个抓取任务分别在后台执行；Linux 保持先抓取再打开浏览器的方式。`--desktop` 仅支持 Windows，不能与 `--browser`、`--no-browser` 或单次抓取组合使用。
+启动时立即展示缓存，两个抓取任务分别在后台执行；Linux 和 macOS 无需等待远程抓取完成即可访问页面。`--desktop` 仅支持 Windows，不能与 `--browser`、`--no-browser` 或单次抓取组合使用。
 
 ## 配置与数据
 
@@ -142,4 +142,27 @@ docker run -d --name orders-dashboard --restart unless-stopped `
   -v orders-dashboard-data:/data ghcr.io/huan00000/orders3:v0.2.0
 ```
 
-访问 `http://127.0.0.1:8090`。`/data` 保存两个数据库与定时配置。不需要启动抓取时，在镜像名后追加 `--host 0.0.0.0 --port 8090 --no-browser --cached`。使用不同访问地址时设置相应的 `ORDERS_ALLOWED_ORIGIN`。
+访问 `http://127.0.0.1:8090`。`/data` 保存数据库与程序配置。不需要启动抓取时，在镜像名后追加 `--cached`。使用不同访问地址时设置相应的 `ORDERS_ALLOWED_ORIGIN`。
+
+### Mac / OrbStack：进入容器后执行 ./orders
+
+在 Mac 终端创建并进入容器（使用包含本次改动的新镜像）：
+
+```sh
+docker run -it --name orders-manual \
+  -p 127.0.0.1:8090:8090 \
+  -v orders-dashboard-data:/data \
+  --entrypoint /bin/sh ghcr.io/huan00000/orders3:latest
+```
+
+进入后直接运行：
+
+```sh
+./orders
+```
+
+在 Mac 浏览器打开 `http://127.0.0.1:8090`，首次使用在页面填写连接配置。容器工作目录默认为 `/opt/orders/bin`，镜像通过 `ORDERS_HOST=0.0.0.0`、`ORDERS_PORT=8090`、`ORDERS_NO_BROWSER=1` 提供服务默认值。命令行 `--host` / `--port` 优先于环境变量；`--browser` 可以覆盖禁止自动打开浏览器的环境默认值，`--no-browser` 始终禁止打开浏览器。这些启动变量从进程环境读取，需要在启动前设置，不由页面或旧 `.env` 文件读取。宿主机直接运行发布包时仍默认仅监听本机、自动分配端口并打开浏览器。
+
+`-p` 必须在创建容器时设置；`EXPOSE` 和程序本身都不会创建 Mac 的端口映射。此前通过 OrbStack 临时终端创建且没有映射端口的容器，需要重新创建并配置 `127.0.0.1:8090:8090`。如果已有容器使用 8090，请先停止对应服务或改用其他宿主机端口，同时设置匹配的 `ORDERS_ALLOWED_ORIGIN`。正常自动启动的容器已经运行服务，无需再执行第二个 `./orders`。
+
+已有手动容器可在停止程序、退出终端后通过 `docker start -ai orders-manual` 再次进入，随后执行 `./orders`。
