@@ -11,6 +11,7 @@
 #endif
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QProcess>
@@ -25,6 +26,14 @@
 namespace {
 volatile std::sig_atomic_t interrupted = 0;
 void stopSignal(int) { interrupted = 1; }
+
+bool runningInContainer() {
+#ifdef Q_OS_LINUX
+    return QFileInfo::exists("/.dockerenv") || QFileInfo::exists("/run/.containerenv");
+#else
+    return false;
+#endif
+}
 
 #ifdef Q_OS_WIN
 std::atomic<bool> consoleStopped{false};
@@ -84,16 +93,19 @@ int main(int argc, char *argv[]) {
     QCoreApplication::setApplicationName("特洛伊资本");
     QCoreApplication::setApplicationVersion("0.2.0");
     QCoreApplication::setOrganizationName("OrdersDashboard");
+    // Manual shell launches must remain reachable through Docker's published port,
+    // even when the image's service environment variables are absent.
+    const bool container = runningInContainer();
     QCommandLineParser parser;
     parser.setApplicationDescription("特洛伊资本 · 实盘订单看板");
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addPositionalArgument("output", "SQLite 输出文件路径", "[output]");
     parser.addOptions({
-        {"port", "监听端口，默认读取 ORDERS_PORT，0 自动分配", "port",
-         qEnvironmentVariable("ORDERS_PORT", "0")},
-        {"host", "监听 IP，默认读取 ORDERS_HOST，否则仅本机", "host",
-         qEnvironmentVariable("ORDERS_HOST", "127.0.0.1")},
+        {"port", "监听端口，默认读取 ORDERS_PORT；容器 8090，宿主机 0（自动分配）", "port",
+         qEnvironmentVariable("ORDERS_PORT", container ? "8090" : "0")},
+        {"host", "监听 IP，默认读取 ORDERS_HOST；容器 0.0.0.0，宿主机 127.0.0.1", "host",
+         qEnvironmentVariable("ORDERS_HOST", container ? "0.0.0.0" : "127.0.0.1")},
         {"cached", "启动时展示缓存，跳过远程抓取"},
         {"fetch-only", "抓取来源一次，保存数据库并自动处理开仓追踪单"},
         {"list", "只获取 Gate 跟踪订单"},
@@ -103,7 +115,8 @@ int main(int argc, char *argv[]) {
     });
     parser.process(*application);
     const bool openBrowser = !parser.isSet("no-browser")
-        && (parser.isSet("browser") || qEnvironmentVariable("ORDERS_NO_BROWSER") != "1");
+        && (parser.isSet("browser")
+            || qEnvironmentVariable("ORDERS_NO_BROWSER", container ? "1" : "0") != "1");
     try {
         const auto positional = parser.positionalArguments();
         if (positional.size() > 1)
@@ -154,6 +167,12 @@ int main(int argc, char *argv[]) {
                          [cancelled = config.cancelled] { cancelled->store(true); });
         const QUrl address = server.listen(parser.value("host"), quint16(port));
         std::cout << "本地看板：" << address.toString().toUtf8().constData() << std::endl;
+        if (container) {
+            std::cout << "容器内服务已启动；Mac 浏览器访问需要 Docker 发布端口。"
+                      << "同端口映射：-p 127.0.0.1:" << address.port() << ':' << address.port()
+                      << "；若宿主机端口不同，请访问宿主机端口并设置 ORDERS_ALLOWED_ORIGIN。"
+                      << std::endl;
+        }
         if (!parser.isSet("cached")) {
             auto sources = QtConcurrent::run([&dashboard] { dashboard.refreshSources(); });
             auto trailing = QtConcurrent::run([&dashboard] { dashboard.refreshOrders(); });

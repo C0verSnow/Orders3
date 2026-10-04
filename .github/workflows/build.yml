@@ -259,6 +259,9 @@ jobs:
             if [[ "$mode" == manual ]]; then
               # Exercise the user's exact command from the image's default working directory.
               docker run -d --platform "$platform" --name orders-ci -p 127.0.0.1:8090:8090 --entrypoint /bin/sh "$image" -c 'exec ./orders'
+            elif [[ "$mode" == manual-without-env ]]; then
+              # Verify native container defaults without Dockerfile-provided values.
+              docker run -d --platform "$platform" --name orders-ci -p 127.0.0.1:8090:8090 --entrypoint /bin/sh "$image" -c 'unset ORDERS_HOST ORDERS_PORT ORDERS_NO_BROWSER; exec ./orders'
             else
               docker run -d --platform "$platform" --name orders-ci -p 127.0.0.1:8090:8090 "$image"
             fi
@@ -281,6 +284,8 @@ jobs:
               exit 1
             fi
             grep -qi '<html' /tmp/orders-page.html
+            docker logs orders-ci > /tmp/orders-container.log 2>&1
+            grep -Fq '本地看板：http://127.0.0.1:8090/' /tmp/orders-container.log
             for route in style.css flow.css app.js activity.js flow.js logo.svg api/data api/orders api/activity; do
               curl --fail --silent --show-error "http://127.0.0.1:8090/$route" > /dev/null
             done
@@ -292,8 +297,25 @@ jobs:
           }
           verify_container linux/amd64 orders-dashboard:ci automatic
           verify_container linux/amd64 orders-dashboard:ci manual
+          verify_container linux/amd64 orders-dashboard:ci manual-without-env
           verify_container linux/arm64 orders-dashboard:ci-arm64 automatic
           verify_container linux/arm64 orders-dashboard:ci-arm64 manual
+          verify_container linux/arm64 orders-dashboard:ci-arm64 manual-without-env
+      - name: Verify automatic random port mapping
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ORDERS_IMAGE=orders-dashboard:ci
+          export ORDERS_CONTAINER_NAME=orders-ci-random
+          trap 'docker logs orders-ci-random; docker rm -f orders-ci-random' EXIT
+          bash scripts/start-docker.sh --cached > /tmp/orders-random.log
+          cat /tmp/orders-random.log
+          url="$(sed -n 's/^本地看板：//p' /tmp/orders-random.log)"
+          port="$(docker exec orders-ci-random printenv ORDERS_PORT)"
+          test "$url" = "http://127.0.0.1:$port/"
+          test "$(docker port orders-ci-random "$port/tcp")" = "127.0.0.1:$port"
+          curl --fail --silent --show-error "${url}api/data" > /dev/null
+          curl --fail --silent --show-error -H "Origin: ${url%/}" -H 'Content-Type: application/json' --data '{"enabled":false,"cron":"*/15 * * * *"}' "${url}api/schedule"
       - name: Log in to GHCR
         if: needs.publication.outputs.enabled == 'true'
         uses: docker/login-action@v4.6.0
