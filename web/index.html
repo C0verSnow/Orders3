@@ -28,7 +28,7 @@
       <article><span>浮盈浮亏</span><strong id="unrealised-pnl">—</strong><small>持仓未实现盈亏 · USDT</small></article>
       <article><span>实盈实亏</span><strong id="realised-pnl">—</strong><small>持仓接口已实现盈亏合计 · USDT</small></article>
       <article><span>在线时长</span><strong id="uptime">—</strong><small>本次程序启动后的运行时间</small></article>
-      <article class="updated"><span>最近更新</span><strong id="updated">—</strong><small id="update-date">等待数据加载</small></article>
+      <article class="updated"><span>订单最近更新</span><strong id="updated">—</strong><small id="update-date">等待数据加载</small></article>
     </section>
     <section id="flow-panel" class="results flow-panel" aria-labelledby="flow-title" data-state="connecting">
       <div class="section-heading">
@@ -95,13 +95,10 @@
         <div class="section-heading">
           <div class="section-title">
             <h3 id="orders-title">Gate 跟踪订单 <span id="orders-count">0 条</span></h3>
-            <p class="hint">每分钟更新持仓和跟踪订单，停止本程序的旧平仓单并发布新平仓单；手动获取也会执行</p>
           </div>
-          <button id="orders-refresh" class="primary" type="button">获取跟踪订单</button>
         </div>
         <div class="panel-meta">
-          <span>最近更新：<time id="orders-updated">—</time></span>
-          <span>订单列表</span>
+          <span>订单最近更新：<time id="orders-updated">—</time></span>
         </div>
         <p id="orders-notice" class="notice" role="status" aria-live="polite" hidden></p>
         <div id="orders-records" class="panel-content" aria-live="polite">
@@ -112,13 +109,10 @@
         <div class="section-heading">
           <div class="section-title">
             <h3 id="positions-title">Gate 持仓与平仓 <span id="positions-count">0 条</span></h3>
-            <p class="hint">与跟踪订单一起每分钟更新，显示持仓明细、计算平仓价格和最近 10 条自动平仓下单结果</p>
           </div>
-          <button id="positions-refresh" class="primary" type="button">更新持仓与平仓单</button>
         </div>
         <div class="panel-meta">
           <span>订单最近更新：<time id="positions-updated">—</time></span>
-          <span>零持仓保留盈亏记录，不发布平仓单；手动更新会替换本程序的平仓单</span>
         </div>
         <p id="positions-notice" class="notice" role="status" aria-live="polite" hidden></p>
         <div id="positions-records" class="panel-content" aria-live="polite">
@@ -131,12 +125,12 @@
         <div class="section-heading">
           <div class="section-title">
             <h2 id="results-title">来源订单 <span id="count">0</span></h2>
-            <p class="hint">抓取来源成功后自动下单</p>
+            <p class="hint">定时任务会按配置的周期自动抓取来源订单，并在抓取成功后自动下单。</p>
           </div>
           <button id="refresh" class="primary" type="button">获取订单</button>
         </div>
         <div class="panel-meta">
-          <span>最近更新：<time id="source-updated">—</time></span>
+          <span>订单最近更新：<time id="source-updated">—</time></span>
           <a class="download" href="/api/download" download="data.db">↓ 导出数据库</a>
         </div>
         <div class="toolbar">
@@ -181,7 +175,7 @@
       <p id="settings-notice" class="notice" role="status" aria-live="polite" hidden></p>
     </section>
     <section class="results schedule-panel" aria-labelledby="schedule-title">
-      <div class="section-heading"><h2 id="schedule-title">定时更新订单</h2><span id="schedule-status" class="hint" role="status">等待配置加载</span></div>
+      <div class="section-heading"><h2 id="schedule-title">定时任务</h2><span id="schedule-status" class="hint" role="status">等待配置加载</span></div>
       <form id="schedule-form" class="schedule-form">
         <label class="schedule-toggle"><input id="schedule-enabled" type="checkbox"> 启用定时任务</label>
         <label>常用周期 <select id="schedule-preset"><option value="">自定义</option><option value="* * * * *">每分钟</option><option value="*/5 * * * *">每 5 分钟</option><option value="*/15 * * * *">每 15 分钟</option><option value="0 * * * *">每小时</option><option value="0 9 * * *">每天 09:00</option></select></label>

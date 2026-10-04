@@ -214,17 +214,13 @@ function ordersNotice(message) {
     $(id).hidden = !message;
   }
 }
-function updateOrdersButtons(busy) {
-  updateFetchButton("orders-refresh", busy, "获取跟踪订单");
-  updateFetchButton("positions-refresh", busy, "更新持仓与平仓单");
-}
 function renderPositions(positions = []) {
   const container = $("positions-records");
   const scrollLeft = container.querySelector(".table-scroll")?.scrollLeft || 0;
   $("positions-count").textContent = `${positions.length} 条`;
   container.replaceChildren();
   if (!positions.length) {
-    container.append(node("div", "empty", "暂无持仓记录，点击「更新持仓与平仓单」获取数据。"));
+    container.append(node("div", "empty", "暂无持仓记录。"));
     return;
   }
   const {wrapper, tbody} = createTable(
@@ -270,13 +266,12 @@ function applyOrders(data) {
   $("orders-count").textContent = `${visibleOrders.length} 条`;
   $("orders-updated").textContent = dateText(data.updated_at);
   updatingOrders = Boolean(data.refreshing);
-  updateOrdersButtons(fetchingOrders || updatingOrders);
   ordersNotice(data.error || (updatingOrders ? "正在更新持仓、停止旧平仓单并发布新平仓单，当前显示本地缓存。" : ""));
   updateFlow("orders", {...data, orders: visibleOrders, refreshing: fetchingOrders || updatingOrders});
   const container = $("orders-records");
   container.replaceChildren();
   if (!visibleOrders.length) {
-    container.append(node("div", "empty", data.updated_at ? "目前没有跟踪订单。" : "点击「获取跟踪订单」加载列表。"));
+    container.append(node("div", "empty", data.updated_at ? "目前没有跟踪订单。" : "等待跟踪订单数据。"));
     return;
   }
   const {wrapper, tbody} = createTable(
@@ -314,7 +309,6 @@ async function refreshOrders() {
   if (fetchingOrders || updatingOrders) return;
   fetchingOrders = true;
   ordersGeneration++;
-  updateOrdersButtons(true);
   ordersNotice("正在更新持仓和跟踪订单，并替换本程序的平仓单，请稍候…");
   try {
     const response = await fetch("/api/orders/refresh", {method: "POST"});
@@ -325,11 +319,8 @@ async function refreshOrders() {
   } catch (error) { ordersNotice(error.message); }
   finally {
     fetchingOrders = false;
-    updateOrdersButtons(updatingOrders);
   }
 }
-$("orders-refresh").addEventListener("click", refreshOrders);
-$("positions-refresh").addEventListener("click", refreshOrders);
 async function pollOrders() {
   await loadOrders();
   // Sync the cached Gate list once per minute; manual requests update immediately.
