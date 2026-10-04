@@ -154,8 +154,8 @@ RefreshResult Dashboard::refreshOrders(bool executeCloseOrders) {
             activity_.finish("orders", true);
             return {true, true};
         }
-        // This single polling cycle refreshes positions/list, stops our old closing orders,
-        // and publishes replacements under the same trading lock as opening orders.
+        // Refresh positions/list, retain unchanged closing orders, and replace only
+        // unmatched orders under the same trading lock as opening orders.
         const auto execution = closePositionOrders(current);
         std::lock_guard<std::mutex> lock(ordersMutex_);
         closeExecutionResults_ = execution;

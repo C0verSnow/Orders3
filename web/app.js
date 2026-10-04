@@ -120,8 +120,10 @@ function notice(message) {
   $("notice").hidden = !message;
 }
 function renderExecution(results = [], containerId = "execution-results", title = "自动下单结果") {
-  // Results are appended in execution order; discard the oldest rows from the view.
-  results = results.slice(-10);
+  // Select the latest results before grouping; preserve execution order within each group.
+  const actionOrder = {created: 0, stopped: 2};
+  results = results.slice(-10).sort((a, b) =>
+    (actionOrder[a.action] ?? 1) - (actionOrder[b.action] ?? 1));
   const container = $(containerId);
   container.replaceChildren();
   container.hidden = !results.length;

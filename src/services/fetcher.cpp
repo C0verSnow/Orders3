@@ -9,6 +9,7 @@
 #include <QCryptographicHash>
 #include <QRegularExpression>
 #include <QSet>
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <QJsonDocument>
@@ -172,6 +173,17 @@ QString orderPrice(const QJsonValue &value) {
     return match.captured(1);
 }
 
+bool sameOrderParameters(const QJsonObject &old, const QJsonObject &desired) {
+    if (old.value("contract") != desired.value("contract")
+        || orderAmount(old.value("amount")) != desired.value("amount").toString())
+        return false;
+    // Signed amount already distinguishes long/short; compare prices without doubles.
+    const auto left = decimal::parse(orderPrice(old.value("activation_price")));
+    const auto right = decimal::parse(desired.value("activation_price").toString());
+    const int scale = std::max(left.scale, right.scale);
+    return decimal::scaled(left, scale) == decimal::scaled(right, scale);
+}
+
 qint64 orderTimestamp(const QJsonValue &value) {
     const double time = value.toDouble(-1);
     if (!value.isDouble() || !std::isfinite(time) || time < 0
@@ -199,6 +211,7 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
     auto trailing = readTrailingOrders(config.ordersPath).orders;
     QJsonArray results;
     QJsonArray candidates;
+    QSet<qsizetype> retained;
     // Validate the entire batch before stopping any existing order.
     for (const auto &value : sources) {
         const auto source = value.toObject();
@@ -213,6 +226,7 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
         for (const auto &previous : trailing) {
             const auto old = previous.toObject();
             if (old.value("contract").toString() != contract
+                || old.value("reduce_only").toBool()
                 || old.value("original_status").toInt() != 4)
                 continue;
             const auto oldAmount = orderAmount(old.value("amount"));
@@ -232,10 +246,25 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
             entry.insert("message", "同合约、同方向已完成订单的时间相差不到7天");
             results.append(entry);
         } else {
-            candidates.append(entry);
+            bool unchanged = false;
+            for (qsizetype index = 0; index < trailing.size(); ++index) {
+                const auto old = trailing[index].toObject();
+                const int status = old.value("original_status").toInt();
+                if (retained.contains(index) || old.value("reduce_only").toBool()
+                    || (status != 1 && status != 2) || !sameOrderParameters(old, entry))
+                    continue;
+                retained.insert(index);
+                entry.insert("id", old.value("id"));
+                entry.insert("action", "skipped");
+                entry.insert("message", "合约、方向、数量和激活价格未变化，保留有效开仓单");
+                results.append(entry);
+                unchanged = true;
+                break;
+            }
+            if (!unchanged) candidates.append(entry);
         }
     }
-    if (candidates.isEmpty())
+    if (candidates.isEmpty() && retained.isEmpty())
         return results;
     if (config.gateKey.isEmpty() || config.gateSecret.isEmpty())
         throw Error("请在程序的「连接与存储配置」中填写 Gate API Key 和 Secret");
@@ -253,7 +282,8 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
     for (qsizetype index = 0; index < trailing.size(); ++index) {
         auto old = trailing[index].toObject();
         const int status = old.value("original_status").toInt();
-        if (old.value("reduce_only").toBool() || (status != 1 && status != 2))
+        if (retained.contains(index) || old.value("reduce_only").toBool()
+            || (status != 1 && status != 2))
             continue;
         QJsonObject result{{"action", "stopped"}, {"id", old.value("id")},
                            {"contract", old.value("contract")}};
@@ -398,15 +428,43 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
         config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
     const auto managed = readManagedCloseOrderIds(config.ordersPath, owner);
     QJsonArray results;
+    QJsonArray candidates;
+    QSet<qsizetype> retained;
+    // Match each desired close order to at most one active order owned by this account.
+    for (const auto &value : readPositions(config.dataPath)) {
+        const auto position = value.toObject();
+        const auto size = position.value("size").toInteger();
+        if (size == 0) continue;
+        QJsonObject entry{{"contract", position.value("contract")},
+                          {"amount", QString::number(-size)},
+                          {"activation_price", position.value("close_price")}};
+        bool unchanged = false;
+        for (qsizetype index = 0; index < trailing.size(); ++index) {
+            const auto old = trailing[index].toObject();
+            const int status = old.value("original_status").toInt();
+            if (retained.contains(index) || !old.value("reduce_only").toBool()
+                || (status != 1 && status != 2)
+                || !managed.contains(old.value("id").toString())
+                || !sameOrderParameters(old, entry)) continue;
+            retained.insert(index);
+            entry.insert("id", old.value("id"));
+            entry.insert("action", "skipped");
+            entry.insert("message", "合约、数量和激活价格未变化，保留有效平仓单");
+            results.append(entry);
+            unchanged = true;
+            break;
+        }
+        if (!unchanged) candidates.append(entry);
+    }
     const auto send = [&](const QByteArray &path, const QJsonObject &payload) {
         return successfulResponse(request("POST", path,
             QJsonDocument(payload).toJson(QJsonDocument::Compact)));
     };
     // Prevalidate all stop IDs before the first write to the exchange.
-    for (const auto &value : trailing) {
-        const auto old = value.toObject();
+    for (qsizetype index = 0; index < trailing.size(); ++index) {
+        const auto old = trailing[index].toObject();
         const int status = old.value("original_status").toInt();
-        if (!old.value("reduce_only").toBool() || (status != 1 && status != 2)
+        if (retained.contains(index) || !old.value("reduce_only").toBool() || (status != 1 && status != 2)
             || !managed.contains(old.value("id").toString())) continue;
         bool valid = false;
         const auto id = old.value("id").toString().toLongLong(&valid);
@@ -415,7 +473,7 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
     for (qsizetype index = 0; index < trailing.size(); ++index) {
         auto old = trailing[index].toObject();
         const int status = old.value("original_status").toInt();
-        if (!old.value("reduce_only").toBool() || (status != 1 && status != 2)
+        if (retained.contains(index) || !old.value("reduce_only").toBool() || (status != 1 && status != 2)
             || !managed.contains(old.value("id").toString())) continue;
         QJsonObject result{{"action", "stopped"}, {"id", old.value("id")},
                            {"contract", old.value("contract")}};
@@ -434,18 +492,14 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
             return results;
         }
     }
-    // Order parameters come from the committed position table.
-    for (const auto &value : readPositions(config.dataPath)) {
-        const auto position = value.toObject();
-        const auto size = position.value("size").toInteger();
-        if (size == 0) continue;
-        const auto amount = QString::number(-size);
-        const QJsonObject body{{"contract", position.value("contract")}, {"amount", amount},
-            {"activation_price", position.value("close_price")}, {"is_gte", size > 0},
+    // Only unmatched orders need a new request.
+    for (const auto &value : candidates) {
+        auto result = value.toObject();
+        const auto amount = result.value("amount").toString();
+        const QJsonObject body{{"contract", result.value("contract")}, {"amount", amount},
+            {"activation_price", result.value("activation_price")}, {"is_gte", amount.startsWith('-')},
             {"reduce_only", true}, {"price_type", 3}, {"price_offset", "1%"},
             {"pos_margin_mode", "cross"}, {"position_mode", "dual_plus"}, {"text", "apiv4"}};
-        QJsonObject result{{"contract", body.value("contract")}, {"amount", amount},
-                           {"activation_price", body.value("activation_price")}};
         try {
             const auto created = send(kCreatePath, body);
             const auto id = created.value("data").toObject().value("id").toString();

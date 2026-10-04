@@ -311,6 +311,175 @@ private slots:
                  skip ? QString("skipped") : QString("created"));
     }
 
+    void activeOrderMatching_data() {
+        QTest::addColumn<QString>("contract");
+        QTest::addColumn<QString>("amount");
+        QTest::addColumn<QString>("price");
+        QTest::addColumn<int>("status");
+        QTest::addColumn<bool>("unchanged");
+        QTest::newRow("same") << QString("XAU_USDT") << QString("371") << QString("4071.29") << 1 << true;
+        QTest::newRow("equivalent-format") << QString("XAU_USDT") << QString("+0371.00 Contracts") << QString("04071.2900") << 2 << true;
+        QTest::newRow("contract-changed") << QString("SOL_USDT") << QString("371") << QString("4071.29") << 1 << false;
+        QTest::newRow("amount-changed") << QString("XAU_USDT") << QString("372") << QString("4071.29") << 1 << false;
+        QTest::newRow("opposite-direction") << QString("XAU_USDT") << QString("-371") << QString("4071.29") << 1 << false;
+        QTest::newRow("price-changed") << QString("XAU_USDT") << QString("371") << QString("4071.2900000000000001") << 1 << false;
+        QTest::newRow("cancelled") << QString("XAU_USDT") << QString("371") << QString("4071.29") << 5 << false;
+    }
+
+    void activeOrderMatching() {
+        QFETCH(QString, contract);
+        QFETCH(QString, amount);
+        QFETCH(QString, price);
+        QFETCH(int, status);
+        QFETCH(bool, unchanged);
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.gateKey = config.gateSecret = "offline";
+        orders::saveSources(config.dataPath, QJsonArray{QJsonObject{{"data",
+            "contract: XAU_USDT\nactivation_price: 4071.29 USDT\namount: 371 Contracts\nTimestamp: 1791011512347\n"
+            "contract: BTC_USDT\nactivation_price: 100 USDT\namount: -2 Contracts\nTimestamp: 1791011512347"}}});
+        orders::saveTrailingOrders(config.ordersPath, QJsonArray{
+            QJsonObject{{"id", "1"}, {"contract", contract}, {"amount", amount},
+                {"activation_price", price}, {"reduce_only", false},
+                {"original_status", status}, {"timestamp", qint64(1791011512347)}},
+            QJsonObject{{"id", "2"}, {"contract", "BTC_USDT"}, {"amount", "-2"},
+                {"activation_price", "100"}, {"reduce_only", false},
+                {"original_status", 1}, {"timestamp", qint64(1791011512347)}},
+            // A matching close order must never suppress an opening order.
+            QJsonObject{{"id", "3"}, {"contract", "XAU_USDT"}, {"amount", "371"},
+                {"activation_price", "4071.29"}, {"reduce_only", true},
+                {"original_status", 4}, {"timestamp", qint64(1791011512347)}}});
+        QList<QByteArray> paths;
+        const auto sender = [&](const QByteArray &path, const QByteArray &body, const orders::HttpHeaders &) {
+            paths.append(path);
+            const auto payload = QJsonDocument::fromJson(body).object();
+            if (path.endsWith("/stop")) {
+                if (payload.value("id").toInteger() != 1) return orders::HttpResult{400, "{}"};
+                return orders::HttpResult{200, R"({"code":0})"};
+            }
+            if (payload.value("contract").toString() != "XAU_USDT") return orders::HttpResult{400, "{}"};
+            return orders::HttpResult{200, R"({"code":0,"data":{"id":"100"}})"};
+        };
+        const auto results = orders::createTrailingOrders(config, sender);
+        QCOMPARE(paths.size(), unchanged ? 0 : status == 5 ? 1 : 2);
+        int skipped = 0, created = 0;
+        for (const auto &value : results) {
+            const auto action = value.toObject().value("action").toString();
+            QVERIFY(action != "failed");
+            skipped += action == "skipped";
+            created += action == "created";
+        }
+        QCOMPARE(skipped, unchanged ? 2 : 1);
+        QCOMPARE(created, unchanged ? 0 : 1);
+        // A refreshed source timestamp alone must not recreate an active order.
+        orders::saveSources(config.dataPath, QJsonArray{QJsonObject{{"data",
+            "contract: XAU_USDT\nactivation_price: 4071.2900 USDT\namount: 371 Contracts\nTimestamp: 1791011572347\n"
+            "contract: BTC_USDT\nactivation_price: 100.00 USDT\namount: -2 Contracts\nTimestamp: 1791011572347"}}});
+        paths.clear();
+        const auto repeated = orders::createTrailingOrders(config, sender);
+        QVERIFY(paths.isEmpty());
+        QCOMPARE(repeated.size(), 2);
+        for (const auto &value : repeated)
+            QCOMPARE(value.toObject().value("action").toString(), QString("skipped"));
+    }
+
+    void closeOrdersRetainUnchangedAndReplaceChangedAcrossPolls() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.gateKey = config.gateSecret = "offline";
+        const auto owner = QString::fromLatin1(QCryptographicHash::hash(
+            config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
+        const auto position = [](QString contract, qint64 size) {
+            return QJsonObject{{"contract", contract}, {"size", size}, {"entry_price", "100"},
+                {"value", "100"}, {"leverage_max", "75"}, {"unrealised_pnl", "0"},
+                {"realised_pnl", "0"}, {"initial_margin", "10"}, {"mark_price", "100.000"}};
+        };
+        QJsonArray positions{position("BTC_USDT", 1), position("BTC_USDT", -1)};
+        const auto old = [](QString id, QString amount, QString price, int status = 1) {
+            return QJsonObject{{"id", id}, {"contract", "BTC_USDT"}, {"amount", amount},
+                {"activation_price", price}, {"reduce_only", true}, {"original_status", status}};
+        };
+        QJsonArray exchange{old("1", "-1", "0132.3100", 2), old("2", "1", "68.310"),
+            old("3", "-1", "163.620")}; // Unowned, even if it matches a later desired price.
+        orders::saveManagedCloseOrderId(config.ordersPath, owner, "1");
+        orders::saveManagedCloseOrderId(config.ordersPath, owner, "2");
+        int gets = 0, stops = 0, creates = 0;
+        QList<qint64> stoppedIds;
+        const auto requester = [&](const QByteArray &method, const QByteArray &path,
+                                   const QByteArray &body, const orders::HttpHeaders &) {
+            if (method == "GET") {
+                ++gets;
+                if (path.endsWith("/positions")) return orders::HttpResult{200, QJsonDocument(positions).toJson()};
+                return orders::HttpResult{200, QJsonDocument(QJsonObject{{"code", 0}, {"timestamp", 123},
+                    {"data", QJsonObject{{"orders", path.contains("page_num=1&") ? exchange : QJsonArray{}}}}}).toJson()};
+            }
+            const auto payload = QJsonDocument::fromJson(body).object();
+            if (path.endsWith("/stop")) {
+                ++stops;
+                const auto id = payload.value("id").toInteger();
+                stoppedIds.append(id);
+                for (qsizetype index = 0; index < exchange.size(); ++index) {
+                    auto row = exchange[index].toObject();
+                    if (row.value("id").toString() == QString::number(id)) {
+                        row.insert("original_status", 5);
+                        exchange[index] = row;
+                    }
+                }
+                return orders::HttpResult{200, R"({"code":0})"};
+            }
+            ++creates;
+            const auto id = QString::number(99 + creates);
+            auto saved = payload;
+            saved.insert("id", id);
+            saved.insert("original_status", 1);
+            exchange.append(saved);
+            return orders::HttpResult{200, QJsonDocument(QJsonObject{{"code", 0},
+                {"data", QJsonObject{{"id", id}}}}).toJson()};
+        };
+        auto results = orders::closePositionOrders(config, requester);
+        QCOMPARE(gets, 3);
+        QCOMPARE(stops, 0);
+        QCOMPARE(creates, 0);
+        QCOMPARE(results.size(), 2);
+        for (const auto &value : results)
+            QCOMPARE(value.toObject().value("action").toString(), QString("skipped"));
+        // Short quantity changes while the long protection stays unchanged.
+        positions = QJsonArray{position("BTC_USDT", 1), position("BTC_USDT", -2)};
+        results = orders::closePositionOrders(config, requester);
+        QCOMPARE(stops, 1);
+        QCOMPARE(creates, 1);
+        QCOMPARE(stoppedIds[0], qint64(2));
+        QCOMPARE(results.size(), 3);
+        QCOMPARE(results[0].toObject().value("id").toString(), QString("1"));
+        QCOMPARE(results[0].toObject().value("action").toString(), QString("skipped"));
+        QCOMPARE(results.last().toObject().value("amount").toString(), QString("2"));
+        results = orders::closePositionOrders(config, requester);
+        QCOMPARE(gets, 9); // Each poll still obtains fresh positions and the exchange list.
+        QCOMPARE(stops, 1);
+        QCOMPARE(creates, 1);
+        for (const auto &value : results)
+            QCOMPARE(value.toObject().value("action").toString(), QString("skipped"));
+        // A changed close price replaces only the long order; manual orders cannot match.
+        auto changed = position("BTC_USDT", 1);
+        changed.insert("initial_margin", "20");
+        positions = QJsonArray{changed, position("BTC_USDT", -2)};
+        results = orders::closePositionOrders(config, requester);
+        QCOMPARE(stops, 2);
+        QCOMPARE(creates, 2);
+        QCOMPARE(stoppedIds[1], qint64(1));
+        QCOMPARE(results.size(), 3);
+        QCOMPARE(results[0].toObject().value("id").toString(), QString("100"));
+        QCOMPARE(results.last().toObject().value("activation_price").toString(), QString("163.620"));
+        results = orders::closePositionOrders(config, requester);
+        QCOMPARE(gets, 15);
+        QCOMPARE(stops, 2);
+        QCOMPARE(creates, 2);
+        for (const auto &value : results)
+            QCOMPARE(value.toObject().value("action").toString(), QString("skipped"));
+    }
+
     void trailingStopFailurePreventsCreation() {
         QTemporaryDir directory;
         orders::Config config;
