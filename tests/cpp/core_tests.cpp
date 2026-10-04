@@ -30,11 +30,11 @@ private slots:
     void closePricesUseExactDecimalArithmetic() {
         using orders::decimal::closePrice;
         QCOMPARE(closePrice("88.077351351351", "344.2961", "4.852279702667", "93.053", true),
-                 QString("84.229"));
-        QCOMPARE(closePrice("100", "100", "10", "93.053", false), QString("131.000"));
-        QCOMPARE(closePrice("100", "100", "10", "93.053", true), QString("69.000"));
-        QCOMPARE(closePrice("1.005", "100", "0", "1.00", false), QString("1.00"));
-        QCOMPARE(closePrice("1.015", "100", "0", "1.00", false), QString("1.02"));
+                 QString("83.387"));
+        QCOMPARE(closePrice("100", "100", "10", "93.053", false), QString("132.310"));
+        QCOMPARE(closePrice("100", "100", "10", "93.053", true), QString("68.310"));
+        QCOMPARE(closePrice("0.5", "100", "0", "1.00", false), QString("0.50"));
+        QCOMPARE(closePrice("1.5", "100", "0", "1.00", false), QString("1.52"));
         QCOMPARE(orders::decimal::sum("-18.409900000001", "0.0660018163"),
                  QString("-18.343898183701"));
         QVERIFY_EXCEPTION_THROWN(closePrice("100", "0", "1", "10", false), orders::Error);
@@ -111,7 +111,7 @@ private slots:
         QVERIFY(writes[0].endsWith("/stop"));
         QCOMPARE(bodies[0].value("id").toInteger(), qint64(9007199254740993));
         QCOMPARE(bodies[1].value("amount").toString(), QString("37"));
-        QCOMPARE(bodies[1].value("activation_price").toString(), QString("84.229"));
+        QCOMPARE(bodies[1].value("activation_price").toString(), QString("83.387"));
         QVERIFY(!bodies[1].value("is_gte").toBool());
         QCOMPARE(bodies[2].value("amount").toString(), QString("-37"));
         QVERIFY(bodies[2].value("is_gte").toBool());
@@ -127,7 +127,7 @@ private slots:
         QCOMPARE(saved[1].toObject().value("size").toInteger(), qint64(37));
         QCOMPARE(saved[0].toObject().size(), 10);
         QVERIFY(!saved[0].toObject().contains("ignored_field"));
-        QCOMPARE(saved[0].toObject().value("close_price").toString(), QString("84.229"));
+        QCOMPARE(saved[0].toObject().value("close_price").toString(), QString("83.387"));
         const auto ids = orders::readManagedCloseOrderIds(config.ordersPath, owner);
         QVERIFY(ids.contains("100") && ids.contains("101"));
         QVERIFY(!ids.contains("20") && !ids.contains("22"));

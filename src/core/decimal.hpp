@@ -113,8 +113,10 @@ inline QString closePrice(const QString &entryText, const QString &valueText,
         throw Error("计算出的空仓平仓价格不大于零");
     const auto factor = shortPosition ? subtract(denominator, adjustment)
                                       : add(denominator, adjustment);
-    const auto numerator = multiply(entry.digits, factor) + QString(mark.scale, '0');
-    const auto divisor = denominator + QString(entry.scale, '0');
+    const auto priceMultiplier = shortPosition ? "99" : "101";
+    const auto numerator = multiply(multiply(entry.digits, factor), priceMultiplier)
+        + QString(mark.scale, '0');
+    const auto divisor = multiply(denominator, "100") + QString(entry.scale, '0');
     const auto rounded = divideRounded(normalized(numerator), normalized(divisor));
     if (rounded == "0") throw Error("平仓价格对齐步长后为零");
     return format(rounded, mark.scale);
