@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run on the Docker host (Mac), not inside the container.
+# Run on the Docker host (macOS or Linux), not inside the container.
 set -euo pipefail
 
 image="${ORDERS_IMAGE:-ghcr.io/huan00000/orders3:latest}"
@@ -8,9 +8,12 @@ volume_name="${ORDERS_VOLUME_NAME:-orders-dashboard-data}"
 command -v docker >/dev/null
 command -v curl >/dev/null
 docker info >/dev/null
+# Pull first so a failed download leaves the existing service running.
+printf '正在拉取镜像：%s\n' "$image"
+docker pull "$image"
 if docker container inspect "$container_name" >/dev/null 2>&1; then
-    echo "容器 $container_name 已存在，请先停止并移除它，或设置 ORDERS_CONTAINER_NAME 使用其他名称。" >&2
-    exit 1
+    printf '正在删除同名旧容器：%s（保留数据卷）\n' "$container_name"
+    docker rm -f "$container_name" >/dev/null
 fi
 
 start_mapped_dashboard() {

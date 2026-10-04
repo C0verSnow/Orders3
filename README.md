@@ -144,9 +144,9 @@ docker run -d --name orders-dashboard --restart unless-stopped `
 
 访问 `http://127.0.0.1:8090`。`/data` 保存数据库与程序配置。不需要启动抓取时，在镜像名后追加 `--cached`。使用不同访问地址时设置相应的 `ORDERS_ALLOWED_ORIGIN`。
 
-### Mac / OrbStack：进入容器后执行 ./orders
+### macOS / Linux：自动更新并启动容器
 
-也可以在 **Mac 宿主机终端、仓库根目录** 运行自动随机端口映射脚本：
+在 **macOS 或 Linux 宿主机终端、仓库根目录** 运行自动随机端口映射脚本，需要安装 Bash、curl，并能访问运行中的 Docker 引擎。macOS 可使用 OrbStack 或 Docker Desktop 提供 Docker 环境；OrbStack 不是项目依赖。Linux 可直接使用 Docker Engine，支持 x64 和 ARM64。
 
 ```sh
 bash scripts/start-docker.sh
@@ -154,13 +154,13 @@ bash scripts/start-docker.sh
 # bash scripts/start-docker.sh --cached
 ```
 
-脚本在 49152–65535 中随机选择端口，让 Docker 创建 `127.0.0.1:随机端口:随机端口` 映射，并让程序监听 `0.0.0.0:随机端口`。Docker 确认端口可绑定后启动服务，端口占用时最多换端口重试 15 次；网页就绪后输出可在 Mac 直接访问的「本地看板」链接。容器在后台运行，退出终端后仍可访问。脚本同时设置 `ORDERS_PORT`，容器健康检查使用相同端口。
+脚本在 49152–65535 中随机选择端口，让 Docker 创建 `127.0.0.1:随机端口:随机端口` 映射，并让程序监听 `0.0.0.0:随机端口`。Docker 确认端口可绑定后启动服务，端口占用时最多换端口重试 15 次；网页就绪后输出可在宿主机直接访问的「本地看板」链接。容器在后台运行，退出终端后仍可访问。脚本同时设置 `ORDERS_PORT`，容器健康检查使用相同端口。
 
-默认容器名为 `orders-dashboard`，数据卷为 `orders-dashboard-data`。脚本不会删除已有容器；可用 `ORDERS_CONTAINER_NAME=orders-random bash scripts/start-docker.sh` 指定新名称。镜像和数据卷可分别通过 `ORDERS_IMAGE`、`ORDERS_VOLUME_NAME` 指定。若页面此前保存了 `ORDERS_ALLOWED_ORIGIN`，请清除该旧值，让程序按当前随机端口校验来源。
+默认容器名为 `orders-dashboard`，数据卷为 `orders-dashboard-data`。每次执行先拉取 `ghcr.io/huan00000/orders3:latest` 最新镜像；拉取成功后，自动强制停止并删除同名旧容器，再创建新容器，更新期间服务会短暂中断。拉取失败时保留旧容器；删除容器不会删除命名数据卷，原有数据库和配置继续使用。可用 `ORDERS_CONTAINER_NAME=orders-random bash scripts/start-docker.sh` 指定其他名称。镜像和数据卷可分别通过 `ORDERS_IMAGE`、`ORDERS_VOLUME_NAME` 指定；自定义镜像时拉取的是指定标签或 digest，不会自动改为 `latest`。若页面此前保存了 `ORDERS_ALLOWED_ORIGIN`，请清除该旧值，让程序按当前随机端口校验来源。
 
-这段映射逻辑必须在 Mac 上执行，容器内的 `./orders` 无法自行给 Docker 添加宿主机映射。以下是固定 8090 端口的手动方式：
+这段映射逻辑必须在 Docker 宿主机上执行，容器内的 `./orders` 无法自行给 Docker 添加宿主机映射。脚本只绑定宿主机 `127.0.0.1`；远程 Linux 服务器可使用 SSH 隧道访问，例如 `ssh -L 8090:127.0.0.1:脚本输出的端口 用户@服务器`，然后在本机打开 `http://127.0.0.1:8090/`。以下是固定 8090 端口的手动方式：
 
-在 Mac 终端创建并进入容器（使用包含本次改动的新镜像）：
+在宿主机终端创建并进入容器（使用包含本次改动的新镜像）：
 
 ```sh
 docker run -it --name orders-manual \
@@ -175,18 +175,18 @@ docker run -it --name orders-manual \
 ./orders
 ```
 
-在 Mac 浏览器打开 `http://127.0.0.1:8090`，首次使用在页面填写连接配置。容器工作目录默认为 `/opt/orders/bin`，镜像通过 `ORDERS_HOST=0.0.0.0`、`ORDERS_PORT=8090`、`ORDERS_NO_BROWSER=1` 提供服务默认值。命令行 `--host` / `--port` 优先于环境变量；`--browser` 可以覆盖禁止自动打开浏览器的环境默认值，`--no-browser` 始终禁止打开浏览器。这些启动变量从进程环境读取，需要在启动前设置，不由页面或旧 `.env` 文件读取。宿主机直接运行发布包时仍默认仅监听本机、自动分配端口并打开浏览器。
+在宿主机浏览器打开 `http://127.0.0.1:8090`，首次使用在页面填写连接配置。容器工作目录默认为 `/opt/orders/bin`，镜像通过 `ORDERS_HOST=0.0.0.0`、`ORDERS_PORT=8090`、`ORDERS_NO_BROWSER=1` 提供服务默认值。命令行 `--host` / `--port` 优先于环境变量；`--browser` 可以覆盖禁止自动打开浏览器的环境默认值，`--no-browser` 始终禁止打开浏览器。这些启动变量从进程环境读取，需要在启动前设置，不由页面或旧 `.env` 文件读取。宿主机直接运行发布包时仍默认仅监听本机、自动分配端口并打开浏览器。
 
-如果旧镜像输出 `http://127.0.0.1:36497/` 等随机端口，而创建容器时映射的是 `8090:8090`，Mac 无法通过这个链接访问容器。停止程序后，旧镜像可用以下命令显式固定监听地址和端口（可执行文件使用绝对路径，不受当前目录影响）：
+如果旧镜像输出 `http://127.0.0.1:36497/` 等随机端口，而创建容器时映射的是 `8090:8090`，宿主机无法通过这个链接访问容器。停止程序后，旧镜像可用以下命令显式固定监听地址和端口（可执行文件使用绝对路径，不受当前目录影响）：
 
 ```sh
 /opt/orders/bin/orders --host 0.0.0.0 --port 8090 --no-browser
 ```
 
-然后在 Mac 打开 `http://127.0.0.1:8090/`。新代码需要重新构建镜像才会生效，已有容器和旧的 `latest` 镜像不会自动获得修改。若要继续使用 36497，必须同时指定 `--port 36497` 并在创建容器时使用 `-p 127.0.0.1:36497:36497`。
+然后在宿主机打开 `http://127.0.0.1:8090/`。新代码需要重新构建镜像才会生效，已有容器和旧的 `latest` 镜像不会自动获得修改。若要继续使用 36497，必须同时指定 `--port 36497` 并在创建容器时使用 `-p 127.0.0.1:36497:36497`。
 
 若创建时提示 `orders-manual` 名称已被占用，已有且已停止的容器可以通过 `docker start -ai orders-manual` 重新进入。需要更换镜像或端口映射时，先退出并停止旧容器，再执行 `docker rm orders-manual`，然后重新创建；命名卷中的数据保留。
 
-`-p` 必须在创建容器时设置；`EXPOSE` 和程序本身都不会创建 Mac 的端口映射。此前通过 OrbStack 临时终端创建且没有映射端口的容器，需要重新创建并配置 `127.0.0.1:8090:8090`。如果已有容器使用 8090，请先停止对应服务或改用其他宿主机端口，同时设置匹配的 `ORDERS_ALLOWED_ORIGIN`。正常自动启动的容器已经运行服务，无需再执行第二个 `./orders`。
+`-p` 必须在创建容器时设置；`EXPOSE` 和程序本身都不会创建 宿主机的端口映射。此前通过 OrbStack 临时终端创建且没有映射端口的容器，需要重新创建并配置 `127.0.0.1:8090:8090`。如果已有容器使用 8090，请先停止对应服务或改用其他宿主机端口，同时设置匹配的 `ORDERS_ALLOWED_ORIGIN`。正常自动启动的容器已经运行服务，无需再执行第二个 `./orders`。
 
 已有手动容器可在停止程序、退出终端后通过 `docker start -ai orders-manual` 再次进入，随后执行 `./orders`。
