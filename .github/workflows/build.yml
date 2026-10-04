@@ -306,6 +306,7 @@ jobs:
         run: |
           set -euo pipefail
           export ORDERS_IMAGE=orders-dashboard:ci
+          export ORDERS_PULL_POLICY=never
           export ORDERS_CONTAINER_NAME=orders-ci-random
           trap 'docker logs orders-ci-random; docker rm -f orders-ci-random' EXIT
           bash scripts/start-docker.sh --cached > /tmp/orders-random.log

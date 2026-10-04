@@ -158,6 +158,8 @@ bash scripts/start-docker.sh
 
 默认容器名为 `orders-dashboard`，数据卷为 `orders-dashboard-data`。每次执行先拉取 `ghcr.io/huan00000/orders3:latest` 最新镜像；拉取成功后，自动强制停止并删除同名旧容器，再创建新容器，更新期间服务会短暂中断。拉取失败时保留旧容器；删除容器不会删除命名数据卷，原有数据库和配置继续使用。可用 `ORDERS_CONTAINER_NAME=orders-random bash scripts/start-docker.sh` 指定其他名称。镜像和数据卷可分别通过 `ORDERS_IMAGE`、`ORDERS_VOLUME_NAME` 指定；自定义镜像时拉取的是指定标签或 digest，不会自动改为 `latest`。若页面此前保存了 `ORDERS_ALLOWED_ORIGIN`，请清除该旧值，让程序按当前随机端口校验来源。
 
+使用已经构建或下载到本地的镜像时，设置 `ORDERS_PULL_POLICY=never`，例如 `ORDERS_IMAGE=orders-dashboard:ci ORDERS_PULL_POLICY=never bash scripts/start-docker.sh --cached`。默认值为 `always`；`never` 不访问镜像仓库，本地镜像不存在时直接失败并保留旧容器。
+
 这段映射逻辑必须在 Docker 宿主机上执行，容器内的 `./orders` 无法自行给 Docker 添加宿主机映射。脚本只绑定宿主机 `127.0.0.1`；远程 Linux 服务器可使用 SSH 隧道访问，例如 `ssh -L 8090:127.0.0.1:脚本输出的端口 用户@服务器`，然后在本机打开 `http://127.0.0.1:8090/`。以下是固定 8090 端口的手动方式：
 
 在宿主机终端创建并进入容器（使用包含本次改动的新镜像）：

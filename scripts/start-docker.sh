@@ -5,12 +5,25 @@ set -euo pipefail
 image="${ORDERS_IMAGE:-ghcr.io/huan00000/orders3:latest}"
 container_name="${ORDERS_CONTAINER_NAME:-orders-dashboard}"
 volume_name="${ORDERS_VOLUME_NAME:-orders-dashboard-data}"
+pull_policy="${ORDERS_PULL_POLICY:-always}"
 command -v docker >/dev/null
 command -v curl >/dev/null
 docker info >/dev/null
-# Pull first so a failed download leaves the existing service running.
-printf '正在拉取镜像：%s\n' "$image"
-docker pull "$image"
+# Resolve the image first so failures leave the existing service running.
+case "$pull_policy" in
+    always)
+        printf '正在拉取镜像：%s\n' "$image"
+        docker pull "$image"
+        ;;
+    never)
+        printf '正在使用本地镜像：%s\n' "$image"
+        docker image inspect "$image" >/dev/null
+        ;;
+    *)
+        echo 'ORDERS_PULL_POLICY 只支持 always 或 never。' >&2
+        exit 1
+        ;;
+esac
 if docker container inspect "$container_name" >/dev/null 2>&1; then
     printf '正在删除同名旧容器：%s（保留数据卷）\n' "$container_name"
     docker rm -f "$container_name" >/dev/null
@@ -22,7 +35,7 @@ start_mapped_dashboard() {
     for attempt in {1..15}; do
         # Docker's actual bind decides availability, avoiding probe/bind races.
         port=$((49152 + RANDOM % 16384))
-        if ! container_id="$(docker create --name "$container_name" --restart unless-stopped \
+        if ! container_id="$(docker create --pull never --name "$container_name" --restart unless-stopped \
             -p "127.0.0.1:$port:$port" -v "$volume_name:/data" \
             -e ORDERS_HOST=0.0.0.0 -e "ORDERS_PORT=$port" -e ORDERS_NO_BROWSER=1 \
             "$image" "$@" --host 0.0.0.0 --port "$port" --no-browser)"; then
