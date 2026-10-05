@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "export:orders": "node scripts/export-orders.mjs",
     "check": "node scripts/check-web.mjs",
-    "test": "node --test tests/web/*.test.mjs"
+    "test": "node --test tests/web/*.test.mjs tests/scripts/*.test.mjs"
   },
   "engines": { "node": ">=22" }
 }

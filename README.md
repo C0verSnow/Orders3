@@ -36,6 +36,19 @@ C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 和 macOS �
 
 ## 配置与数据
 
+### 导出 Supabase orders 表
+
+使用 Node.js 22+，在仓库根目录运行，无需安装依赖或编译：
+
+```sh
+npm run export:orders
+# 或者：node scripts/export-orders.mjs
+```
+
+脚本直接读取 Supabase 的 `public.orders` 表，按 `id` 升序分页读取所有当前密钥有权访问的记录，将原始字段保存到仓库根目录的 `orderstable.json`，不会抓取来源 URL 或操作 Gate 订单。连接配置使用 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY`，优先级与程序一致：`config` 的 `[environment]` > 进程环境变量 > 根目录 `.env`；`ORDERS_CONFIG_PATH` 可以指定其他配置文件。密钥需要拥有该表的读取权限；行级安全策略仍然生效，导出仅包含当前密钥能看到的行。
+
+每次请求最多读取 1000 行，服务器返回较小分页时继续读取。所有分页成功后才替换输出文件，网络、权限或格式错误时保留旧文件并以非零状态退出。导出保留原始 JSON 数字文本，不把大整数或小数转成 JavaScript 数值后重新写入。分页期间订单总数改变会中止；多次请求不是数据库事务快照，同一数量下的内容变化无法检测，需要一致快照时请在订单暂停写入期间执行。连接方式参见 [Supabase 官方 REST API 说明](https://supabase.com/docs/guides/api/creating-routes)。
+
 `example.env` 列出兼容的环境变量字段；`example.config` 是程序配置示例。日常设置使用程序页面：
 
 | 配置 | 用途 |
@@ -102,7 +115,7 @@ npm run check
 npm test
 ```
 
-以上仅检查网页语法、模块引用、DOM ID、资源注册及纯 JavaScript 状态逻辑，不触发 C++ 编译。C++ 请求生命周期、线程隔离和有界事件记录测试由远端 CI 执行。
+以上检查网页语法、模块引用、DOM ID、资源注册、纯 JavaScript 状态逻辑和导出脚本的模拟接口测试，不触发 C++ 编译，也不会访问真实 Supabase。C++ 请求生命周期、线程隔离和有界事件记录测试由远端 CI 执行。
 
 ## 构建与测试
 
