@@ -5,6 +5,9 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- issue #2：代码提交 d30e035 的完整远端 CI 通过，包含网页、所有平台应用及 Docker x64/ARM64 验证；运行记录 https://github.com/huan00000/orders3/actions/runs/37303010661 。
+- issue #2：已标记完成并关闭，PR #3 已转为可审阅状态；本次最后一次提交只更新这份过程记录。
+- issue #2：第四轮远端 Windows x64、Linux x64/ARM64、macOS x64/ARM64 的编译、回归和打包均通过，网页检查也通过。
 - issue #2：第三轮 Linux x64 和 ARM64 全部通过；macOS 新版 Qt 会转小写请求头，已将测试断言改为按 HTTP 规则忽略请求头名称大小写，继续复验。
 - issue #2：第二轮远端 Linux ARM64 编译、回归和打包通过；Windows 提示测试条件表达式类型不明确，已明确使用 QByteArray 后继续远端复验。
 - issue #2：第一轮远端 CI 已编译主程序；测试链接失败，日志提示 Qt 没生成测试类元信息，已调整新增测试里的字符串写法，继续交给远端验证。
@@ -27,7 +30,8 @@
 
 ## 没做：
 - 按用户约定，不进行本地编译验证。
-- 未合并到 master，也未关闭 GitHub issue；本次按 issue 要求交付新分支。
+- 未合并到 master；issue #2 按要求交付 feature-supabse 分支。
+- issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- issue #2：已有远端 CI 正在执行 C++ 编译和回归测试，结果确认后更新交付记录。
+- 无，issue #2 已完成并推送，等待用户查看 PR #3；没有合并到 master。
