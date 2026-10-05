@@ -5,6 +5,7 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- issue #2：第二轮远端 Linux ARM64 编译、回归和打包通过；Windows 提示测试条件表达式类型不明确，已明确使用 QByteArray 后继续远端复验。
 - issue #2：第一轮远端 CI 已编译主程序；测试链接失败，日志提示 Qt 没生成测试类元信息，已调整新增测试里的字符串写法，继续交给远端验证。
 - issue #2：本地和远端分支已改名为 feature-supabse，代码已提交推送，并创建草稿 PR #3 供查看改动。
 - issue #2：网页静态检查通过，11 项纯 JavaScript 测试通过，均不触发编译；差异检查通过。

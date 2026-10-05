@@ -948,7 +948,7 @@ private slots:
                     if (!buffer->contains("\r\n\r\n")) return;
                     const bool first = ++requests == 1;
                     const QByteArray responseBody = first
-                        ? "[{\"contract\":\"XAU_USDT\",\"activation_price\":1,\"amount\":2,\"timestamp\":124}]" : body;
+                        ? QByteArray("[{\"contract\":\"XAU_USDT\",\"activation_price\":1,\"amount\":2,\"timestamp\":124}]") : body;
                     const QByteArray rangeHeader = range.isEmpty() ? QByteArray{}
                         : "Content-Range: " + (first ? QByteArray("0-0/2") : range) + "\r\n";
                     socket->write("HTTP/1.1 " + QByteArray::number(first ? 200 : status)
