@@ -770,7 +770,7 @@ private slots:
                     if (!buffer->contains("\r\n\r\n")) return;
                     QByteArray body = "[]";
                     if (buffer->contains("offset=0"))
-                        body = R"([{"id":6,"contract":"XAU_USDT","activation_price":4071.29,"amount":371,"side":"Open Long","timestamp":1791011512347}])";
+                        body = "[{\"id\":6,\"contract\":\"XAU_USDT\",\"activation_price\":4071.29,\"amount\":371,\"side\":\"Open Long\",\"timestamp\":1791011512347}]";
                     socket->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: "
                         + QByteArray::number(body.size()) + "\r\n\r\n" + body);
                     socket->disconnectFromHost();
@@ -797,11 +797,11 @@ private slots:
     }
 
     void directOrdersPreservePrecisionAndRoundTrip() {
-        const auto items = orders::parseSupabaseOrders(R"([{"id":9007199254740993,
-            "created_at":"2026-10-05T10:02:45Z","contract":"XAU_USDT",
-            "activation_price":4082.430000000000000001,"amount":-350,"side":"Open Short",
-            "timestamp":1791194547002,"value":143.080000000000000001,
-            "note":"escaped \"amount\":123 and unicode \u4e2d"}])");
+        const auto items = orders::parseSupabaseOrders("[{\"id\":9007199254740993,\n"
+            "            \"created_at\":\"2026-10-05T10:02:45Z\",\"contract\":\"XAU_USDT\",\n"
+            "            \"activation_price\":4082.430000000000000001,\"amount\":-350,\"side\":\"Open Short\",\n"
+            "            \"timestamp\":1791194547002,\"value\":143.080000000000000001,\n"
+            "            \"note\":\"escaped \\\"amount\\\":123 and unicode \\u4e2d\"}]");
         const auto item = items.first().toObject();
         QCOMPARE(item.value("id").toString(), QString("9007199254740993"));
         QCOMPARE(item.value("activation_price").toString(), QString("4082.430000000000000001"));
@@ -829,12 +829,12 @@ private slots:
         QTest::newRow("invalid-json") << QByteArray("broken");
         QTest::newRow("object") << QByteArray("{}");
         QTest::newRow("null-row") << QByteArray("[null]");
-        QTest::newRow("legacy-url") << QByteArray(R"([{"url":"https://example.com"}])");
-        QTest::newRow("invalid-number") << QByteArray(R"([{"amount":01}])");
-        QTest::newRow("missing-time") << QByteArray(R"([{"contract":"XAU_USDT","activation_price":1,"amount":1}])");
-        QTest::newRow("fractional-amount") << QByteArray(R"([{"contract":"XAU_USDT","activation_price":1,"amount":1.5,"timestamp":123}])");
-        QTest::newRow("negative-price") << QByteArray(R"([{"contract":"XAU_USDT","activation_price":-1,"amount":1,"timestamp":123}])");
-        QTest::newRow("unsafe-time") << QByteArray(R"([{"contract":"XAU_USDT","activation_price":1,"amount":1,"timestamp":9007199254740993}])");
+        QTest::newRow("legacy-url") << QByteArray("[{\"url\":\"https://example.com\"}]");
+        QTest::newRow("invalid-number") << QByteArray("[{\"amount\":01}]");
+        QTest::newRow("missing-time") << QByteArray("[{\"contract\":\"XAU_USDT\",\"activation_price\":1,\"amount\":1}]");
+        QTest::newRow("fractional-amount") << QByteArray("[{\"contract\":\"XAU_USDT\",\"activation_price\":1,\"amount\":1.5,\"timestamp\":123}]");
+        QTest::newRow("negative-price") << QByteArray("[{\"contract\":\"XAU_USDT\",\"activation_price\":-1,\"amount\":1,\"timestamp\":123}]");
+        QTest::newRow("unsafe-time") << QByteArray("[{\"contract\":\"XAU_USDT\",\"activation_price\":1,\"amount\":1,\"timestamp\":9007199254740993}]");
     }
 
     void directOrdersRejectInvalidPages() {
@@ -844,8 +844,8 @@ private slots:
 
     void directOrdersAcceptEmptyAndScientificNotation() {
         QVERIFY(orders::parseSupabaseOrders("[]").isEmpty());
-        const auto rows = orders::parseSupabaseOrders(R"([{"contract":"XAU_USDT",
-            "activation_price":1.23e-8,"amount":-3.5e2,"timestamp":"1791194547002"}])");
+        const auto rows = orders::parseSupabaseOrders("[{\"contract\":\"XAU_USDT\",\n"
+            "            \"activation_price\":1.23e-8,\"amount\":-3.5e2,\"timestamp\":\"1791194547002\"}]");
         QCOMPARE(rows.first().toObject().value("activation_price").toString(), QString("0.0000000123"));
         QCOMPARE(rows.first().toObject().value("amount").toString(), QString("-350"));
     }
@@ -878,9 +878,9 @@ private slots:
                     requests.append(*buffer);
                     QByteArray body = "[]";
                     if (buffer->contains("offset=0"))
-                        body = R"([{"id":1,"contract":"XAU_USDT","activation_price":1.2300,"amount":350,"timestamp":1791194547002,"url":"http://127.0.0.1:1/never-fetch"}])";
+                        body = "[{\"id\":1,\"contract\":\"XAU_USDT\",\"activation_price\":1.2300,\"amount\":350,\"timestamp\":1791194547002,\"url\":\"http://127.0.0.1:1/never-fetch\"}]";
                     else if (buffer->contains("offset=1"))
-                        body = R"([{"id":2,"contract":"BTC_USDT","activation_price":"2.5000","amount":"-1","timestamp":1791194547003}])";
+                        body = "[{\"id\":2,\"contract\":\"BTC_USDT\",\"activation_price\":\"2.5000\",\"amount\":\"-1\",\"timestamp\":1791194547003}]";
                     const QByteArray range = counted
                         ? (requests.size() == 1 ? "Content-Range: 0-0/2\r\n" : "Content-Range: 1-1/2\r\n") : "";
                     socket->write("HTTP/1.1 200 OK\r\n" + range + "Connection: close\r\nContent-Length: "
@@ -929,8 +929,8 @@ private slots:
         QTemporaryDir directory;
         orders::Config config;
         config.dataPath = config.ordersPath = directory.filePath("data.db");
-        const auto previous = orders::parseSupabaseOrders(R"([{"contract":"BTC_USDT",
-            "activation_price":100,"amount":1,"timestamp":123}])");
+        const auto previous = orders::parseSupabaseOrders("[{\"contract\":\"BTC_USDT\",\n"
+            "            \"activation_price\":100,\"amount\":1,\"timestamp\":123}]");
         orders::saveSources(config.dataPath, previous);
         const auto previousOrders = orders::readSources(config.dataPath).orders;
         QTcpServer server;
@@ -948,7 +948,7 @@ private slots:
                     if (!buffer->contains("\r\n\r\n")) return;
                     const bool first = ++requests == 1;
                     const QByteArray responseBody = first
-                        ? R"([{"contract":"XAU_USDT","activation_price":1,"amount":2,"timestamp":124}])" : body;
+                        ? "[{\"contract\":\"XAU_USDT\",\"activation_price\":1,\"amount\":2,\"timestamp\":124}]" : body;
                     const QByteArray rangeHeader = range.isEmpty() ? QByteArray{}
                         : "Content-Range: " + (first ? QByteArray("0-0/2") : range) + "\r\n";
                     socket->write("HTTP/1.1 " + QByteArray::number(first ? 200 : status)

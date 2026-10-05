@@ -5,6 +5,8 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- issue #2：第一轮远端 CI 已编译主程序；测试链接失败，日志提示 Qt 没生成测试类元信息，已调整新增测试里的字符串写法，继续交给远端验证。
+- issue #2：本地和远端分支已改名为 feature-supabse，代码已提交推送，并创建草稿 PR #3 供查看改动。
 - issue #2：网页静态检查通过，11 项纯 JavaScript 测试通过，均不触发编译；差异检查通过。
 - issue #2：确认旧流程是读取 Supabase 的 1 表、访问 URL、解析文本、存入 SQLite。
 - issue #2：改为按 id 分页直接读取 orders 表，保存原始记录并直接填入本地 orders 表；手动、定时和启动入口共用新流程。
@@ -26,4 +28,4 @@
 - 未合并到 master，也未关闭 GitHub issue；本次按 issue 要求交付新分支。
 
 ## 在做：
-- issue #2：正在做静态检查和差异检查，随后推送 feature-supabse 分支交给远端 CI 验证。
+- issue #2：已有远端 CI 正在执行 C++ 编译和回归测试，结果确认后更新交付记录。
