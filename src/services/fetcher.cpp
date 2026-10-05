@@ -20,7 +20,7 @@
 namespace orders {
 namespace {
 constexpr int kSourcePageSize = 1000;
-const QString kSourcePath = QStringLiteral("/rest/v1/1");
+const QString kSourcePath = QStringLiteral("/rest/v1/orders");
 const QString kGateHost = QStringLiteral("https://api.gateio.ws");
 const QByteArray kTrailingOrdersPath = "/api/v4/futures/usdt/autoorder/v1/trail/list";
 
@@ -34,39 +34,11 @@ void ensureHttpSuccess(const HttpResult &result) {
         throw Error(QString("接口返回 HTTP %1").arg(result.status));
 }
 
-QJsonArray parseSourcePage(const QByteArray &body) {
-    QJsonParseError error;
-    const auto document = QJsonDocument::fromJson(body, &error);
-    if (error.error != QJsonParseError::NoError)
-        throw Error("接口返回无效 JSON：" + error.errorString());
-    if (!document.isArray())
-        throw Error("数据库响应应为对象数组");
-
-    const auto page = document.array();
-    for (const auto &row : page) {
-        if (!row.isObject())
-            throw Error("数据库响应包含无效来源");
-    }
-    return page;
-}
-
-QJsonValue parseSourceContent(const QByteArray &body) {
-    // Wrapping accepts JSON scalars as well as objects and arrays.
-    QJsonParseError error;
-    const auto document = QJsonDocument::fromJson("[" + body + "]", &error);
-    if (error.error == QJsonParseError::NoError && document.isArray()) {
-        const auto values = document.array();
-        if (values.size() == 1)
-            return values.first();
-    }
-    return QString::fromUtf8(body);
-}
-
 QUrl sourcePageUrl(const QString &base, qsizetype offset) {
     QUrl url(base + kSourcePath);
     QUrlQuery query;
     query.addQueryItem("select", "*");
-    query.addQueryItem("order", "created_at.asc");
+    query.addQueryItem("order", "id.asc");
     query.addQueryItem("offset", QString::number(offset));
     query.addQueryItem("limit", QString::number(kSourcePageSize));
     url.setQuery(query);
@@ -78,43 +50,43 @@ QJsonArray fetchSourceRecords(const Config &config) {
     while (base.endsWith('/'))
         base.chop(1);
     const QByteArray key = config.supabaseKey.toUtf8();
-    const HttpHeaders headers{{"apikey", key}, {"Authorization", "Bearer " + key}};
+    HttpHeaders headers{{"apikey", key}, {"Accept", "application/json"}, {"Prefer", "count=exact"}};
+    // Publishable/secret sb_* keys belong only in apikey; legacy JWT keys also use Bearer.
+    if (key.split('.').size() == 3)
+        headers.append({"Authorization", "Bearer " + key});
 
     QJsonArray sources;
+    qint64 total = -1;
     while (true) {
         ensureNotCancelled(config);
         const auto response = get(sourcePageUrl(base, sources.size()), headers, false,
                                   config.cancelled);
         ensureHttpSuccess(response);
-        const auto page = parseSourcePage(response.body);
-        // A server may cap pages below our limit; only an empty page ends pagination.
-        if (page.isEmpty())
+        const auto page = parseSupabaseOrders(response.body);
+        for (const auto &header : response.headers) {
+            if (header.first.toLower() != "content-range") continue;
+            const auto count = header.second.mid(header.second.lastIndexOf('/') + 1);
+            if (count == "*") continue;
+            bool valid = false;
+            const auto currentTotal = count.toLongLong(&valid);
+            if (!valid || currentTotal < 0 || (total >= 0 && total != currentTotal))
+                throw Error("读取期间订单总数发生变化或统计无效，请重新获取");
+            total = currentTotal;
+        }
+        // Short pages do not end pagination; use the exact total or an empty page.
+        if (page.isEmpty()) {
+            if (total >= 0 && sources.size() != total)
+                throw Error("orders 表分页提前结束，保留上次数据");
             return sources;
+        }
         for (const auto &row : page)
             sources.append(row);
+        if (total >= 0 && sources.size() > total)
+            throw Error("orders 表订单数量与统计不一致，保留上次数据");
+        if (sources.size() == total) return sources;
     }
 }
 
-QJsonObject fetchSourceContent(QJsonObject source, const Config &config) {
-    ensureNotCancelled(config);
-    // Fetch metadata describes this attempt, even if the input has stale metadata.
-    source.remove("error");
-    source.remove("status_code");
-    source.insert("data", QJsonValue::Null);
-    try {
-        // Supabase credentials must never be forwarded to a source URL.
-        const auto response = get(QUrl(source.value("url").toString()), {}, true,
-                                  config.cancelled);
-        source.insert("status_code", response.status);
-        ensureHttpSuccess(response);
-        source.insert("data", parseSourceContent(response.body));
-    } catch (const std::exception &error) {
-        source.insert("error", QString::fromUtf8(error.what()));
-    }
-    // Cancellation aborts the batch rather than becoming an individual source error.
-    ensureNotCancelled(config);
-    return source;
-}
 } // namespace
 
 QJsonArray fetchSources(const Config &config) {
@@ -122,12 +94,9 @@ QJsonArray fetchSources(const Config &config) {
     if (config.supabaseUrl.isEmpty() || config.supabaseKey.isEmpty())
         throw Error("请在程序的「连接与存储配置」中填写 Supabase 地址和密钥");
 
-    const auto sources = fetchSourceRecords(config);
-    QJsonArray results;
-    for (const auto &source : sources)
-        results.append(fetchSourceContent(source.toObject(), config));
+    const auto orders = fetchSourceRecords(config);
     ensureNotCancelled(config);
-    return results;
+    return orders;
 }
 
 QJsonArray fetchTrailingOrders(const Config &config) {

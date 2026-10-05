@@ -1,9 +1,15 @@
 # 本文档为4象限的任务清单，全文书写大白话
 
 ## 想做：
+- 完成 issue #2：来源订单直接读取 Supabase orders 表，保存到本地数据库，完成后将分支改名为 feature-supabse。
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- issue #2：网页静态检查通过，11 项纯 JavaScript 测试通过，均不触发编译；差异检查通过。
+- issue #2：确认旧流程是读取 Supabase 的 1 表、访问 URL、解析文本、存入 SQLite。
+- issue #2：改为按 id 分页直接读取 orders 表，保存原始记录并直接填入本地 orders 表；手动、定时和启动入口共用新流程。
+- issue #2：价格和数量保留精度，分页或字段出错保留旧数据；新旧 Supabase 密钥都支持，保存成功后继续使用原有自动下单流程。
+- issue #2：补充远端 C++ 回归用例，覆盖直接入库、分页、密钥、精度、无效数据和失败保留缓存；更新网页和说明。
 - 找到现有本地仓库，读取 issue，确认只有这一项未完成的任务。
 - 拉取远端最新代码，从 origin/master 新建 issue-1-export-orders 分支。
 - 确认本地已有 Supabase 配置；密钥只在本地读取，不写入提交。
@@ -20,4 +26,4 @@
 - 未合并到 master，也未关闭 GitHub issue；本次按 issue 要求交付新分支。
 
 ## 在做：
-- 无，issue #1 要求的脚本、真实数据导出和新分支推送已完成。
+- issue #2：正在做静态检查和差异检查，随后推送 feature-supabse 分支交给远端 CI 验证。

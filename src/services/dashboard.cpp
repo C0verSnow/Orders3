@@ -100,7 +100,7 @@ RefreshResult Dashboard::refreshSources() {
             sourceError_.clear();
             executionResults_ = {};
         }
-        // Only orders from successful sources are parsed into the orders table.
+        // A complete, validated Supabase snapshot is committed before automatic trading.
         std::lock_guard<std::mutex> trading(gateMutex_);
         ordersBusy_ = true;
         BusyGuard ordersGuard(ordersBusy_);
