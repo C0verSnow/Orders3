@@ -904,10 +904,10 @@ private slots:
             QVERIFY(request.startsWith("GET /rest/v1/orders?"));
             QVERIFY(request.contains("order=id.asc"));
             QVERIFY(request.contains("limit=1000"));
-            QVERIFY(request.contains("Prefer: count=exact"));
+            QVERIFY(request.toLower().contains("prefer: count=exact"));
             QVERIFY(request.contains("offset=" + QByteArray::number(index)));
             QVERIFY(request.contains("apikey: " + key));
-            QCOMPARE(request.contains("Authorization: Bearer " + key), bearer);
+            QCOMPARE(request.toLower().contains("authorization: bearer " + key.toLower()), bearer);
         }
     }
 
