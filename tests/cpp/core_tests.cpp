@@ -186,7 +186,7 @@ private slots:
         QVERIFY_EXCEPTION_THROWN(closePrice("100", "10", "10", "10", true), orders::Error);
     }
 
-    void closePositionsRespectOwnershipDirectionAndPersistence() {
+    void closePositionsReconcileAllActiveOrdersAndPersistDirections() {
         QTemporaryDir directory;
         orders::Config config;
         config.dataPath = config.ordersPath = directory.filePath("data.db");
@@ -250,17 +250,19 @@ private slots:
                 return orders::HttpResult{200, QJsonDocument(QJsonObject{{"code", 0},
                     {"data", QJsonObject{{"id", QString::number(nextId++)}}}}).toJson()};
             });
-        QCOMPARE(results.size(), 3);
+        QCOMPARE(results.size(), 5);
         QCOMPARE(listPages, 3); // Includes our order on page 2 even when the server caps pages.
-        QCOMPARE(writes.size(), 3);
-        QVERIFY(writes[0].endsWith("/stop"));
-        QCOMPARE(bodies[0].value("id").toInteger(), qint64(9007199254740993));
-        QCOMPARE(bodies[1].value("amount").toString(), QString("37"));
-        QCOMPARE(bodies[1].value("activation_price").toString(), QString("83.387"));
-        QVERIFY(!bodies[1].value("is_gte").toBool());
-        QCOMPARE(bodies[2].value("amount").toString(), QString("-37"));
-        QVERIFY(bodies[2].value("is_gte").toBool());
-        for (int index : {1, 2}) {
+        QCOMPARE(writes.size(), 5);
+        for (int index : {0, 1, 2}) QVERIFY(writes[index].endsWith("/stop"));
+        QCOMPARE(bodies[0].value("id").toInteger(), qint64(20));
+        QCOMPARE(bodies[1].value("id").toInteger(), qint64(22));
+        QCOMPARE(bodies[2].value("id").toInteger(), qint64(9007199254740993));
+        QCOMPARE(bodies[3].value("amount").toString(), QString("37"));
+        QCOMPARE(bodies[3].value("activation_price").toString(), QString("83.387"));
+        QVERIFY(!bodies[3].value("is_gte").toBool());
+        QCOMPARE(bodies[4].value("amount").toString(), QString("-37"));
+        QVERIFY(bodies[4].value("is_gte").toBool());
+        for (int index : {3, 4}) {
             QVERIFY(bodies[index].value("reduce_only").toBool());
             QCOMPARE(bodies[index].value("price_offset").toString(), QString("1%"));
             QCOMPARE(bodies[index].value("price_type").toInt(), 3);
@@ -279,21 +281,18 @@ private slots:
         const auto trailing = orders::readTrailingOrders(config.ordersPath).orders;
         for (const auto &value : trailing) {
             const auto row = value.toObject();
-            if (row.value("id").toString() == "20") QCOMPARE(row.value("original_status").toInt(), 1);
+            if (row.value("id").toString() == "20") QCOMPARE(row.value("original_status").toInt(), 5);
             if (row.value("id").toString() == "9007199254740993")
                 QCOMPARE(row.value("original_status").toInt(), 5);
         }
     }
 
-    void closePositionsEmptySnapshotStillStopsOwnedOrders() {
+    void closePositionsEmptySnapshotStillStopsLegacyOrders() {
         QTemporaryDir directory;
         orders::Config config;
         config.dataPath = config.ordersPath = directory.filePath("data.db");
         config.gateKey = "key";
         config.gateSecret = "secret";
-        const auto owner = QString::fromLatin1(QCryptographicHash::hash(
-            config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
-        orders::saveManagedCloseOrderId(config.ordersPath, owner, "1");
         const QJsonObject old{{"id", "1"}, {"contract", "BTC_USDT"}, {"amount", "-1"},
             {"activation_price", "100"}, {"reduce_only", true}, {"original_status", 1}};
         int stops = 0, creates = 0;
@@ -330,13 +329,14 @@ private slots:
             {"activation_price", "100"}, {"reduce_only", true}, {"original_status", 1}};
         int writes = 0;
         bool invalidValue = true;
+        bool duplicatePosition = false;
         bool stopFails = true;
         const auto requester = [&](const QByteArray &method, const QByteArray &path,
                                    const QByteArray &, const orders::HttpHeaders &) {
             if (path.endsWith("/positions")) {
                 auto row = position;
                 if (invalidValue) row.insert("value", "invalid");
-                return orders::HttpResult{200, QJsonDocument(QJsonArray{row, row}).toJson()};
+                return orders::HttpResult{200, QJsonDocument(duplicatePosition ? QJsonArray{row, row} : QJsonArray{row}).toJson()};
             }
             if (method == "GET") return orders::HttpResult{200, QJsonDocument(QJsonObject{
                 {"code", 0}, {"timestamp", 123}, {"data", QJsonObject{{"orders",
@@ -348,13 +348,17 @@ private slots:
         QVERIFY_EXCEPTION_THROWN(orders::closePositionOrders(config, requester), orders::Error);
         QCOMPARE(writes, 0);
         invalidValue = false;
+        duplicatePosition = true;
+        QVERIFY_EXCEPTION_THROWN(orders::closePositionOrders(config, requester), orders::Error);
+        QCOMPARE(writes, 0); // Reject duplicate position directions before any stop/create.
+        duplicatePosition = false;
         auto results = orders::closePositionOrders(config, requester);
         QCOMPARE(writes, 1);
         QCOMPARE(results.last().toObject().value("operation").toString(), QString("stop"));
         writes = 0;
         stopFails = false;
         results = orders::closePositionOrders(config, requester);
-        QCOMPARE(writes, 2); // One stop, one failed create; no second create or retry.
+        QCOMPARE(writes, 2); // One stop, one failed create; no immediate retry.
         QCOMPARE(results.last().toObject().value("operation").toString(), QString("create"));
     }
 
@@ -547,8 +551,8 @@ private slots:
                 {"activation_price", price}, {"reduce_only", true}, {"original_status", status}};
         };
         QJsonArray exchange{old("1", "-1", "0132.3100", 2), old("2", "1", "68.310"),
-            old("3", "-1", "163.620")}; // Unowned, even if it matches a later desired price.
-        orders::saveManagedCloseOrderId(config.ordersPath, owner, "1");
+            old("3", "-1", "163.620"), old("4", "-1", "132.310"),
+            old("5", "-1", "132.310", 4), old("6", "-1", "132.310", 5)}; // Legacy duplicates and inactive orders.
         orders::saveManagedCloseOrderId(config.ordersPath, owner, "2");
         int gets = 0, stops = 0, creates = 0;
         QList<qint64> stoppedIds;
@@ -585,7 +589,12 @@ private slots:
         };
         auto results = orders::closePositionOrders(config, requester);
         QCOMPARE(gets, 3);
-        QCOMPARE(stops, 0);
+        QCOMPARE(stops, 2);
+        QCOMPARE(creates, 0);
+        QCOMPARE(results.size(), 4);
+        QCOMPARE(stoppedIds, QList<qint64>({3, 4}));
+        results = orders::closePositionOrders(config, requester);
+        QCOMPARE(stops, 2);
         QCOMPARE(creates, 0);
         QCOMPARE(results.size(), 2);
         for (const auto &value : results)
@@ -593,33 +602,33 @@ private slots:
         // Short quantity changes while the long protection stays unchanged.
         positions = QJsonArray{position("BTC_USDT", 1), position("BTC_USDT", -2)};
         results = orders::closePositionOrders(config, requester);
-        QCOMPARE(stops, 1);
+        QCOMPARE(stops, 3);
         QCOMPARE(creates, 1);
-        QCOMPARE(stoppedIds[0], qint64(2));
+        QCOMPARE(stoppedIds[2], qint64(2));
         QCOMPARE(results.size(), 3);
         QCOMPARE(results[0].toObject().value("id").toString(), QString("1"));
         QCOMPARE(results[0].toObject().value("action").toString(), QString("skipped"));
         QCOMPARE(results.last().toObject().value("amount").toString(), QString("2"));
         results = orders::closePositionOrders(config, requester);
-        QCOMPARE(gets, 9); // Each poll still obtains fresh positions and the exchange list.
-        QCOMPARE(stops, 1);
+        QCOMPARE(gets, 12); // Each poll still obtains fresh positions and the exchange list.
+        QCOMPARE(stops, 3);
         QCOMPARE(creates, 1);
         for (const auto &value : results)
             QCOMPARE(value.toObject().value("action").toString(), QString("skipped"));
-        // A changed close price replaces only the long order; manual orders cannot match.
+        // A changed close price replaces only the long order; stopped duplicates stay inactive.
         auto changed = position("BTC_USDT", 1);
         changed.insert("initial_margin", "20");
         positions = QJsonArray{changed, position("BTC_USDT", -2)};
         results = orders::closePositionOrders(config, requester);
-        QCOMPARE(stops, 2);
+        QCOMPARE(stops, 4);
         QCOMPARE(creates, 2);
-        QCOMPARE(stoppedIds[1], qint64(1));
+        QCOMPARE(stoppedIds[3], qint64(1));
         QCOMPARE(results.size(), 3);
         QCOMPARE(results[0].toObject().value("id").toString(), QString("100"));
         QCOMPARE(results.last().toObject().value("activation_price").toString(), QString("163.620"));
         results = orders::closePositionOrders(config, requester);
-        QCOMPARE(gets, 15);
-        QCOMPARE(stops, 2);
+        QCOMPARE(gets, 18);
+        QCOMPARE(stops, 4);
         QCOMPARE(creates, 2);
         for (const auto &value : results)
             QCOMPARE(value.toObject().value("action").toString(), QString("skipped"));

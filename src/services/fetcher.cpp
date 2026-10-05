@@ -365,6 +365,7 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
         throw Error("持仓接口必须返回有效的 JSON 数组");
 
     QJsonArray positions;
+    QSet<QString> positionDirections;
     // Validate the complete snapshot before cancelling any protection orders.
     for (const auto &value : document.array()) {
         if (!value.isObject()) throw Error("持仓列表包含无效记录");
@@ -387,6 +388,12 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
         const auto contract = source.value("contract").toString();
         static const QRegularExpression contractPattern(R"(^[A-Z0-9]+_USDT$)");
         if (!contractPattern.match(contract).hasMatch()) throw Error("持仓合约无效：" + contract);
+        if (size != 0) {
+            const auto direction = contract + (size > 0 ? ":long" : ":short");
+            if (positionDirections.contains(direction))
+                throw Error("持仓接口返回重复的合约方向：" + contract);
+            positionDirections.insert(direction);
+        }
         QJsonObject position{{"contract", contract}, {"size", size}};
         for (const QString &field : {"entry_price", "value", "leverage_max", "unrealised_pnl",
                                      "realised_pnl", "initial_margin", "mark_price"}) {
@@ -426,11 +433,10 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
     saveTrailingOrders(config.ordersPath, trailing);
     const auto owner = QString::fromLatin1(QCryptographicHash::hash(
         config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
-    const auto managed = readManagedCloseOrderIds(config.ordersPath, owner);
     QJsonArray results;
     QJsonArray candidates;
     QSet<qsizetype> retained;
-    // Match each desired close order to at most one active order owned by this account.
+    // Retain exactly one matching active close order per position direction, including legacy/manual orders.
     for (const auto &value : readPositions(config.dataPath)) {
         const auto position = value.toObject();
         const auto size = position.value("size").toInteger();
@@ -444,7 +450,6 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
             const int status = old.value("original_status").toInt();
             if (retained.contains(index) || !old.value("reduce_only").toBool()
                 || (status != 1 && status != 2)
-                || !managed.contains(old.value("id").toString())
                 || !sameOrderParameters(old, entry)) continue;
             retained.insert(index);
             entry.insert("id", old.value("id"));
@@ -464,8 +469,7 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
     for (qsizetype index = 0; index < trailing.size(); ++index) {
         const auto old = trailing[index].toObject();
         const int status = old.value("original_status").toInt();
-        if (retained.contains(index) || !old.value("reduce_only").toBool() || (status != 1 && status != 2)
-            || !managed.contains(old.value("id").toString())) continue;
+        if (retained.contains(index) || !old.value("reduce_only").toBool() || (status != 1 && status != 2)) continue;
         bool valid = false;
         const auto id = old.value("id").toString().toLongLong(&valid);
         if (!valid || id <= 0) throw Error("旧平仓订单 ID 无效");
@@ -473,8 +477,7 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
     for (qsizetype index = 0; index < trailing.size(); ++index) {
         auto old = trailing[index].toObject();
         const int status = old.value("original_status").toInt();
-        if (retained.contains(index) || !old.value("reduce_only").toBool() || (status != 1 && status != 2)
-            || !managed.contains(old.value("id").toString())) continue;
+        if (retained.contains(index) || !old.value("reduce_only").toBool() || (status != 1 && status != 2)) continue;
         QJsonObject result{{"action", "stopped"}, {"id", old.value("id")},
                            {"contract", old.value("contract")}};
         try {
