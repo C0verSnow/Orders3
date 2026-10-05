@@ -19,6 +19,7 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTemporaryDir>
+#include <QScopeGuard>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QtTest>
@@ -27,6 +28,150 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void gateSignatureMatchesOfficialVector() {
+        // Gate APIv4 documentation: fixed Unix timestamp and GET with query.
+        const auto headers = orders::gate::signedHeaders("GET",
+            "/api/v4/futures/orders?contract=BTC_USD&status=finished&limit=50",
+            {}, "key", "secret", 1541993715);
+        QMap<QByteArray, QByteArray> values;
+        for (const auto &header : headers) values.insert(header.first, header.second);
+        QCOMPARE(values.value("KEY"), QByteArray("key"));
+        QCOMPARE(values.value("Timestamp"), QByteArray("1541993715"));
+        QCOMPARE(values.value("SIGN"), QByteArray(
+            "55f84ea195d6fe57ce62464daaa7c3c02fa9d1dde954e4c898289c9a2407a3d6fb3fa"
+            "f24deff16790d726b66ac9f74526668b13bd01029199cc4fcc522418b8a"));
+    }
+
+    void gateAuthenticationErrors_data() {
+        QTest::addColumn<QString>("label");
+        QTest::addColumn<QString>("hint");
+        QTest::newRow("ip") << QString("IP_FORBIDDEN") << QString("出口 IP");
+        QTest::newRow("clock") << QString("REQUEST_EXPIRED") << QString("60 秒");
+        QTest::newRow("signature") << QString("INVALID_SIGNATURE") << QString("签名不匹配");
+        QTest::newRow("key") << QString("INVALID_KEY") << QString("密钥无效");
+        QTest::newRow("credentials") << QString("INVALID_CREDENTIALS") << QString("密钥无效");
+        QTest::newRow("read-only") << QString("READ_ONLY") << QString("写入权限");
+        QTest::newRow("permission") << QString("FORBIDDEN") << QString("权限受限");
+        QTest::newRow("locked") << QString("ACCOUNT_LOCKED") << QString("账户状态");
+        QTest::newRow("header") << QString("MISSING_REQUIRED_HEADER") << QString("请求头");
+    }
+
+    void gateAuthenticationErrors() {
+        QFETCH(QString, label);
+        QFETCH(QString, hint);
+        const auto body = QJsonDocument(QJsonObject{{"label", label},
+            {"message", "do-not-expose-secret"}}).toJson();
+        try {
+            orders::gate::ensureSuccess({401, body});
+            QFAIL("Expected Gate authentication error");
+        } catch (const orders::Error &error) {
+            const QString text = QString::fromUtf8(error.what());
+            QVERIFY(text.contains("HTTP 401"));
+            QVERIFY(text.contains(label));
+            QVERIFY(text.contains(hint));
+            QVERIFY(!text.contains("do-not-expose-secret"));
+        }
+    }
+
+    void gateUnknownErrorsDoNotReflectUpstreamBody() {
+        for (const QByteArray &body : {QByteArray("<html>do-not-expose-secret</html>"),
+             QByteArray(R"({"label":"do-not-expose-secret","message":"do-not-expose-secret"})")}) {
+            try {
+                orders::gate::ensureSuccess({401, body});
+                QFAIL("Expected Gate authentication error");
+            } catch (const orders::Error &error) {
+                const QString text = QString::fromUtf8(error.what());
+                QVERIFY(text.contains("HTTP 401"));
+                QVERIFY(!text.contains("do-not-expose-secret"));
+            }
+        }
+        orders::gate::ensureSuccess({200, "[]"});
+    }
+
+    void gateAuthenticationFailureStopsBeforeTrading() {
+        orders::Config config;
+        config.gateKey = "offline-key";
+        config.gateSecret = "offline-secret";
+        int calls = 0;
+        try {
+            orders::closePositionOrders(config, [&](const QByteArray &method,
+                const QByteArray &path, const QByteArray &, const orders::HttpHeaders &) {
+                ++calls;
+                if (method != "GET" || path != "/api/v4/futures/usdt/positions")
+                    return orders::HttpResult{500, "{}"};
+                return orders::HttpResult{401, R"({"label":"IP_FORBIDDEN"})"};
+            });
+            QFAIL("Expected Gate authentication error");
+        } catch (const orders::Error &error) {
+            QVERIFY(QString::fromUtf8(error.what()).contains("IP_FORBIDDEN"));
+        }
+        QCOMPARE(calls, 1);
+    }
+
+    void gateCredentialsMatchEnvironmentSavedSettingsAndLiveUpdates() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QList<QByteArray> names{"ORDERS_CONFIG_PATH", "ORDERS_DATA_DIR", "API_KEY", "API_SECRET",
+            "SUPABASE_URL", "SUPABASE_ANON_KEY", "ORDERS_ALLOWED_ORIGIN"};
+        QList<QByteArray> previous;
+        QList<bool> wasSet;
+        for (const auto &name : names) {
+            previous.append(qgetenv(name.constData()));
+            wasSet.append(qEnvironmentVariableIsSet(name.constData()));
+        }
+        const auto restore = qScopeGuard([&] {
+            for (qsizetype index = 0; index < names.size(); ++index) {
+                if (wasSet[index]) qputenv(names[index].constData(), previous[index]);
+                else qunsetenv(names[index].constData());
+            }
+        });
+        for (const auto &name : names) qputenv(name.constData(), "");
+        qputenv("ORDERS_CONFIG_PATH", directory.filePath("config").toUtf8());
+        qputenv("ORDERS_DATA_DIR", directory.path().toUtf8());
+        // Docker-style environment retains quotes; Windows legacy .env strips them.
+        qputenv("API_KEY", "  \"fixture-key\"  ");
+        qputenv("API_SECRET", " 'fixture-secret' ");
+        const auto initial = orders::Config::load();
+        QCOMPARE(initial.gateKey, QString("fixture-key"));
+        QCOMPARE(initial.gateSecret, QString("fixture-secret"));
+        orders::Dashboard dashboard(initial);
+        dashboard.configureEnvironment({{"SUPABASE_URL", "https://example.supabase.co"}});
+        QCOMPARE(dashboard.config().gateKey, initial.gateKey);
+        QCOMPARE(dashboard.config().gateSecret, initial.gateSecret);
+        QCOMPARE(orders::loadEnvironmentSettings(initial.schedulePath).value("API_SECRET").toString(),
+            initial.gateSecret);
+        qputenv("API_KEY", "stale-key");
+        qputenv("API_SECRET", "stale-secret");
+        // A Windows-written CRLF config must load identically in the Linux CI job.
+        QFile persisted(initial.schedulePath);
+        QVERIFY(persisted.open(QIODevice::ReadOnly));
+        const auto crlf = persisted.readAll().replace("\n", "\r\n");
+        persisted.close();
+        QVERIFY(persisted.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QCOMPARE(persisted.write(crlf), qint64(crlf.size()));
+        persisted.close();
+        const auto restarted = orders::Config::load();
+        QCOMPARE(restarted.gateKey, initial.gateKey);
+        QCOMPARE(restarted.gateSecret, initial.gateSecret);
+        const QByteArray path = "/api/v4/futures/usdt/autoorder/v1/trail/create";
+        const QByteArray body = R"({"contract":"BTC_USDT","amount":"1"})";
+        QCOMPARE(orders::gate::signedHeaders("POST", path, body,
+                     restarted.gateKey, restarted.gateSecret, 1541993715),
+                 orders::gate::signedHeaders("POST", path, body,
+                     "fixture-key", "fixture-secret", 1541993715));
+        dashboard.configureEnvironment({{"API_KEY", " 'replacement-key' "},
+            {"API_SECRET", " \"replacement-secret\" "}});
+        const auto replacement = orders::Config::load();
+        QCOMPARE(replacement.gateKey, QString("replacement-key"));
+        QCOMPARE(replacement.gateSecret, QString("replacement-secret"));
+        QCOMPARE(dashboard.config().gateKey, replacement.gateKey);
+        QCOMPARE(dashboard.config().gateSecret, replacement.gateSecret);
+        dashboard.configureEnvironment({{"API_KEY", ""}, {"API_SECRET", ""}});
+        const auto cleared = orders::Config::load();
+        QVERIFY(cleared.gateKey.isEmpty());
+        QVERIFY(cleared.gateSecret.isEmpty());
+    }
+
     void closePricesUseExactDecimalArithmetic() {
         using orders::decimal::closePrice;
         QCOMPARE(closePrice("88.077351351351", "344.2961", "4.852279702667", "93.053", true),

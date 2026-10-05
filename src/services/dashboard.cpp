@@ -69,11 +69,7 @@ QJsonObject Dashboard::configureEnvironment(const QJsonObject &payload) {
             }
             next.environment.insert(it.key(), value);
         }
-        next.supabaseUrl = next.environment.value("SUPABASE_URL").toString();
-        next.supabaseKey = next.environment.value("SUPABASE_ANON_KEY").toString();
-        next.gateKey = next.environment.value("API_KEY").toString();
-        next.gateSecret = next.environment.value("API_SECRET").toString();
-        next.allowedOrigin = next.environment.value("ORDERS_ALLOWED_ORIGIN").toString();
+        next.applyConnectionSettings();
         saveEnvironmentSettings(next.schedulePath, next.environment);
         config_ = std::move(next);
     }

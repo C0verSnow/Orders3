@@ -22,6 +22,8 @@ struct ORDERS_CORE_EXPORT Config {
     QString gateSecret;
     QString allowedOrigin;
     QJsonObject environment;
+    // Shared by startup and live settings updates on every platform.
+    void applyConnectionSettings();
     static Config load();
 };
 

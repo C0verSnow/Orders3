@@ -140,7 +140,7 @@ QJsonArray fetchTrailingOrders(const Config &config) {
                                                config.gateSecret);
     const auto response = get(QUrl(kGateHost + QString::fromUtf8(kTrailingOrdersPath)),
                               headers, false, config.cancelled);
-    ensureHttpSuccess(response);
+    gate::ensureSuccess(response);
     const auto orders = gate::parseTrailingOrders(response.body);
     ensureNotCancelled(config);
     return orders;
@@ -193,7 +193,7 @@ qint64 orderTimestamp(const QJsonValue &value) {
 }
 
 QJsonObject successfulResponse(const HttpResult &response) {
-    ensureHttpSuccess(response);
+    gate::ensureSuccess(response);
     QJsonParseError error;
     const auto document = QJsonDocument::fromJson(response.body, &error);
     if (error.error != QJsonParseError::NoError || !document.isObject())
@@ -358,7 +358,7 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
                                : post(url, body, headers, config.cancelled);
     };
     const auto response = request("GET", "/api/v4/futures/usdt/positions");
-    ensureHttpSuccess(response);
+    gate::ensureSuccess(response);
     QJsonParseError error;
     const auto document = QJsonDocument::fromJson(response.body, &error);
     if (error.error != QJsonParseError::NoError || !document.isArray())
@@ -409,7 +409,7 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
         const auto path = kTrailingOrdersPath + "?page_num=" + QByteArray::number(pageNumber)
             + "&page_size=100";
         const auto listResponse = request("GET", path);
-        ensureHttpSuccess(listResponse);
+        gate::ensureSuccess(listResponse);
         const auto page = gate::parseTrailingOrders(listResponse.body);
         if (page.isEmpty()) break;
         for (const auto &value : page) {

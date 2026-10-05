@@ -95,17 +95,34 @@ Config Config::load() {
             result.environment.insert(name, qEnvironmentVariable(name));
         return result.environment.value(name).toString();
     };
-    result.supabaseUrl = value("SUPABASE_URL");
-    result.supabaseKey = value("SUPABASE_ANON_KEY");
-    result.gateKey = value("API_KEY").trimmed();
-    result.gateSecret = value("API_SECRET").trimmed();
-    result.allowedOrigin = value("ORDERS_ALLOWED_ORIGIN");
+    for (const char *name : {"SUPABASE_URL", "SUPABASE_ANON_KEY", "API_KEY", "API_SECRET",
+                             "ORDERS_ALLOWED_ORIGIN"})
+        value(name);
+    result.applyConnectionSettings();
     const QString savedDataDirectory = value("ORDERS_DATA_DIR");
     if (!savedDataDirectory.isEmpty()) {
         result.dataPath = expandPath(savedDataDirectory) + "/data.db";
         result.ordersPath = result.dataPath;
     }
     return result;
+}
+
+void Config::applyConnectionSettings() {
+    // Docker --env-file preserves enclosing quotes, unlike our legacy .env reader.
+    // Gate credentials cannot contain quotes; normalize all input paths identically.
+    for (const QString &name : {"API_KEY", "API_SECRET"}) {
+        QString credential = environment.value(name).toString().trimmed();
+        if (credential.size() >= 2
+            && (credential.front() == '"' || credential.front() == '\'')
+            && credential.back() == credential.front())
+            credential = credential.mid(1, credential.size() - 2).trimmed();
+        environment.insert(name, credential);
+    }
+    supabaseUrl = environment.value("SUPABASE_URL").toString();
+    supabaseKey = environment.value("SUPABASE_ANON_KEY").toString();
+    gateKey = environment.value("API_KEY").toString();
+    gateSecret = environment.value("API_SECRET").toString();
+    allowedOrigin = environment.value("ORDERS_ALLOWED_ORIGIN").toString();
 }
 
 namespace {

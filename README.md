@@ -39,7 +39,7 @@ C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 和 macOS �
 | 配置 | 用途 |
 | --- | --- |
 | `SUPABASE_URL`、`SUPABASE_ANON_KEY` | 来源数据读取 |
-| `API_KEY`、`API_SECRET` | Gate 跟踪订单读取 |
+| `API_KEY`、`API_SECRET` | Gate 持仓、跟踪订单读取及自动下单；需对应合约读写权限 |
 | `ORDERS_DATA_DIR` | 两个 SQLite 数据库的保存目录 |
 | `ORDERS_CONFIG_PATH` | 程序与定时配置文件路径（启动前通过环境变量指定，页面显示实际位置） |
 | `ORDERS_ALLOWED_ORIGIN` | 使用代理或不同访问地址时，允许的网页来源 |
@@ -57,6 +57,19 @@ cron = */15 * * * *
 ```
 
 默认每 15 分钟抓取一次。网页可启停、选择周期、编辑 Cron 并立即保存。支持五段数字表达式、通配符、步长、范围和列表，按电脑本地时间执行；星期支持 0 或 7 表示周日。日和星期同时受限时按“任一匹配”执行，不补跑休眠或慢任务期间错过的次数。与手动抓取冲突时跳过；停用不会中断正在执行的任务。保存时保留其他配置段。
+
+### Gate 在 Linux / Docker 返回 401
+
+Windows、Linux 和 Docker 共用配置加载、页面保存及 Gate 签名代码，字段均为 `API_KEY`、`API_SECRET`。启动读取与页面保存统一去除 Gate 密钥首尾空白及成对的单／双引号，兼容 Docker `--env-file` 保留引号的行为。页面保存的密钥优先于容器环境变量；留空保留，勾选清除后保存会删除密钥，并且不会回退使用环境变量中的旧值。容器配置默认保存到 `/data/config`，应挂载 `/data` 保留设置。
+
+Gate 读取持仓、获取追踪单、创建和停止订单失败时，页面会显示已识别的认证错误类别及处理提示，不再仅显示 HTTP 401。按 [Gate APIv4 官方说明](https://www.gate.com/docs/developers/apiv4/en/#label-list) 检查：
+
+- `IP_FORBIDDEN`：将 Linux/Docker 实际公网出口 IP 加入该密钥的白名单；代理出口可能与 Windows 不同。
+- `REQUEST_EXPIRED`：同步宿主机系统时间；容器共用宿主机时钟，签名时间与 Gate 的差距不能超过 60 秒，修改时区不能修正时钟偏差。
+- `INVALID_KEY` / `INVALID_CREDENTIALS` / `INVALID_SIGNATURE`：核对 APIv4 Key 与 Secret 是否为有效的同一组，并在页面重新保存。
+- `READ_ONLY` / `FORBIDDEN`：核对该密钥是否具备合约读取与交易写入权限。
+
+没有具体错误类别时，401 本身无法证明密钥未加载。以上代码修改需要重新构建发布包／镜像后生效，现有旧镜像不会自动更新。
 
 ## 工程目录
 
