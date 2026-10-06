@@ -72,7 +72,7 @@ HttpResult request(const QUrl &url, const HttpHeaders &headers, bool redirects,
     activity.complete(status);
     if (!redirects && status >= 300 && status < 400)
         throw Error("接口返回重定向，已停止请求");
-    return {status, reply->readAll()};
+    return {status, reply->readAll(), reply->rawHeaderPairs()};
 }
 } // namespace
 

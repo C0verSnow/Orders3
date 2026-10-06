@@ -244,15 +244,16 @@ void saveSources(const QString &path, const QJsonArray &items) {
         query.addBindValue(encode(extra));
         query.addBindValue(encode(present));
         prepared(query);
-        if (data.isString()) {
-            for (const auto &value : parseOrders(data.toString(), int(index))) {
-                prepare(query, "INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?)");
-                const auto order = value.toObject();
-                for (const QString &field : {"record_position", "order_index", "contract", "activation_price",
-                                             "side", "amount", "timestamp"})
-                    query.addBindValue(sqlValue(order.value(field)));
-                prepared(query);
-            }
+        const auto orders = item.contains("contract")
+            ? QJsonArray{parseOrderRecord(item, int(index))}
+            : data.isString() ? parseOrders(data.toString(), int(index)) : QJsonArray{};
+        for (const auto &value : orders) {
+            prepare(query, "INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?)");
+            const auto order = value.toObject();
+            for (const QString &field : {"record_position", "order_index", "contract", "activation_price",
+                                         "side", "amount", "timestamp"})
+                query.addBindValue(sqlValue(order.value(field)));
+            prepared(query);
         }
     }
     transaction.commit();

@@ -48,7 +48,7 @@ function scheduleSourceSync(schedule = sourceSchedule) {
 }
 
 function bodyText(item) {
-  return typeof item.data === "string" ? item.data : JSON.stringify(item.data, null, 2) ?? "";
+  return typeof item.data === "string" ? item.data : JSON.stringify(item.data ?? item, null, 2) ?? "";
 }
 function failed(item) {
   return Boolean(item.error) || Number(item.status_code) >= 400;
@@ -63,13 +63,13 @@ function render() {
   const openRecords = new Set(Array.from(container.querySelectorAll("details[open]")).map((el) => el.dataset.key));
   container.replaceChildren();
   if (!visible.length) {
-    $("count").textContent = `0 / ${items.length} 数据源`;
+    $("count").textContent = `0 / ${items.length} 来源订单`;
     container.append(node("div", "empty", items.length ? "没有匹配的结果，试试其他关键词或状态。" : "暂无来源订单，点击「获取订单」加载数据。"));
     return;
   }
   const {wrapper, tbody} = createTable(
-    ["数据源", "状态", "交易对", "方向", "价格", "数量", "订单时间", "数据源创建时间", "订单内容"],
-    "实盘订单数据，每个订单一行；无订单的数据源保留一行。", "source-table");
+    ["来源订单", "状态", "交易对", "方向", "价格", "数量", "订单时间", "创建时间", "订单内容"],
+    "Supabase 来源订单，每个订单一行。", "source-table");
   let rowCount = 0;
   const ordersBySource = new Map();
   for (const order of orderRows) {
@@ -86,11 +86,11 @@ function render() {
       source.append(node("span", "source-index", String(position + 1).padStart(2, "0")));
       let url;
       try { url = new URL(item.url); } catch { /* Invalid URLs stay plain text. */ }
-      const link = node(url && ["http:", "https:"].includes(url.protocol) ? "a" : "span", "source-url", item.url || "未提供 URL");
+      const link = node(url && ["http:", "https:"].includes(url.protocol) ? "a" : "span", "source-url", item.contract ? `订单 ${item.id ?? position + 1}` : item.url || "历史来源");
       if (link.tagName === "A") { link.href = url.href; link.target = "_blank"; link.rel = "noopener noreferrer"; }
       source.append(link);
       const status = node("td");
-      status.append(node("span", `badge${failed(item) ? " failed" : ""}`, `${failed(item) ? "失败" : "成功"} · ${item.status_code ?? "无状态码"}`));
+      status.append(node("span", `badge${failed(item) ? " failed" : ""}`, item.contract ? "已同步" : `${failed(item) ? "失败" : "成功"} · ${item.status_code ?? "无状态码"}`));
       if (item.error) status.append(node("p", "error-text", item.error));
       tr.append(source, status);
       for (const name of ["contract", "side", "activation_price", "amount"]) {
@@ -111,7 +111,7 @@ function render() {
       tbody.append(tr);
     }
   }
-  $("count").textContent = `${visible.length} / ${items.length} 数据源 · ${rowCount} 行`;
+  $("count").textContent = `${visible.length} / ${items.length} 来源订单 · ${rowCount} 行`;
   container.append(wrapper);
   wrapper.scrollLeft = scrollLeft;
 }

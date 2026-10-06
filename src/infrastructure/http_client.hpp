@@ -9,11 +9,12 @@
 #include <functional>
 
 namespace orders {
+using HttpHeaders = QList<QPair<QByteArray, QByteArray>>;
 struct HttpResult {
     int status = 0;
     QByteArray body;
+    HttpHeaders headers;
 };
-using HttpHeaders = QList<QPair<QByteArray, QByteArray>>;
 
 // Scoped to the worker thread. Never expose headers, query strings or response bodies.
 using HttpObserver = std::function<void(const QUrl &, bool, bool, int)>;
