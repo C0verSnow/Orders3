@@ -93,6 +93,23 @@ try {
     } catch {
         if ([int]$_.Exception.Response.StatusCode -ne 400) { throw }
     }
+    try {
+        Invoke-WebRequest "$origin/not-found?token=smoke-query-secret"
+        throw "Missing route was accepted"
+    } catch {
+        if ([int]$_.Exception.Response.StatusCode -ne 404) { throw }
+    }
+    $logPath = Join-Path $taskTemporary "logs/requests.jsonl"
+    $logText = Get-Content -LiteralPath $logPath -Raw
+    if ($logText -match "smoke-fixture-secret|smoke-gate-secret|smoke-gate-key|smoke-query-secret|replacement") {
+        throw "Request log exposed secrets"
+    }
+    $entries = @(Get-Content -LiteralPath $logPath | ForEach-Object { $_ | ConvertFrom-Json })
+    foreach ($status in @(200, 400, 403, 404)) {
+        if (-not ($entries | Where-Object { $_.direction -eq "inbound" -and $_.status -eq $status })) {
+            throw "Request log missing status $status"
+        }
+    }
     Write-Output "C++ runtime smoke checks passed"
 } finally {
     if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }

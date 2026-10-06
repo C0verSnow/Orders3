@@ -18,6 +18,7 @@ add_library(orders_core SHARED
     src/core/order_parser.cpp
     src/infrastructure/gate_api.cpp
     src/infrastructure/http_client.cpp
+    src/infrastructure/request_log.cpp
     src/infrastructure/storage.cpp
     src/services/fetcher.cpp
     src/services/dashboard.cpp
@@ -79,6 +80,13 @@ if(BUILD_TESTING)
     endif()
     target_link_libraries(activity_tests PRIVATE orders_core Qt6::Test)
     add_test(NAME orders_activity COMMAND activity_tests)
+    qt_add_executable(storage_logging_tests tests/cpp/storage_logging_tests.cpp)
+    set_target_properties(storage_logging_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+    if(MSVC)
+        target_compile_options(storage_logging_tests PRIVATE /utf-8)
+    endif()
+    target_link_libraries(storage_logging_tests PRIVATE orders_core Qt6::Test)
+    add_test(NAME orders_storage_logging COMMAND storage_logging_tests)
 endif()
 
 if(WIN32)

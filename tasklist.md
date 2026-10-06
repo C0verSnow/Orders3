@@ -1,10 +1,20 @@
 # 本文档为4象限的任务清单，全文书写大白话
 
 ## 想做：
+- 完成 issue #4：记录接口请求，给数据库加上 500 MB 上限，提交 PR，使用远端 CI 验证后关闭 issue。
 - 完成 issue #2：来源订单直接读取 Supabase orders 表，保存到本地数据库，完成后将分支改名为 feature-supabse。
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- issue #4：代码提交 42bc3d1 的完整远端 CI 已通过，包含 Docker x64/ARM64 和随机端口检查；运行记录 https://github.com/f1515x/orders3/actions/runs/37472178811 。
+- issue #4：已更新 PR #5 的验证说明并关闭 issue；PR 保留供审阅，未合并 master。最后这次提交只补充任务记录，使用 [skip ci]，不重复编译。
+- issue #4：代码已提交为 42bc3d1，推送 feature-request-logs-storage-limit，并创建 PR #5：https://github.com/f1515x/orders3/pull/5 。
+- issue #4：远端网页检查和 Windows x64、Linux x64/ARM64、macOS x64/ARM64 的编译、测试、打包及接口日志检查全部通过。
+- issue #4：git 差异检查和 Shell 语法检查通过；本机没有 npm，网页检查交给远端 CI，没有进行本地编译验证。
+- issue #4：用户确认数据库超限拒绝写入、保留旧数据；程序访问 Supabase/Gate 和客户端访问本程序的请求都记日志。
+- issue #4：已加请求日志及文件轮换，密钥和请求内容不进日志；数据库每个写连接设置 500 MB 上限，已有超限文件只允许读取。
+- issue #4：补充远端回归用例，覆盖超限回滚、旧数据库、并发日志、日志轮换、取消请求和成功/失败请求；远端打包检查增加本地接口日志检查。
+- issue #4：确认只有这一项未完成的 issue；已单独克隆 f1515x/orders3，并新建 feature-request-logs-storage-limit 分支。
 - issue #2：代码提交 d30e035 的完整远端 CI 通过，包含网页、所有平台应用及 Docker x64/ARM64 验证；运行记录 https://github.com/huan00000/orders3/actions/runs/37303010661 。
 - issue #2：已标记完成并关闭，PR #3 已转为可审阅状态；本次最后一次提交只更新这份过程记录。
 - issue #2：第四轮远端 Windows x64、Linux x64/ARM64、macOS x64/ARM64 的编译、回归和打包均通过，网页检查也通过。
@@ -29,9 +39,10 @@
 - 将原来的 Tasklist.md 改为用户要求的 tasklist.md，继续按四个栏目记录。
 
 ## 没做：
+- issue #4：未连接真实 Supabase/Gate 操作订单，回归使用模拟接口；没有合并 PR。
 - 按用户约定，不进行本地编译验证。
 - 未合并到 master；issue #2 按要求交付 feature-supabse 分支。
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- 无，issue #2 已完成并推送，等待用户查看 PR #3；没有合并到 master。
+- 无，issue #4 已完成，远端验证通过，PR #5 等待审阅。

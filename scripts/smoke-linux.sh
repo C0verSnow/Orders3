@@ -40,4 +40,18 @@ test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
 test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
     -H "Origin: $origin" -H 'Content-Type: application/json' \
     --data '{"enabled":true,"cron":"0 0 31 2 *"}' "$origin/api/schedule")" = 400
+test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+    "$origin/not-found?token=smoke-query-secret")" = 404
+log_file="$temporary/logs/requests.jsonl"
+test -s "$log_file"
+grep -q '"direction":"inbound"' "$log_file"
+grep -q '"path":"/api/settings"' "$log_file"
+grep -q '"status":200' "$log_file"
+grep -q '"status":400' "$log_file"
+grep -q '"status":403' "$log_file"
+grep -q '"status":404' "$log_file"
+if grep -q 'smoke-fixture-secret\|smoke-gate-secret\|smoke-query-secret\|replacement' "$log_file"; then
+    echo 'Request log exposed secrets' >&2
+    exit 1
+fi
 printf 'C++ runtime smoke checks passed\n'
