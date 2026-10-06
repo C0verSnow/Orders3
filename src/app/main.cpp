@@ -1,6 +1,7 @@
 #include "app/server.hpp"
 #include "core/config.hpp"
 #include "core/error.hpp"
+#include "infrastructure/request_log.hpp"
 #include "services/dashboard.hpp"
 #include "services/scheduler.hpp"
 #ifdef Q_OS_WIN
@@ -11,6 +12,7 @@
 #endif
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -139,6 +141,7 @@ int main(int argc, char *argv[]) {
             config.dataPath = orders::validateOutput(positional.first());
             config.ordersPath = config.dataPath;
         }
+        orders::configureRequestLog(QFileInfo(config.dataPath).absoluteDir().filePath("logs"));
         orders::Dashboard dashboard(config);
         if (parser.isSet("list")) {
             const auto result = dashboard.refreshOrders(false);

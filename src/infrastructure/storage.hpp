@@ -4,8 +4,13 @@
 #include <QJsonArray>
 #include <QString>
 #include <QStringList>
+#include <QSqlDatabase>
 
 namespace orders {
+inline constexpr qint64 databaseLimitBytes = 500000000;
+// Applied to every writable connection, including legacy databases with other page sizes.
+ORDERS_CORE_EXPORT void enforceDatabaseSizeLimit(QSqlDatabase &db,
+                                                 qint64 maximumBytes = databaseLimitBytes);
 struct SourceSnapshot {
     QJsonArray items;
     QJsonArray orders;

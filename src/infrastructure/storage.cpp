@@ -35,6 +35,14 @@ public:
             QSqlDatabase::removeDatabase(name_);
             throw Error("无法打开数据库：" + message);
         }
+        try {
+            if (!readOnly) enforceDatabaseSizeLimit(db_);
+        } catch (...) {
+            db_.close();
+            db_ = {};
+            QSqlDatabase::removeDatabase(name_);
+            throw;
+        }
     }
     ~Database() {
         db_.close();
@@ -51,13 +59,19 @@ private:
 };
 
 void execute(QSqlQuery &query, const QString &sql) {
-    if (!query.exec(sql))
+    if (!query.exec(sql)) {
+        if (query.lastError().nativeErrorCode() == "13")
+            throw Error("数据库已达到 500 MB 存储上限，已取消本次写入并保留已有数据");
         throw Error("数据库操作失败：" + query.lastError().text());
+    }
 }
 
 void prepared(QSqlQuery &query) {
-    if (!query.exec())
+    if (!query.exec()) {
+        if (query.lastError().nativeErrorCode() == "13")
+            throw Error("数据库已达到 500 MB 存储上限，已取消本次写入并保留已有数据");
         throw Error("数据库写入失败：" + query.lastError().text());
+    }
 }
 
 void prepare(QSqlQuery &query, const QString &sql) {
@@ -132,6 +146,24 @@ QString updatedAt(const QString &path) {
 
 const QStringList recordFields{"url", "created_at", "status_code", "error", "data"};
 } // namespace
+
+void enforceDatabaseSizeLimit(QSqlDatabase &db, qint64 maximumBytes) {
+    QSqlQuery query(db);
+    execute(query, "PRAGMA page_size");
+    if (!query.next() || query.value(0).toLongLong() <= 0)
+        throw Error("无法读取数据库页大小");
+    const qint64 pageSize = query.value(0).toLongLong();
+    execute(query, "PRAGMA page_count");
+    if (!query.next()) throw Error("无法读取数据库大小");
+    const qint64 pages = query.value(0).toLongLong();
+    const qint64 maximumPages = maximumBytes / pageSize;
+    if (maximumPages < 1 || pages > maximumPages
+        || QFileInfo(db.databaseName()).size() > maximumBytes)
+        throw Error("数据库超过 500 MB 存储上限，已拒绝写入；已有数据仍可读取和下载");
+    execute(query, "PRAGMA max_page_count = " + QString::number(maximumPages));
+    if (!query.next() || query.value(0).toLongLong() > maximumPages)
+        throw Error("无法设置数据库 500 MB 存储上限，已拒绝写入");
+}
 
 SourceSnapshot readSources(const QString &path) {
     SourceSnapshot snapshot;
@@ -370,6 +402,7 @@ QStringList readManagedCloseOrderIds(const QString &path, const QString &owner) 
 void saveManagedCloseOrderId(const QString &path, const QString &owner, const QString &id) {
     ensureDirectory(path);
     Database database(path);
+    Transaction transaction(database.connection());
     QSqlQuery query(database.connection());
     execute(query, R"(CREATE TABLE IF NOT EXISTS managed_close_orders (
         owner TEXT NOT NULL, id TEXT NOT NULL, PRIMARY KEY (owner, id)))");
@@ -377,6 +410,7 @@ void saveManagedCloseOrderId(const QString &path, const QString &owner, const QS
     query.addBindValue(owner);
     query.addBindValue(id);
     prepared(query);
+    transaction.commit();
 }
 
 QByteArray exportDatabase(const QString &path) {

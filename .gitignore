@@ -13,6 +13,9 @@ dist/
 data/
 data.json
 tests/artifacts/
+logs/
+*.jsonl
+*.jsonl.*
 .env.*
 *.env
 !example.env

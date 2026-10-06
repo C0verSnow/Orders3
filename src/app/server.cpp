@@ -1,10 +1,13 @@
 #include "app/server.hpp"
 #include "core/error.hpp"
+#include "infrastructure/request_log.hpp"
 #include <QFile>
 #include <QFileInfo>
 #include <QHostAddress>
 #include <QHttpServerRequest>
 #include <QHttpServerResponse>
+#include <QHttpServerResponder>
+#include <QMetaEnum>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QTcpServer>
@@ -59,6 +62,29 @@ QHttpServerResponse guarded(Function function) {
 Server::Server(Dashboard &dashboard, Scheduler &scheduler)
     : dashboard_(dashboard), scheduler_(scheduler) {
     using Method = QHttpServerRequest::Method;
+    const auto record = [](const QHttpServerRequest &request, int status) {
+        const char *method = QMetaEnum::fromType<Method>().valueToKey(int(request.method()));
+        logRequest("inbound", method ? QString::fromLatin1(method).toUpper() : "UNKNOWN",
+                   request.url(), status);
+    };
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    http_.addAfterRequestHandler(&http_, [record](const QHttpServerRequest &request,
+                                                QHttpServerResponse &response) {
+        record(request, int(response.statusCode()));
+    });
+    http_.setMissingHandler(&http_, [record](const QHttpServerRequest &request,
+                                            QHttpServerResponder &responder) {
+#else
+    http_.afterRequest([record](QHttpServerResponse &&response, const QHttpServerRequest &request) {
+        record(request, int(response.statusCode()));
+        return std::move(response);
+    });
+    http_.setMissingHandler([record](const QHttpServerRequest &request,
+                                     QHttpServerResponder &&responder) {
+#endif
+        record(request, 404);
+        responder.write(QHttpServerResponder::StatusCode::NotFound);
+    });
     const QList<QPair<QString, QByteArray>> assets{
         {"/", "text/html; charset=utf-8"}, {"/index.html", "text/html; charset=utf-8"},
         {"/app.js", "text/javascript; charset=utf-8"},
