@@ -80,6 +80,11 @@ inline QString sum(const QString &left, const QString &right) {
     const auto digits = larger ? subtract(x, y) : subtract(y, x);
     return format(digits, scale, digits != "0" && (larger ? a.negative : b.negative));
 }
+inline QString product(const QString &left, const QString &right) {
+    const auto a = parse(left), b = parse(right);
+    const auto digits = multiply(a.digits, b.digits);
+    return format(digits, a.scale + b.scale, digits != "0" && a.negative != b.negative);
+}
 inline QString divideRounded(const QString &numerator, const QString &denominator) {
     if (denominator == "0") throw Error("平仓价格计算的分母不能为零");
     QString remainder = "0", quotient;
@@ -103,15 +108,17 @@ inline QString closePrice(const QString &entryText, const QString &valueText,
                           const QString &marginText, const QString &markText, bool shortPosition) {
     const auto entry = parse(entryText), value = parse(valueText);
     const auto margin = parse(marginText), mark = parse(markText);
-    if (entry.negative || value.negative || margin.negative || mark.negative
+    if (entry.negative || margin.negative || mark.negative
         || entry.digits == "0" || value.digits == "0" || mark.digits == "0")
-        throw Error("持仓价格和价值必须大于零，初始保证金不能为负数");
+        throw Error("持仓价格必须大于零，价值不能为零，初始保证金不能为负数");
+    if (value.negative != shortPosition)
+        throw Error("持仓价值的正负号与持仓方向不一致");
     const int scale = std::max(value.scale, margin.scale);
     const auto denominator = multiply(scaled(value, scale), "10");
     const auto adjustment = multiply(scaled(margin, scale), "31");
-    if (shortPosition && compare(denominator, adjustment) <= 0)
+    if (value.negative && compare(denominator, adjustment) <= 0)
         throw Error("计算出的空仓平仓价格不大于零");
-    const auto factor = shortPosition ? subtract(denominator, adjustment)
+    const auto factor = value.negative ? subtract(denominator, adjustment)
                                       : add(denominator, adjustment);
     const auto priceMultiplier = shortPosition ? "99" : "101";
     const auto numerator = multiply(multiply(entry.digits, factor), priceMultiplier)
