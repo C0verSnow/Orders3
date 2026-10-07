@@ -364,6 +364,12 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
             positionDirections.insert(direction);
         }
         QJsonObject position{{"contract", contract}, {"size", size}};
+        /*
+        随笔: 需要修改的地方: 原先close price的计算公式=entry_price × (1 ± initial_margin × 3.1 / value)
+        这里的value修改为value = size * entry_price
+        size可以为正整数和负整数.不能为0
+        并且原先Value = - value (if size:)的判断逻辑也进行删除
+        */
         for (const QString &field : {"entry_price", "value", "leverage_max", "unrealised_pnl",
                                      "realised_pnl", "initial_margin", "mark_price"}) {
             if (!source.value(field).isString()) throw Error("持仓缺少十进制文本字段：" + field);

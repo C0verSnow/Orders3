@@ -6,6 +6,8 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-06：核查 master（43b8632）的平仓公式。说明使用 entry_price × (1 ± initial_margin × 3.1 / value)；代码还给多仓乘 1.01、空仓乘 0.99。实际下单只调用代码这一套，说明没有同步更新。
+- 本次只阅读代码、说明和已有测试断言，并检查差异；没有改业务代码，没有进行本地编译验证。
 - issue #4：代码提交 42bc3d1 的完整远端 CI 已通过，包含 Docker x64/ARM64 和随机端口检查；运行记录 https://github.com/f1515x/orders3/actions/runs/37472178811 。
 - issue #4：已更新 PR #5 的验证说明并关闭 issue；PR 保留供审阅，未合并 master。最后这次提交只补充任务记录，使用 [skip ci]，不重复编译。
 - issue #4：代码已提交为 42bc3d1，推送 feature-request-logs-storage-limit，并创建 PR #5：https://github.com/f1515x/orders3/pull/5 。
