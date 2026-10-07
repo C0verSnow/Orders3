@@ -9,7 +9,11 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QLockFile>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QPair>
+#include <QSet>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -17,16 +21,36 @@
 #include <QTemporaryDir>
 #include <QUuid>
 #include <QVariant>
+#include <memory>
 
 namespace orders {
 namespace {
+QMutex writeMutex;
 // Connections belong to the calling thread and are removed after all queries are destroyed.
 class Database {
 public:
     explicit Database(const QString &path, bool readOnly = false)
         : name_(QUuid::createUuid().toString(QUuid::WithoutBraces)),
           db_(QSqlDatabase::addDatabase("QSQLITE", name_)) {
-        db_.setDatabaseName(path);
+        const QFileInfo file(path);
+        const QString resolvedPath = file.exists() ? file.canonicalFilePath()
+            : QDir(file.absoluteDir().canonicalPath()).filePath(file.fileName());
+        try {
+            if (!readOnly) {
+                // Hold the shared budget until commit/rollback AND closing the connection.
+                // A process mutex avoids competing with our own QLockFile on other threads.
+                writer_ = std::make_unique<QMutexLocker<QMutex>>(&writeMutex);
+                const auto directory = QFileInfo(resolvedPath).absolutePath();
+                budgetLock_ = std::make_unique<QLockFile>(QDir(directory).filePath(".database-budget.lock"));
+                if (!budgetLock_->tryLock(5000))
+                    throw Error("数据库正在写入，请稍后重试");
+            }
+        } catch (...) {
+            db_ = {};
+            QSqlDatabase::removeDatabase(name_);
+            throw;
+        }
+        db_.setDatabaseName(resolvedPath);
         db_.setConnectOptions(readOnly ? "QSQLITE_OPEN_READONLY;QSQLITE_BUSY_TIMEOUT=5000"
                                        : "QSQLITE_BUSY_TIMEOUT=5000");
         if (!db_.open()) {
@@ -54,6 +78,8 @@ public:
     QSqlDatabase &connection() { return db_; }
 
 private:
+    std::unique_ptr<QMutexLocker<QMutex>> writer_;
+    std::unique_ptr<QLockFile> budgetLock_;
     QString name_;
     QSqlDatabase db_;
 };
@@ -61,7 +87,7 @@ private:
 void execute(QSqlQuery &query, const QString &sql) {
     if (!query.exec(sql)) {
         if (query.lastError().nativeErrorCode() == "13")
-            throw Error("数据库已达到 500 MB 存储上限，已取消本次写入并保留已有数据");
+            throw Error("数据库合计已达到 450 MB 存储上限，已取消本次写入并保留已有数据");
         throw Error("数据库操作失败：" + query.lastError().text());
     }
 }
@@ -69,7 +95,7 @@ void execute(QSqlQuery &query, const QString &sql) {
 void prepared(QSqlQuery &query) {
     if (!query.exec()) {
         if (query.lastError().nativeErrorCode() == "13")
-            throw Error("数据库已达到 500 MB 存储上限，已取消本次写入并保留已有数据");
+            throw Error("数据库合计已达到 450 MB 存储上限，已取消本次写入并保留已有数据");
         throw Error("数据库写入失败：" + query.lastError().text());
     }
 }
@@ -148,6 +174,28 @@ const QStringList recordFields{"url", "created_at", "status_code", "error", "dat
 } // namespace
 
 void enforceDatabaseSizeLimit(QSqlDatabase &db, qint64 maximumBytes) {
+    // Include other SQLite main files regardless of their extension. Locking is owned
+    // by Database so every application writer uses one budget throughout its transaction.
+    const QFileInfo current(db.databaseName());
+    qint64 remainingBytes = maximumBytes;
+    QSet<QString> counted{current.canonicalFilePath()};
+    for (const auto &file : current.absoluteDir().entryInfoList(QDir::Files | QDir::Hidden)) {
+        const QString canonical = file.canonicalFilePath();
+        if (counted.contains(canonical)) continue;
+        const QString suffix = file.suffix().toLower();
+        const bool databaseSuffix = suffix == "db" || suffix == "sqlite" || suffix == "sqlite3";
+        QFile candidate(file.absoluteFilePath());
+        if (!candidate.open(QIODevice::ReadOnly)) {
+            throw Error("无法检查同目录文件是否为数据库，已拒绝写入");
+        }
+        const auto header = candidate.read(16);
+        if (header != QByteArray("SQLite format 3\0", 16)
+            && !databaseSuffix) continue;
+        counted.insert(canonical);
+        if (file.size() > remainingBytes)
+            throw Error("数据库合计超过 450 MB 存储上限，已有数据仍可读取和下载");
+        remainingBytes -= file.size();
+    }
     QSqlQuery query(db);
     execute(query, "PRAGMA page_size");
     if (!query.next() || query.value(0).toLongLong() <= 0)
@@ -156,13 +204,13 @@ void enforceDatabaseSizeLimit(QSqlDatabase &db, qint64 maximumBytes) {
     execute(query, "PRAGMA page_count");
     if (!query.next()) throw Error("无法读取数据库大小");
     const qint64 pages = query.value(0).toLongLong();
-    const qint64 maximumPages = maximumBytes / pageSize;
+    const qint64 maximumPages = remainingBytes / pageSize;
     if (maximumPages < 1 || pages > maximumPages
-        || QFileInfo(db.databaseName()).size() > maximumBytes)
-        throw Error("数据库超过 500 MB 存储上限，已拒绝写入；已有数据仍可读取和下载");
+        || current.size() > remainingBytes)
+        throw Error("数据库合计超过 450 MB 存储上限，已拒绝写入；已有数据仍可读取和下载");
     execute(query, "PRAGMA max_page_count = " + QString::number(maximumPages));
     if (!query.next() || query.value(0).toLongLong() > maximumPages)
-        throw Error("无法设置数据库 500 MB 存储上限，已拒绝写入");
+        throw Error("无法设置数据库合计 450 MB 存储上限，已拒绝写入");
 }
 
 SourceSnapshot readSources(const QString &path) {

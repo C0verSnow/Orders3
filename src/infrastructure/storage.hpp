@@ -7,8 +7,8 @@
 #include <QSqlDatabase>
 
 namespace orders {
-inline constexpr qint64 databaseLimitBytes = 500000000;
-// Applied to every writable connection, including legacy databases with other page sizes.
+inline constexpr qint64 databaseLimitBytes = 450000000;
+// Shared by SQLite main files in the same data directory; temporary files are separate.
 ORDERS_CORE_EXPORT void enforceDatabaseSizeLimit(QSqlDatabase &db,
                                                  qint64 maximumBytes = databaseLimitBytes);
 struct SourceSnapshot {
