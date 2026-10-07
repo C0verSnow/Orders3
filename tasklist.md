@@ -1,11 +1,14 @@
 # 本文档为4象限的任务清单，全文书写大白话
 
 ## 想做：
+- 完成 issue #8：value 改为 size × entry_price，保留正负号，更新说明与回归用例，提交 PR 并使用远端 CI 验证后关闭 issue。
+- 完成 issue #6：数据库合计 450 MB、请求日志合计 50 MB，提交独立 PR 并使用远端 CI 验证后关闭 issue。
 - 完成 issue #4：记录接口请求，给数据库加上 500 MB 上限，提交 PR，使用远端 CI 验证后关闭 issue。
 - 完成 issue #2：来源订单直接读取 Supabase orders 表，保存到本地数据库，完成后将分支改名为 feature-supabse。
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-06，issue #8：已修改带符号的 value 计算，补充精度、多空方向、忽略交易所 value、零持仓和无效张数的远端回归用例，更新 README 和平仓说明；差异检查通过，未进行本地编译验证。
 - 2026-10-06：核查 master（43b8632）的平仓公式。说明使用 entry_price × (1 ± initial_margin × 3.1 / value)；代码还给多仓乘 1.01、空仓乘 0.99。实际下单只调用代码这一套，说明没有同步更新。
 - 本次只阅读代码、说明和已有测试断言，并检查差异；没有改业务代码，没有进行本地编译验证。
 - issue #4：代码提交 42bc3d1 的完整远端 CI 已通过，包含 Docker x64/ARM64 和随机端口检查；运行记录 https://github.com/f1515x/orders3/actions/runs/37472178811 。
@@ -47,4 +50,4 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- 无，issue #4 已完成，远端验证通过，PR #5 等待审阅。
+- 2026-10-06：用户确认两个 issue 都处理；先在 feature-close-position-value 分支完成 #8。统一使用带符号的 value 计算，保留多仓 ×1.01、空仓 ×0.99，跳过 size=0；#6 固定分配 450 MB 数据库和 50 MB 日志，用户确认临时事务文件和下载快照另算。

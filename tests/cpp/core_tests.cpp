@@ -174,16 +174,21 @@ private slots:
 
     void closePricesUseExactDecimalArithmetic() {
         using orders::decimal::closePrice;
-        QCOMPARE(closePrice("88.077351351351", "344.2961", "4.852279702667", "93.053", true),
-                 QString("83.387"));
+        QCOMPARE(closePrice("88.077351351351", "-3258.861999999987", "4.852279702667", "93.053", true),
+                 QString("86.794"));
         QCOMPARE(closePrice("100", "100", "10", "93.053", false), QString("132.310"));
-        QCOMPARE(closePrice("100", "100", "10", "93.053", true), QString("68.310"));
+        QCOMPARE(closePrice("100", "-100", "10", "93.053", true), QString("68.310"));
         QCOMPARE(closePrice("0.5", "100", "0", "1.00", false), QString("0.50"));
         QCOMPARE(closePrice("1.5", "100", "0", "1.00", false), QString("1.52"));
+        QCOMPARE(orders::decimal::product("-37", "88.077351351351"),
+                 QString("-3258.861999999987"));
+        QCOMPARE(orders::decimal::product("9007199254740993", "0.0000000000000001"),
+                 QString("0.9007199254740993"));
+        QVERIFY_EXCEPTION_THROWN(closePrice("100", "100", "10", "10", true), orders::Error);
         QCOMPARE(orders::decimal::sum("-18.409900000001", "0.0660018163"),
                  QString("-18.343898183701"));
         QVERIFY_EXCEPTION_THROWN(closePrice("100", "0", "1", "10", false), orders::Error);
-        QVERIFY_EXCEPTION_THROWN(closePrice("100", "10", "10", "10", true), orders::Error);
+        QVERIFY_EXCEPTION_THROWN(closePrice("100", "-10", "10", "10", true), orders::Error);
     }
 
     void closePositionsReconcileAllActiveOrdersAndPersistDirections() {
@@ -204,11 +209,6 @@ private slots:
                 {"mark_price", "93.053"}, {"ignored_field", "not stored"}};
         };
         QJsonArray exchangePositions{position(-37), position(37), position(0)};
-        for (const QString &zero : {"0.00", "-0.000"}) {
-            auto row = position(-37);
-            row.insert("value", zero);
-            exchangePositions.append(row);
-        }
         const auto old = [](QString id, bool reduce, int status) {
             return QJsonObject{{"id", id}, {"contract", "HYPE_USDT"}, {"amount", "37"},
                 {"activation_price", "84.229"}, {"reduce_only", reduce}, {"original_status", status}};
@@ -258,10 +258,11 @@ private slots:
         QCOMPARE(bodies[1].value("id").toInteger(), qint64(22));
         QCOMPARE(bodies[2].value("id").toInteger(), qint64(9007199254740993));
         QCOMPARE(bodies[3].value("amount").toString(), QString("37"));
-        QCOMPARE(bodies[3].value("activation_price").toString(), QString("83.387"));
+        QCOMPARE(bodies[3].value("activation_price").toString(), QString("86.794"));
         QVERIFY(!bodies[3].value("is_gte").toBool());
         QCOMPARE(bodies[4].value("amount").toString(), QString("-37"));
         QVERIFY(bodies[4].value("is_gte").toBool());
+        QCOMPARE(bodies[4].value("activation_price").toString(), QString("89.369"));
         for (int index : {3, 4}) {
             QVERIFY(bodies[index].value("reduce_only").toBool());
             QCOMPARE(bodies[index].value("price_offset").toString(), QString("1%"));
@@ -272,9 +273,11 @@ private slots:
         QCOMPARE(saved.size(), 2);
         QCOMPARE(saved[0].toObject().value("size").toInteger(), qint64(-37));
         QCOMPARE(saved[1].toObject().value("size").toInteger(), qint64(37));
+        QCOMPARE(saved[0].toObject().value("value").toString(), QString("-3258.861999999987"));
+        QCOMPARE(saved[1].toObject().value("value").toString(), QString("3258.861999999987"));
         QCOMPARE(saved[0].toObject().size(), 10);
         QVERIFY(!saved[0].toObject().contains("ignored_field"));
-        QCOMPARE(saved[0].toObject().value("close_price").toString(), QString("83.387"));
+        QCOMPARE(saved[0].toObject().value("close_price").toString(), QString("86.794"));
         const auto ids = orders::readManagedCloseOrderIds(config.ordersPath, owner);
         QVERIFY(ids.contains("100") && ids.contains("101"));
         QVERIFY(!ids.contains("20") && !ids.contains("22"));
@@ -284,6 +287,51 @@ private slots:
             if (row.value("id").toString() == "20") QCOMPARE(row.value("original_status").toInt(), 5);
             if (row.value("id").toString() == "9007199254740993")
                 QCOMPARE(row.value("original_status").toInt(), 5);
+        }
+    }
+
+    void closePositionsDeriveValueWithoutExchangeValue() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.gateKey = config.gateSecret = "offline";
+        const QJsonObject position{{"contract", "BTC_USDT"}, {"size", "-2"},
+            {"entry_price", "100"}, {"leverage_max", "75"}, {"unrealised_pnl", "0"},
+            {"realised_pnl", "0"}, {"initial_margin", "10"}, {"mark_price", "100.000"}};
+        QJsonArray positions;
+        int writes = 0;
+        QJsonObject created;
+        const auto requester = [&](const QByteArray &method, const QByteArray &path,
+                                   const QByteArray &body, const orders::HttpHeaders &) {
+            if (path.endsWith("/positions"))
+                return orders::HttpResult{200, QJsonDocument(positions).toJson()};
+            if (method == "GET")
+                return orders::HttpResult{200, R"({"code":0,"timestamp":123,"data":{"orders":[]}})"};
+            ++writes;
+            created = QJsonDocument::fromJson(body).object();
+            return orders::HttpResult{200, R"({"code":0,"data":{"id":"1"}})"};
+        };
+        // A missing, zero, negative or invalid exchange value cannot change the derived value.
+        for (const auto &exchangeValue : QJsonArray{QJsonValue(), "0", "-9999", "invalid"}) {
+            auto row = position;
+            if (!exchangeValue.isNull()) row.insert("value", exchangeValue);
+            positions = QJsonArray{row, QJsonObject{{"size", 0}}};
+            orders::closePositionOrders(config, requester);
+            const auto saved = orders::readPositions(config.dataPath);
+            QCOMPARE(saved.size(), 1);
+            QCOMPARE(saved[0].toObject().value("value").toString(), QString("-200"));
+            QCOMPARE(created.value("activation_price").toString(), QString("83.655"));
+            QCOMPARE(created.value("amount").toString(), QString("2"));
+        }
+        const int before = writes;
+        for (const auto &invalidSize : QJsonArray{1.5, "no", "-9223372036854775808"}) {
+            auto row = position;
+            row.insert("size", invalidSize);
+            positions = QJsonArray{row};
+            QVERIFY_EXCEPTION_THROWN(orders::closePositionOrders(config, requester), orders::Error);
+            QCOMPARE(writes, before);
+            QCOMPARE(orders::readPositions(config.dataPath)[0].toObject().value("value").toString(),
+                     QString("-200"));
         }
     }
 
@@ -328,14 +376,14 @@ private slots:
         const QJsonObject old{{"id", "1"}, {"contract", "BTC_USDT"}, {"amount", "-1"},
             {"activation_price", "100"}, {"reduce_only", true}, {"original_status", 1}};
         int writes = 0;
-        bool invalidValue = true;
+        bool invalidEntry = true;
         bool duplicatePosition = false;
         bool stopFails = true;
         const auto requester = [&](const QByteArray &method, const QByteArray &path,
                                    const QByteArray &, const orders::HttpHeaders &) {
             if (path.endsWith("/positions")) {
                 auto row = position;
-                if (invalidValue) row.insert("value", "invalid");
+                if (invalidEntry) row.insert("entry_price", "invalid");
                 return orders::HttpResult{200, QJsonDocument(duplicatePosition ? QJsonArray{row, row} : QJsonArray{row}).toJson()};
             }
             if (method == "GET") return orders::HttpResult{200, QJsonDocument(QJsonObject{
@@ -347,7 +395,7 @@ private slots:
         };
         QVERIFY_EXCEPTION_THROWN(orders::closePositionOrders(config, requester), orders::Error);
         QCOMPARE(writes, 0);
-        invalidValue = false;
+        invalidEntry = false;
         duplicatePosition = true;
         QVERIFY_EXCEPTION_THROWN(orders::closePositionOrders(config, requester), orders::Error);
         QCOMPARE(writes, 0); // Reject duplicate position directions before any stop/create.

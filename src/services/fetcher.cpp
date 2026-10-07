@@ -339,10 +339,6 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
     for (const auto &value : document.array()) {
         if (!value.isObject()) throw Error("持仓列表包含无效记录");
         const auto source = value.toObject();
-        const auto positionValue = source.value("value");
-        if (!positionValue.isString()) throw Error("持仓缺少十进制文本字段：value");
-        // Only persist positions with nonzero value, including short positions.
-        if (decimal::parse(positionValue.toString()).digits == "0") continue;
         const auto sizeValue = source.value("size");
         bool valid = false;
         const qint64 size = sizeValue.isString() ? sizeValue.toString().toLongLong(&valid)
@@ -354,6 +350,7 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
         }
         if (!valid || size == std::numeric_limits<qint64>::min())
             throw Error("持仓 size 必须为有效整数张数");
+        if (size == 0) continue;
         const auto contract = source.value("contract").toString();
         static const QRegularExpression contractPattern(R"(^[A-Z0-9]+_USDT$)");
         if (!contractPattern.match(contract).hasMatch()) throw Error("持仓合约无效：" + contract);
@@ -364,19 +361,16 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
             positionDirections.insert(direction);
         }
         QJsonObject position{{"contract", contract}, {"size", size}};
-        /*
-        随笔: 需要修改的地方: 原先close price的计算公式=entry_price × (1 ± initial_margin × 3.1 / value)
-        这里的value修改为value = size * entry_price
-        size可以为正整数和负整数.不能为0
-        并且原先Value = - value (if size:)的判断逻辑也进行删除
-        */
-        for (const QString &field : {"entry_price", "value", "leverage_max", "unrealised_pnl",
+        for (const QString &field : {"entry_price", "leverage_max", "unrealised_pnl",
                                      "realised_pnl", "initial_margin", "mark_price"}) {
             if (!source.value(field).isString()) throw Error("持仓缺少十进制文本字段：" + field);
             decimal::parse(source.value(field).toString());
             position.insert(field, source.value(field));
         }
-        position.insert("close_price", size == 0 ? QString("0") : decimal::closePrice(
+        // Keep size's sign in the derived value; the exchange's value is not used.
+        position.insert("value", decimal::product(QString::number(size),
+                                                  position.value("entry_price").toString()));
+        position.insert("close_price", decimal::closePrice(
             position.value("entry_price").toString(), position.value("value").toString(),
             position.value("initial_margin").toString(), position.value("mark_price").toString(),
             size < 0));
