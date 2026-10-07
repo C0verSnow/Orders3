@@ -71,7 +71,7 @@ void configureRequestLog(const QString &directory) {
 void logRequest(const QString &direction, const QString &method, const QUrl &url,
                 int status, qint64 elapsedMs) {
     QJsonObject entry{{"time", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
-                      {"direction", direction}, {"method", method},
+                      {"direction", direction.left(32)}, {"method", method.left(64)},
                       {"host", url.host().left(255)}, {"path", url.path().left(1024)},
                       {"status", status}, {"success", status >= 200 && status < 300}};
     if (elapsedMs >= 0) entry.insert("elapsed_ms", elapsedMs);

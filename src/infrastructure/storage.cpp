@@ -192,9 +192,22 @@ void enforceDatabaseSizeLimit(QSqlDatabase &db, qint64 maximumBytes) {
         if (header != QByteArray("SQLite format 3\0", 16)
             && !databaseSuffix) continue;
         counted.insert(canonical);
-        if (file.size() > remainingBytes)
+        qint64 occupiedBytes = file.size();
+        if (header == QByteArray("SQLite format 3\0", 16)
+            && QFileInfo::exists(file.absoluteFilePath() + "-wal")) {
+            // Reserve the main-file size after checkpointing an existing WAL database.
+            Database other(canonical, true);
+            QSqlQuery otherQuery(other.connection());
+            execute(otherQuery, "PRAGMA page_size");
+            if (!otherQuery.next()) throw Error("无法检查旧数据库页大小");
+            const qint64 otherPageSize = otherQuery.value(0).toLongLong();
+            execute(otherQuery, "PRAGMA page_count");
+            if (!otherQuery.next()) throw Error("无法检查旧数据库页数");
+            occupiedBytes = qMax(occupiedBytes, otherPageSize * otherQuery.value(0).toLongLong());
+        }
+        if (occupiedBytes > remainingBytes)
             throw Error("数据库合计超过 450 MB 存储上限，已有数据仍可读取和下载");
-        remainingBytes -= file.size();
+        remainingBytes -= occupiedBytes;
     }
     QSqlQuery query(db);
     execute(query, "PRAGMA page_size");

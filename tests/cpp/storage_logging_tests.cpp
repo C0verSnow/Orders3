@@ -77,6 +77,32 @@ private slots:
         QCOMPARE(QFileInfo(path).size(), orders::databaseLimitBytes + 1);
     }
 
+    void existingWalPagesReserveTheirFutureMainFileSpace() {
+        QTemporaryDir directory;
+        const QString otherName = QUuid::createUuid().toString();
+        const QString currentName = QUuid::createUuid().toString();
+        {
+            auto other = QSqlDatabase::addDatabase("QSQLITE", otherName);
+            other.setDatabaseName(directory.filePath("legacy.db"));
+            QVERIFY(other.open());
+            QSqlQuery otherQuery(other);
+            QVERIFY(otherQuery.exec("PRAGMA journal_mode=WAL"));
+            QVERIFY(otherQuery.exec("PRAGMA wal_autocheckpoint=0"));
+            QVERIFY(otherQuery.exec("CREATE TABLE large (data BLOB)"));
+            QVERIFY(otherQuery.exec("INSERT INTO large VALUES (zeroblob(131072))"));
+            auto current = QSqlDatabase::addDatabase("QSQLITE", currentName);
+            current.setDatabaseName(directory.filePath("current.db"));
+            QVERIFY(current.open());
+            QSqlQuery query(current);
+            QVERIFY(query.exec("CREATE TABLE snapshot (data TEXT)"));
+            // The physical legacy main file fits, but its WAL will later grow it beyond this budget.
+            QVERIFY(QFileInfo(other.databaseName()).size() < 65536);
+            QVERIFY_EXCEPTION_THROWN(orders::enforceDatabaseSizeLimit(current, 65536), orders::Error);
+        }
+        QSqlDatabase::removeDatabase(currentName);
+        QSqlDatabase::removeDatabase(otherName);
+    }
+
     void databasesShareOneDirectoryBudgetAndPreserveOldSnapshot() {
         QTemporaryDir directory;
         const QString first = directory.filePath("first.db");
@@ -156,7 +182,7 @@ private slots:
         orders::logRequest("inbound", "GET", QUrl("http://localhost/api/orders"), 200);
         QVERIFY(logSize() <= orders::requestLogLimitBytes);
         QVERIFY(QFileInfo(path).size() < 10000000);
-        QCOMPARE(QFileInfo(unrelated).size(), qint64(4));
+        QCOMPARE(QFileInfo(unrelated.fileName()).size(), qint64(4));
         QVERIFY(orders::databaseLimitBytes + orders::requestLogLimitBytes == 500000000);
     }
 
