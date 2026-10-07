@@ -2,6 +2,7 @@
 #include "infrastructure/storage.hpp"
 #include "infrastructure/request_log.hpp"
 #include "infrastructure/http_client.hpp"
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QHostAddress>
@@ -76,6 +77,115 @@ private slots:
         QCOMPARE(QFileInfo(path).size(), orders::databaseLimitBytes + 1);
     }
 
+    void existingWalPagesReserveTheirFutureMainFileSpace() {
+        QTemporaryDir directory;
+        const QString otherName = QUuid::createUuid().toString();
+        const QString currentName = QUuid::createUuid().toString();
+        {
+            auto other = QSqlDatabase::addDatabase("QSQLITE", otherName);
+            other.setDatabaseName(directory.filePath("legacy.db"));
+            QVERIFY(other.open());
+            QSqlQuery otherQuery(other);
+            QVERIFY(otherQuery.exec("PRAGMA journal_mode=WAL"));
+            QVERIFY(otherQuery.exec("PRAGMA wal_autocheckpoint=0"));
+            QVERIFY(otherQuery.exec("CREATE TABLE large (data BLOB)"));
+            QVERIFY(otherQuery.exec("INSERT INTO large VALUES (zeroblob(131072))"));
+            auto current = QSqlDatabase::addDatabase("QSQLITE", currentName);
+            current.setDatabaseName(directory.filePath("current.db"));
+            QVERIFY(current.open());
+            QSqlQuery query(current);
+            QVERIFY(query.exec("CREATE TABLE snapshot (data TEXT)"));
+            // The physical legacy main file fits, but its WAL will later grow it beyond this budget.
+            QVERIFY(QFileInfo(other.databaseName()).size() < 65536);
+            QVERIFY_EXCEPTION_THROWN(orders::enforceDatabaseSizeLimit(current, 65536), orders::Error);
+        }
+        QSqlDatabase::removeDatabase(currentName);
+        QSqlDatabase::removeDatabase(otherName);
+    }
+
+    void databasesShareOneDirectoryBudgetAndPreserveOldSnapshot() {
+        QTemporaryDir directory;
+        const QString first = directory.filePath("first.db");
+        const QString second = directory.filePath("legacy.custom");
+        const QJsonArray old{QJsonObject{{"marker", "old snapshot"}}};
+        orders::saveSources(first, old);
+        orders::saveSources(second, {});
+        {
+            QFile file(second);
+            QVERIFY(file.open(QIODevice::ReadWrite));
+            QVERIFY(file.resize(orders::databaseLimitBytes - 65536));
+        }
+        // Neither file exceeds 450 MB, but only 64 KiB remains for the first database.
+        const QJsonArray large{QJsonObject{{"marker", QString(131072, 'x')}}};
+        QVERIFY_EXCEPTION_THROWN(orders::saveSources(first, large), orders::Error);
+        QCOMPARE(orders::readSources(first).items, old);
+        QVERIFY(QFileInfo(first).size() + QFileInfo(second).size() <= orders::databaseLimitBytes);
+        orders::saveManagedCloseOrderId(first, "account", "small-write");
+        QCOMPARE(orders::readManagedCloseOrderIds(first, "account"), QStringList{"small-write"});
+    }
+
+    void concurrentDatabasesCannotEachSpendTheSameSpace() {
+        QTemporaryDir directory;
+        const QString first = directory.filePath("first.db");
+        const QString second = directory.filePath("second.db");
+        const QString blocker = directory.filePath("legacy.sqlite3");
+        const QJsonArray old{QJsonObject{{"marker", "old"}}};
+        orders::saveSources(first, old);
+        orders::saveSources(second, old);
+        orders::saveSources(blocker, {});
+        {
+            QFile file(blocker);
+            QVERIFY(file.open(QIODevice::ReadWrite));
+            QVERIFY(file.resize(orders::databaseLimitBytes - 147456));
+        }
+        const auto write = [](const QString &path) {
+            try {
+                orders::saveSources(path, QJsonArray{QJsonObject{{"marker", QString(90000, 'x')}}});
+                return true;
+            } catch (const orders::Error &) { return false; }
+        };
+        auto a = QtConcurrent::run(write, first);
+        auto b = QtConcurrent::run(write, second);
+        a.waitForFinished();
+        b.waitForFinished();
+        QVERIFY(a.result() != b.result()); // Exactly one snapshot fits the shared remaining space.
+        QCOMPARE(orders::readSources(a.result() ? second : first).items, old);
+        QVERIFY(QFileInfo(first).size() + QFileInfo(second).size() + QFileInfo(blocker).size()
+                <= orders::databaseLimitBytes);
+    }
+
+    void legacyLogsAreTrimmedAtStartupAndBeforeAppending() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("requests.jsonl");
+        for (int i = 0; i <= 5; ++i) {
+            QFile file(i == 0 ? path : path + "." + QString::number(i));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            QVERIFY(file.resize(10 * 1024 * 1024)); // Old MiB-sized logs exceed the new MB quota.
+        }
+        QFile unrelated(directory.filePath("keep.txt"));
+        QVERIFY(unrelated.open(QIODevice::WriteOnly));
+        QCOMPARE(unrelated.write("keep"), qint64(4));
+        unrelated.close();
+        orders::configureRequestLog(directory.path());
+        const auto logSize = [&] {
+            qint64 total = 0;
+            for (const auto &file : QDir(directory.path()).entryInfoList(QDir::Files)) {
+                if (file.fileName() == "requests.jsonl" || file.fileName().endsWith(".1")
+                    || file.fileName().endsWith(".2") || file.fileName().endsWith(".3")
+                    || file.fileName().endsWith(".4") || file.fileName().endsWith(".5"))
+                    total += file.size();
+            }
+            return total;
+        };
+        QVERIFY(logSize() <= orders::requestLogLimitBytes);
+        QVERIFY(!QFileInfo::exists(path + ".5"));
+        orders::logRequest("inbound", "GET", QUrl("http://localhost/api/orders"), 200);
+        QVERIFY(logSize() <= orders::requestLogLimitBytes);
+        QVERIFY(QFileInfo(path).size() < 10000000);
+        QCOMPARE(QFileInfo(unrelated.fileName()).size(), qint64(4));
+        QVERIFY(orders::databaseLimitBytes + orders::requestLogLimitBytes == 500000000);
+    }
+
     void logsArePrivateConcurrentAndRotated() {
         QTemporaryDir directory;
         orders::configureRequestLog(directory.path());
@@ -83,7 +193,7 @@ private slots:
         {
             QFile file(path);
             QVERIFY(file.open(QIODevice::ReadWrite));
-            QVERIFY(file.resize(10 * 1024 * 1024));
+            QVERIFY(file.resize(10000000));
         }
         const auto write = [] {
             for (int i = 0; i < 20; ++i)
@@ -95,7 +205,7 @@ private slots:
         first.waitForFinished();
         second.waitForFinished();
         QVERIFY(QFileInfo::exists(path + ".1"));
-        QVERIFY(QFileInfo(path).size() < 10 * 1024 * 1024);
+        QVERIFY(QFileInfo(path).size() < 10000000);
         QFile file(path);
         QVERIFY(file.open(QIODevice::ReadOnly));
         int count = 0;
