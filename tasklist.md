@@ -9,6 +9,8 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-11：自动部署地址改为 ghcr.io/c0versnow/orders3:latest，同步 SSH 脚本地址校验和 README。GHCR 镜像包已从 Private 改为 Public；临时启用组织公开包开关完成设置后，恢复组织原有创建限制。匿名读取 latest 镜像清单返回 HTTP 200，包含 Linux amd64/arm64；Shell 语法和差异检查通过，未进行本地编译验证。
+- 2026-10-11：查明 Actions #4（38113788776）失败在服务器拉取 GHCR 镜像，报 unauthorized（没有下载权限）；网页、五个平台编译、镜像发布和安装包发布均成功，Tailscale 与 SSH 已连通。部署脚本没有登录 GHCR 的步骤；需检查镜像公开设置或给服务器配置可读取镜像的登录凭据。拉取失败发生在删除旧容器之前，本次没有执行替换旧容器。只阅读远端日志和脚本，未进行本地编译验证，未修改部署代码或重跑部署。
 - 2026-10-11：代码 52c1948 的完整远端 CI 通过：网页检查、Windows、Linux x64/ARM64、macOS x64/ARM64 的编译、回归、打包，以及 Docker x64/ARM64 和随机端口检查。运行记录：https://github.com/C0verSnow/Orders3/actions/runs/38112949543 。
 - 已提交 PR #3：https://github.com/C0verSnow/Orders3/pull/3 。最后只补充组织密钥说明、镜像示例和任务记录，使用 [skip ci]，不重复编译。
 - 2026-10-11：本次处理 C0verSnow/Orders3 的 #1 和 #2，历史记录中的同号 issue 属于旧仓库。
@@ -70,4 +72,5 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
+- 2026-10-11：latest 下载和公开镜像设置已完成，提交主分支后跟进远端 Actions 验证。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。

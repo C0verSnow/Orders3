@@ -380,7 +380,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-          ORDERS_IMAGE: ${{ needs.container.outputs.image }}@${{ needs.container.outputs.digest }}
+          ORDERS_IMAGE: ${{ needs.container.outputs.image }}:latest
         run: bash scripts/deploy-ssh.sh
 
   release:

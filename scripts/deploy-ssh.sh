@@ -9,7 +9,7 @@ DEPLOY_PORT="${DEPLOY_PORT:-22}"
 [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || { echo 'Invalid DEPLOY_HOST' >&2; exit 1; }
 [[ "$DEPLOY_USER" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]] || { echo 'Invalid DEPLOY_USER' >&2; exit 1; }
 [[ "$DEPLOY_PORT" =~ ^[0-9]{1,5}$ ]] && ((10#$DEPLOY_PORT > 0 && 10#$DEPLOY_PORT <= 65535)) || { echo 'Invalid DEPLOY_PORT' >&2; exit 1; }
-[[ "$ORDERS_IMAGE" =~ ^ghcr\.io/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]] || { echo 'Expected an immutable GHCR image digest' >&2; exit 1; }
+[[ "$ORDERS_IMAGE" =~ ^ghcr\.io/[a-z0-9._/-]+:latest$ ]] || { echo 'Expected a GHCR image with the latest tag' >&2; exit 1; }
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT

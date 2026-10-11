@@ -246,7 +246,7 @@ docker run -it --name orders-manual \
 
 ### master 自动部署到 Linux
 
-master 收到 push 后，现有各平台检查和 Docker 验证全部通过、GHCR 镜像发布成功，才运行 `deploy` 作业。该作业通过 Tailscale 加入内网，使用 OpenSSH 私钥连接 Linux，执行 `scripts/start-docker.sh`，拉取本次发布的精确 digest 并重新启动容器。其他分支、PR、标签和手动构建不会部署。
+master 收到 push 后，现有各平台检查和 Docker 验证全部通过、GHCR 镜像发布成功，才运行 `deploy` 作业。该作业通过 Tailscale 加入内网，使用 OpenSSH 私钥连接 Linux，执行 `scripts/start-docker.sh`，每次拉取 `ghcr.io/c0versnow/orders3:latest` 当前最新镜像并重新启动容器。标签使用 `:latest`，不是 `@latest`；`latest` 会随发布更新，不固定到某一次构建。其他分支、PR、标签和手动构建不会部署。
 
 使用以下 **Actions Secrets**（与本地 `.env` 名称对应，`.env` 不会上传到 GitHub）。可以沿用 Organization secrets，组织需要将本仓库加入这些密钥允许访问的仓库范围；也支持仓库 Settings → Secrets and variables → Actions 中的同名 Secrets：
 
@@ -261,6 +261,6 @@ master 收到 push 后，现有各平台检查和 Docker 验证全部通过、GH
 
 `DEPLOY_SSH_KEY_PUB` 是用户公钥，应放进远端用户的 `~/.ssh/authorized_keys`，无需传入 CI；它不是服务器主机公钥。不设置 `DEPLOY_KNOWN_HOSTS` 时，作业在经过认证的 Tailscale 网络中首次接受 SSH 主机公钥；设置后必须严格匹配。Tailscale 配置依据 [官方 GitHub Action](https://github.com/tailscale/github-action)。
 
-远端需要已启动 Tailscale、允许 CI 到 SSH 端口的 Tailnet 访问规则、Bash、curl、Docker，以及与私钥匹配的 authorized_keys。私有 GHCR 镜像需要事先在远端以该 SSH 用户执行 `docker login ghcr.io`，使用具备镜像读取权限的凭据。部署不会自动安装这些工具或覆盖应用密钥。
+远端需要已启动 Tailscale、允许 CI 到 SSH 端口的 Tailnet 访问规则、Bash、curl、Docker，以及与私钥匹配的 authorized_keys。`ghcr.io/c0versnow/orders3` 镜像包设为 Public，允许匿名下载，无需在服务器登录 GitHub；代码仓库公开不等于镜像包自动公开。如果以后改用私有 GHCR 镜像，需要事先在远端以该 SSH 用户执行 `docker login ghcr.io`，使用具备镜像读取权限的凭据。部署不会自动安装这些工具或覆盖应用密钥。
 
 沿用 `orders-dashboard` 容器和 `orders-dashboard-data` 数据卷，数据库、应用配置保留；拉取失败不会停止旧容器，重启期间会短暂中断，启动失败会使作业失败，没有自动回滚。看板只绑定远端 `127.0.0.1` 的随机端口，部署日志输出地址，用 SSH 隧道访问即可。首次启动后通过看板填写 Supabase / Gate 配置；已有数据卷直接沿用。自动部署不传入 `--cached`，沿用程序启动抓取设置。
