@@ -2,7 +2,7 @@
 # Run on the Docker host (macOS or Linux), not inside the container.
 set -euo pipefail
 
-image="${ORDERS_IMAGE:-ghcr.io/huan00000/orders3:latest}"
+image="${ORDERS_IMAGE:-ghcr.io/c0versnow/orders3:latest}"
 container_name="${ORDERS_CONTAINER_NAME:-orders-dashboard}"
 volume_name="${ORDERS_VOLUME_NAME:-orders-dashboard-data}"
 pull_policy="${ORDERS_PULL_POLICY:-always}"

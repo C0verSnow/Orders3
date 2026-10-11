@@ -42,6 +42,8 @@ C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 和 macOS �
 
 每行需要有效的 `contract`、正数 `activation_price`、非零整数张数 `amount` 和毫秒 `timestamp`；`side` 可为文本或空值。数量正负表示交易方向，沿用自动下单规则。价格、数量和 ID 的 JSON 数字原文按文本保留，时间戳保存为整数。完整原始字段保存在本地 `records`，可执行字段直接写入 `orders`，无需解析 Order Alert 文本。全部分页通过检查后才在一个 SQLite 事务中替换来源数据，失败保留旧数据并停止本次自动下单；成功保存后沿用自动追踪订单流程。旧来源缓存仍可读取，下次成功抓取后替换。
 
+当表为空，或记录的 `contract`、`activation_price`、`amount`、`side` 四个字段明确都是 JSON null 且 `timestamp` 有效时，表示没有来源订单。原始空订单记录仍保存到 `records`，不写入可下单的 `orders`；全部分页成功后清空旧来源订单，并停止缓存中状态为 1/2 的旧开仓追踪单，不创建新单。平仓保护单和已完成记录保留。混合列表只处理有效订单，半条订单、缺字段、无效时间戳及接口失败仍报错并保留旧来源数据。
+
 ### 导出 Supabase orders 表
 
 使用 Node.js 22+，在仓库根目录运行，无需安装依赖或编译：
@@ -187,7 +189,7 @@ Docker 使用 Ubuntu 多阶段 C++ 构建，运行阶段直接启动原生程序
 ```powershell
 docker run -d --name orders-dashboard --restart unless-stopped `
   -p 127.0.0.1:8090:8090 --env-file .env `
-  -v orders-dashboard-data:/data ghcr.io/huan00000/orders3:v0.2.0
+  -v orders-dashboard-data:/data ghcr.io/c0versnow/orders3:latest
 ```
 
 访问 `http://127.0.0.1:8090`。`/data` 保存数据库与程序配置。不需要启动抓取时，在镜像名后追加 `--cached`。使用不同访问地址时设置相应的 `ORDERS_ALLOWED_ORIGIN`。
@@ -204,7 +206,7 @@ bash scripts/start-docker.sh
 
 脚本在 49152–65535 中随机选择端口，让 Docker 创建 `127.0.0.1:随机端口:随机端口` 映射，并让程序监听 `0.0.0.0:随机端口`。Docker 确认端口可绑定后启动服务，端口占用时最多换端口重试 15 次；网页就绪后输出可在宿主机直接访问的「本地看板」链接。容器在后台运行，退出终端后仍可访问。脚本同时设置 `ORDERS_PORT`，容器健康检查使用相同端口。
 
-默认容器名为 `orders-dashboard`，数据卷为 `orders-dashboard-data`。每次执行先拉取 `ghcr.io/huan00000/orders3:latest` 最新镜像；拉取成功后，自动强制停止并删除同名旧容器，再创建新容器，更新期间服务会短暂中断。拉取失败时保留旧容器；删除容器不会删除命名数据卷，原有数据库和配置继续使用。可用 `ORDERS_CONTAINER_NAME=orders-random bash scripts/start-docker.sh` 指定其他名称。镜像和数据卷可分别通过 `ORDERS_IMAGE`、`ORDERS_VOLUME_NAME` 指定；自定义镜像时拉取的是指定标签或 digest，不会自动改为 `latest`。若页面此前保存了 `ORDERS_ALLOWED_ORIGIN`，请清除该旧值，让程序按当前随机端口校验来源。
+默认容器名为 `orders-dashboard`，数据卷为 `orders-dashboard-data`。每次执行先拉取 `ghcr.io/c0versnow/orders3:latest` 最新镜像；拉取成功后，自动强制停止并删除同名旧容器，再创建新容器，更新期间服务会短暂中断。拉取失败时保留旧容器；删除容器不会删除命名数据卷，原有数据库和配置继续使用。可用 `ORDERS_CONTAINER_NAME=orders-random bash scripts/start-docker.sh` 指定其他名称。镜像和数据卷可分别通过 `ORDERS_IMAGE`、`ORDERS_VOLUME_NAME` 指定；自定义镜像时拉取的是指定标签或 digest，不会自动改为 `latest`。若页面此前保存了 `ORDERS_ALLOWED_ORIGIN`，请清除该旧值，让程序按当前随机端口校验来源。
 
 使用已经构建或下载到本地的镜像时，设置 `ORDERS_PULL_POLICY=never`，例如 `ORDERS_IMAGE=orders-dashboard:ci ORDERS_PULL_POLICY=never bash scripts/start-docker.sh --cached`。默认值为 `always`；`never` 不访问镜像仓库，本地镜像不存在时直接失败并保留旧容器。
 
@@ -216,7 +218,7 @@ bash scripts/start-docker.sh
 docker run -it --name orders-manual \
   -p 127.0.0.1:8090:8090 \
   -v orders-dashboard-data:/data \
-  --entrypoint /bin/sh ghcr.io/huan00000/orders3:latest
+  --entrypoint /bin/sh ghcr.io/c0versnow/orders3:latest
 ```
 
 进入后直接运行：
@@ -240,3 +242,25 @@ docker run -it --name orders-manual \
 `-p` 必须在创建容器时设置；`EXPOSE` 和程序本身都不会创建 宿主机的端口映射。此前通过 OrbStack 临时终端创建且没有映射端口的容器，需要重新创建并配置 `127.0.0.1:8090:8090`。如果已有容器使用 8090，请先停止对应服务或改用其他宿主机端口，同时设置匹配的 `ORDERS_ALLOWED_ORIGIN`。正常自动启动的容器已经运行服务，无需再执行第二个 `./orders`。
 
 已有手动容器可在停止程序、退出终端后通过 `docker start -ai orders-manual` 再次进入，随后执行 `./orders`。
+
+
+### master 自动部署到 Linux
+
+master 收到 push 后，现有各平台检查和 Docker 验证全部通过、GHCR 镜像发布成功，才运行 `deploy` 作业。该作业通过 Tailscale 加入内网，使用 OpenSSH 私钥连接 Linux，执行 `scripts/start-docker.sh`，拉取本次发布的精确 digest 并重新启动容器。其他分支、PR、标签和手动构建不会部署。
+
+使用以下 **Actions Secrets**（与本地 `.env` 名称对应，`.env` 不会上传到 GitHub）。可以沿用 Organization secrets，组织需要将本仓库加入这些密钥允许访问的仓库范围；也支持仓库 Settings → Secrets and variables → Actions 中的同名 Secrets：
+
+| 名称 | 用途 |
+| --- | --- |
+| `AUTH_KEY` | Tailscale 可复用认证密钥；允许 CI 节点加入 Tailnet |
+| `DEPLOY_HOST` | Linux 的 Tailscale IPv4 地址或 MagicDNS 主机名 |
+| `DEPLOY_USER` | Linux SSH 用户，必须能直接执行 Docker |
+| `DEPLOY_PORT` | SSH 端口，未填使用 22 |
+| `DEPLOY_SSH_KEY` | 完整多行 SSH 私钥，CI 使用无密码私钥 |
+| `DEPLOY_KNOWN_HOSTS` | 可选：事先核对的服务器 SSH 主机公钥行；非 22 端口使用 `[主机]:端口` 格式 |
+
+`DEPLOY_SSH_KEY_PUB` 是用户公钥，应放进远端用户的 `~/.ssh/authorized_keys`，无需传入 CI；它不是服务器主机公钥。不设置 `DEPLOY_KNOWN_HOSTS` 时，作业在经过认证的 Tailscale 网络中首次接受 SSH 主机公钥；设置后必须严格匹配。Tailscale 配置依据 [官方 GitHub Action](https://github.com/tailscale/github-action)。
+
+远端需要已启动 Tailscale、允许 CI 到 SSH 端口的 Tailnet 访问规则、Bash、curl、Docker，以及与私钥匹配的 authorized_keys。私有 GHCR 镜像需要事先在远端以该 SSH 用户执行 `docker login ghcr.io`，使用具备镜像读取权限的凭据。部署不会自动安装这些工具或覆盖应用密钥。
+
+沿用 `orders-dashboard` 容器和 `orders-dashboard-data` 数据卷，数据库、应用配置保留；拉取失败不会停止旧容器，重启期间会短暂中断，启动失败会使作业失败，没有自动回滚。看板只绑定远端 `127.0.0.1` 的随机端口，部署日志输出地址，用 SSH 隧道访问即可。首次启动后通过看板填写 Supabase / Gate 配置；已有数据卷直接沿用。自动部署不传入 `--cached`，沿用程序启动抓取设置。

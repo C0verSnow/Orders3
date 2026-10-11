@@ -1,6 +1,7 @@
 # 本文档为4象限的任务清单，全文书写大白话。
 
 ## 想做：
+- 2026-10-11：完成 C0verSnow/Orders3 的 #1（Tailscale + SSH 部署）和 #2（空订单清理）。
 - 完成 issue #8：平仓 value 改为 size × entry_price，并保留正负号。
 - 完成 issue #6：数据库主文件合计 450 MB、请求日志合计 50 MB。
 - 完成 issue #4：记录接口请求，给数据库加上 500 MB 上限，提交 PR，使用远端 CI 验证后关闭 issue。
@@ -8,6 +9,15 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-11：代码 52c1948 的完整远端 CI 通过：网页检查、Windows、Linux x64/ARM64、macOS x64/ARM64 的编译、回归、打包，以及 Docker x64/ARM64 和随机端口检查。运行记录：https://github.com/C0verSnow/Orders3/actions/runs/38112949543 。
+- 已提交 PR #3：https://github.com/C0verSnow/Orders3/pull/3 。最后只补充组织密钥说明、镜像示例和任务记录，使用 [skip ci]，不重复编译。
+- 2026-10-11：本次处理 C0verSnow/Orders3 的 #1 和 #2，历史记录中的同号 issue 属于旧仓库。
+- #2：全 null 订单仍计入原始分页和记录，但不进入可下单列表；空来源会清空旧来源并停止有效开仓单，保留平仓保护单和历史完成单。
+- #2：已增加空表、null 记录、混合分页、部分 null、无效时间戳的远端回归用例。
+- #1：已按本地 .env 的名称接入 AUTH_KEY、DEPLOY_HOST、DEPLOY_PORT、DEPLOY_USER、DEPLOY_SSH_KEY，密钥内容未进入代码或输出。
+- #1：master 镜像发布成功后，经 Tailscale 和 SSH 执行远端 Docker 启动脚本，部署精确 digest，保留数据卷；已补充使用说明。
+- 本地仅进行代码阅读、Shell 语法和差异检查，通过；没有进行本地编译验证。
+
 - 2026-10-06：issue #8 和 #6 均完成并关闭；PR #9、#10 已转为可审阅状态，保留供审阅，未合并 master。
 - issue #8：代码提交 9a19005 的完整远端 CI 通过，包含网页、Windows x64、Linux x64/ARM64、macOS x64/ARM64 的编译、回归、打包，以及 Docker x64/ARM64 和随机端口检查；运行记录 https://github.com/f1515x/orders3/actions/runs/37568012466 。
 - issue #6：代码提交 5e669fb 的完整远端 CI 通过，包含同样的网页、五个平台与 Docker 验证；运行记录 https://github.com/f1515x/orders3/actions/runs/37568221188 。
@@ -52,6 +62,7 @@
 - 将原来的 Tasklist.md 改为用户要求的 tasklist.md，继续按四个栏目记录。
 
 ## 没做：
+- 本次 #1/#2：未合并 master，未执行真实部署或连接真实 Gate/Supabase。用户说明密钥在 Organization secrets 中；组织密钥元数据读取返回 403，无法确认本仓库授权范围，未复制或更改密钥。
 - issue #8、#6：没有合并 PR；没有连接真实 Supabase/Gate 操作订单，远端回归使用模拟接口。
 - issue #4：未连接真实 Supabase/Gate 操作订单，回归使用模拟接口；没有合并 PR。
 - 按用户约定，不进行本地编译验证。
@@ -59,4 +70,4 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- 无，issue #8 和 #6 已完成；PR #9、#10 等待审阅。
+- 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。

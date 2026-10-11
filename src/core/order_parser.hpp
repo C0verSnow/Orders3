@@ -11,5 +11,6 @@ namespace orders {
 ORDERS_CORE_EXPORT QJsonArray parseOrders(const QString &text, int recordPosition);
 // Direct Supabase rows; validate the full page and preserve numeric JSON literals as text.
 ORDERS_CORE_EXPORT QJsonArray parseSupabaseOrders(const QByteArray &body);
+// Returns an empty object for an explicit all-null order with a valid timestamp.
 ORDERS_CORE_EXPORT QJsonObject parseOrderRecord(const QJsonObject &record, int recordPosition);
 } // namespace orders
