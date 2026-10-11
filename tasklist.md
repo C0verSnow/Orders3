@@ -9,6 +9,8 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-11：代码 52c1948 的完整远端 CI 通过：网页检查、Windows、Linux x64/ARM64、macOS x64/ARM64 的编译、回归、打包，以及 Docker x64/ARM64 和随机端口检查。运行记录：https://github.com/C0verSnow/Orders3/actions/runs/38112949543 。
+- 已提交 PR #3：https://github.com/C0verSnow/Orders3/pull/3 。最后只补充组织密钥说明、镜像示例和任务记录，使用 [skip ci]，不重复编译。
 - 2026-10-11：本次处理 C0verSnow/Orders3 的 #1 和 #2，历史记录中的同号 issue 属于旧仓库。
 - #2：全 null 订单仍计入原始分页和记录，但不进入可下单列表；空来源会清空旧来源并停止有效开仓单，保留平仓保护单和历史完成单。
 - #2：已增加空表、null 记录、混合分页、部分 null、无效时间戳的远端回归用例。
@@ -60,6 +62,7 @@
 - 将原来的 Tasklist.md 改为用户要求的 tasklist.md，继续按四个栏目记录。
 
 ## 没做：
+- 本次 #1/#2：未合并 master，未执行真实部署或连接真实 Gate/Supabase。用户说明密钥在 Organization secrets 中；组织密钥元数据读取返回 403，无法确认本仓库授权范围，未复制或更改密钥。
 - issue #8、#6：没有合并 PR；没有连接真实 Supabase/Gate 操作订单，远端回归使用模拟接口。
 - issue #4：未连接真实 Supabase/Gate 操作订单，回归使用模拟接口；没有合并 PR。
 - 按用户约定，不进行本地编译验证。
@@ -67,6 +70,4 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- 2026-10-11：已读取两个 issue，创建 fix/issues-1-2 分支；正在检查读取、入库和 Gate 清理流程，以及现有镜像发布流程。
-- 已按用户要求参考本地 .env；正在准备提交并交给远端 CI 验证。
-- 无，issue #8 和 #6 已完成；PR #9、#10 等待审阅。
+- 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。

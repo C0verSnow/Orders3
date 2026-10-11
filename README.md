@@ -189,7 +189,7 @@ Docker 使用 Ubuntu 多阶段 C++ 构建，运行阶段直接启动原生程序
 ```powershell
 docker run -d --name orders-dashboard --restart unless-stopped `
   -p 127.0.0.1:8090:8090 --env-file .env `
-  -v orders-dashboard-data:/data ghcr.io/huan00000/orders3:v0.2.0
+  -v orders-dashboard-data:/data ghcr.io/c0versnow/orders3:latest
 ```
 
 访问 `http://127.0.0.1:8090`。`/data` 保存数据库与程序配置。不需要启动抓取时，在镜像名后追加 `--cached`。使用不同访问地址时设置相应的 `ORDERS_ALLOWED_ORIGIN`。
@@ -248,7 +248,7 @@ docker run -it --name orders-manual \
 
 master 收到 push 后，现有各平台检查和 Docker 验证全部通过、GHCR 镜像发布成功，才运行 `deploy` 作业。该作业通过 Tailscale 加入内网，使用 OpenSSH 私钥连接 Linux，执行 `scripts/start-docker.sh`，拉取本次发布的精确 digest 并重新启动容器。其他分支、PR、标签和手动构建不会部署。
 
-GitHub 仓库 Settings → Secrets and variables → Actions 中使用以下 **Secrets**（与本地 `.env` 名称对应，`.env` 不会上传到 GitHub）：
+使用以下 **Actions Secrets**（与本地 `.env` 名称对应，`.env` 不会上传到 GitHub）。可以沿用 Organization secrets，组织需要将本仓库加入这些密钥允许访问的仓库范围；也支持仓库 Settings → Secrets and variables → Actions 中的同名 Secrets：
 
 | 名称 | 用途 |
 | --- | --- |
