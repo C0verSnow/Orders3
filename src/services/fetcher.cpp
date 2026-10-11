@@ -233,7 +233,14 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
             if (!unchanged) candidates.append(entry);
         }
     }
-    if (candidates.isEmpty() && retained.isEmpty())
+    const bool hasActiveOpeningOrders = std::any_of(trailing.begin(), trailing.end(),
+        [](const QJsonValue &value) {
+            const auto order = value.toObject();
+            const int status = order.value("original_status").toInt();
+            return !order.value("reduce_only").toBool() && (status == 1 || status == 2);
+        });
+    if (candidates.isEmpty() && retained.isEmpty()
+        && (!sources.isEmpty() || !hasActiveOpeningOrders))
         return results;
     if (config.gateKey.isEmpty() || config.gateSecret.isEmpty())
         throw Error("请在程序的「连接与存储配置」中填写 Gate API Key 和 Secret");

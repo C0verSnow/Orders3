@@ -25,6 +25,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Check deployment shell syntax
+        run: bash -n scripts/deploy-ssh.sh scripts/start-docker.sh
       - run: npm run check
       - run: npm test
 
@@ -335,6 +337,51 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
+
+  deploy:
+    name: Deploy master over Tailscale and SSH
+    needs: [container]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-master
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate deployment settings
+        shell: bash
+        env:
+          AUTH_KEY: ${{ secrets.AUTH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          IMAGE_DIGEST: ${{ needs.container.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for name in AUTH_KEY DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY IMAGE_DIGEST; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing deployment setting: $name" >&2
+              exit 1
+            fi
+          done
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.AUTH_KEY }}
+          ping: ${{ secrets.DEPLOY_HOST }}
+      - name: Pull published image and restart remote service
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          ORDERS_IMAGE: ${{ needs.container.outputs.image }}@${{ needs.container.outputs.digest }}
+        run: bash scripts/deploy-ssh.sh
 
   release:
     name: Publish native application archives

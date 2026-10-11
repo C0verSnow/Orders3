@@ -110,6 +110,18 @@ QByteArray preserveOrderNumbers(const QByteArray &body) {
 } // namespace
 
 QJsonObject parseOrderRecord(const QJsonObject &record, int recordPosition) {
+    bool valid = false;
+    const auto time = record.value("timestamp");
+    const auto timestamp = time.isString() ? time.toString().toLongLong(&valid) : time.toInteger(-1);
+    if (time.isDouble()) valid = std::isfinite(time.toDouble()) && std::floor(time.toDouble()) == time.toDouble();
+    else if (!time.isString()) valid = false;
+    if (!valid || timestamp < 0 || timestamp > 9007199254740991LL)
+        throw Error("orders 表缺少有效的毫秒 timestamp");
+    // An explicit all-null payload is a no-order marker, not a malformed order.
+    bool emptyOrder = true;
+    for (const QString &field : {"contract", "activation_price", "amount", "side"})
+        emptyOrder = emptyOrder && record.contains(field) && record.value(field).isNull();
+    if (emptyOrder) return {};
     const auto contract = record.value("contract").toString().trimmed();
     static const QRegularExpression contractPattern(R"(^[A-Z0-9]+_USDT$)");
     if (!contractPattern.match(contract).hasMatch()) throw Error("orders 表合约无效");
@@ -119,15 +131,9 @@ QJsonObject parseOrderRecord(const QJsonObject &record, int recordPosition) {
     const auto amount = decimalText(record.value("amount"), "amount");
     static const QRegularExpression amountPattern(R"(^(-?\d+)(?:\.0+)?$)");
     const auto match = amountPattern.match(amount);
-    bool valid = false;
+    valid = false;
     const qint64 contracts = match.captured(1).toLongLong(&valid);
     if (!match.hasMatch() || !valid || contracts == 0) throw Error("orders 表数量必须为非零整数张数");
-    const auto time = record.value("timestamp");
-    const auto timestamp = time.isString() ? time.toString().toLongLong(&valid) : time.toInteger(-1);
-    if (time.isDouble()) valid = std::isfinite(time.toDouble()) && std::floor(time.toDouble()) == time.toDouble();
-    else if (!time.isString()) valid = false;
-    if (!valid || timestamp < 0 || timestamp > 9007199254740991LL)
-        throw Error("orders 表缺少有效的毫秒 timestamp");
     const auto side = record.value("side");
     if (!side.isUndefined() && !side.isNull() && !side.isString()) throw Error("orders 表 side 必须为文本");
     return {{"record_position", recordPosition}, {"order_index", 0}, {"contract", contract},
@@ -148,8 +154,10 @@ QJsonArray parseSupabaseOrders(const QByteArray &body) {
         if (!value.isObject()) throw Error("Supabase orders 响应包含无效订单");
         auto record = value.toObject();
         const auto order = parseOrderRecord(record, int(result.size()));
-        for (const QString &field : {"contract", "activation_price", "amount", "timestamp"})
-            record.insert(field, order.value(field));
+        if (!order.isEmpty()) {
+            for (const QString &field : {"contract", "activation_price", "amount", "timestamp"})
+                record.insert(field, order.value(field));
+        }
         result.append(record);
     }
     return result;

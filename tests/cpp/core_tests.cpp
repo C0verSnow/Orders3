@@ -874,6 +874,8 @@ private slots:
 
     void directOrdersRejectInvalidPages_data() {
         QTest::addColumn<QByteArray>("body");
+        QTest::newRow("partial-null") << QByteArray("[{\"contract\":null,\"activation_price\":1,\"amount\":null,\"side\":null,\"timestamp\":123}]");
+        QTest::newRow("null-missing-time") << QByteArray("[{\"contract\":null,\"activation_price\":null,\"amount\":null,\"side\":null}]");
         QTest::newRow("invalid-json") << QByteArray("broken");
         QTest::newRow("object") << QByteArray("{}");
         QTest::newRow("null-row") << QByteArray("[null]");
@@ -890,6 +892,52 @@ private slots:
         QVERIFY_EXCEPTION_THROWN(orders::parseSupabaseOrders(body), orders::Error);
     }
 
+    void nullOrderSnapshotClearsSourcesAndStopsOnlyOpeningOrders_data() {
+        QTest::addColumn<QByteArray>("body");
+        QTest::newRow("empty-table") << QByteArray("[]");
+        QTest::newRow("null-marker") << QByteArray(
+            "[{\"id\":1,\"contract\":null,\"activation_price\":null,"
+            "\"amount\":null,\"side\":null,\"timestamp\":123}]");
+    }
+
+    void nullOrderSnapshotClearsSourcesAndStopsOnlyOpeningOrders() {
+        QFETCH(QByteArray, body);
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.gateKey = config.gateSecret = "offline";
+        orders::saveSources(config.dataPath, orders::parseSupabaseOrders(
+            "[{\"contract\":\"BTC_USDT\",\"activation_price\":1,\"amount\":1,\"timestamp\":123}]"));
+        const auto rows = orders::parseSupabaseOrders(body);
+        orders::saveSources(config.dataPath, rows);
+        QCOMPARE(orders::readSources(config.dataPath).items, rows);
+        QVERIFY(orders::readSources(config.dataPath).orders.isEmpty());
+        QJsonArray old;
+        for (int id = 1; id <= 4; ++id) {
+            old.append(QJsonObject{{"id", QString::number(id)}, {"contract", "BTC_USDT"},
+                {"amount", "1"}, {"activation_price", "1"}, {"timestamp", 123},
+                {"reduce_only", id == 3}, {"original_status", id == 4 ? 4 : id == 2 ? 2 : 1}});
+        }
+        orders::saveTrailingOrders(config.ordersPath, old);
+        int stops = 0;
+        const auto results = orders::createTrailingOrders(config,
+            [&](const QByteArray &path, const QByteArray &, const orders::HttpHeaders &) {
+                if (!path.endsWith("/stop")) return orders::HttpResult{500, "{}"};
+                ++stops;
+                return orders::HttpResult{200, R"({"code":0})"};
+            });
+        QCOMPARE(stops, 2);
+        QCOMPARE(results.size(), 2);
+        const auto saved = orders::readTrailingOrders(config.ordersPath).orders;
+        QCOMPARE(saved[0].toObject().value("original_status").toInt(), 5);
+        QCOMPARE(saved[1].toObject().value("original_status").toInt(), 5);
+        QCOMPARE(saved[2], old[2]);
+        QCOMPARE(saved[3], old[3]);
+        config.gateKey.clear();
+        config.gateSecret.clear();
+        QVERIFY(orders::createTrailingOrders(config).isEmpty());
+    }
+
     void directOrdersAcceptEmptyAndScientificNotation() {
         QVERIFY(orders::parseSupabaseOrders("[]").isEmpty());
         const auto rows = orders::parseSupabaseOrders("[{\"contract\":\"XAU_USDT\",\n"
@@ -902,15 +950,19 @@ private slots:
         QTest::addColumn<QByteArray>("key");
         QTest::addColumn<bool>("bearer");
         QTest::addColumn<bool>("counted");
-        QTest::newRow("publishable") << QByteArray("sb_publishable_fixture") << false << false;
-        QTest::newRow("legacy-jwt") << QByteArray("header.payload.signature") << true << false;
-        QTest::newRow("exact-count") << QByteArray("sb_secret_fixture") << false << true;
+        QTest::addColumn<bool>("nullFirstPage");
+        QTest::newRow("publishable") << QByteArray("sb_publishable_fixture") << false << false << false;
+        QTest::newRow("legacy-jwt") << QByteArray("header.payload.signature") << true << false << false;
+        QTest::newRow("exact-count") << QByteArray("sb_secret_fixture") << false << true << false;
+        QTest::newRow("null-page-counted") << QByteArray("offline") << false << true << true;
+        QTest::newRow("null-page-uncounted") << QByteArray("offline") << false << false << true;
     }
 
     void sourcePagingReadsOnlyOrdersTable() {
         QFETCH(QByteArray, key);
         QFETCH(bool, bearer);
         QFETCH(bool, counted);
+        QFETCH(bool, nullFirstPage);
         QTcpServer server;
         QVERIFY(server.listen(QHostAddress::LocalHost, 0));
         const QString base = QString("http://127.0.0.1:%1").arg(server.serverPort());
@@ -929,6 +981,8 @@ private slots:
                         body = "[{\"id\":1,\"contract\":\"XAU_USDT\",\"activation_price\":1.2300,\"amount\":350,\"timestamp\":1791194547002,\"url\":\"http://127.0.0.1:1/never-fetch\"}]";
                     else if (buffer->contains("offset=1"))
                         body = "[{\"id\":2,\"contract\":\"BTC_USDT\",\"activation_price\":\"2.5000\",\"amount\":\"-1\",\"timestamp\":1791194547003}]";
+                    if (nullFirstPage && buffer->contains("offset=0"))
+                        body = "[{\"id\":1,\"contract\":null,\"activation_price\":null,\"amount\":null,\"side\":null,\"timestamp\":123}]";
                     const QByteArray range = counted
                         ? (requests.size() == 1 ? "Content-Range: 0-0/2\r\n" : "Content-Range: 1-1/2\r\n") : "";
                     socket->write("HTTP/1.1 200 OK\r\n" + range + "Connection: close\r\nContent-Length: "
@@ -944,7 +998,12 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(future.isFinished(), 5000);
         const auto items = future.result();
         QCOMPARE(items.size(), 2);
-        QCOMPARE(items[0].toObject().value("activation_price").toString(), QString("1.2300"));
+        if (nullFirstPage) QVERIFY(items[0].toObject().value("contract").isNull());
+        else QCOMPARE(items[0].toObject().value("activation_price").toString(), QString("1.2300"));
+        QTemporaryDir directory;
+        const auto path = directory.filePath("data.db");
+        orders::saveSources(path, items);
+        QCOMPARE(orders::readSources(path).orders.size(), nullFirstPage ? 1 : 2);
         QCOMPARE(items[1].toObject().value("amount").toString(), QString("-1"));
         QCOMPARE(requests.size(), counted ? 2 : 3);
         for (int index = 0; index < requests.size(); ++index) {
