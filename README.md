@@ -199,16 +199,16 @@ docker run -d --name orders-dashboard --restart unless-stopped `
 在 **macOS 或 Linux 宿主机终端、仓库根目录** 运行自动随机端口映射脚本，需要安装 Bash、curl，并能访问运行中的 Docker 引擎。macOS 可使用 OrbStack 或 Docker Desktop 提供 Docker 环境；OrbStack 不是项目依赖。Linux 可直接使用 Docker Engine，支持 x64 和 ARM64。
 
 ```sh
-bash scripts/start-docker.sh
+bash start-docker.sh
 # 跳过启动抓取：
-# bash scripts/start-docker.sh --cached
+# bash start-docker.sh --cached
 ```
 
 脚本在 49152–65535 中随机选择端口，让 Docker 创建 `127.0.0.1:随机端口:随机端口` 映射，并让程序监听 `0.0.0.0:随机端口`。Docker 确认端口可绑定后启动服务，端口占用时最多换端口重试 15 次；网页就绪后输出可在宿主机直接访问的「本地看板」链接。容器在后台运行，退出终端后仍可访问。脚本同时设置 `ORDERS_PORT`，容器健康检查使用相同端口。
 
-默认容器名为 `orders-dashboard`，数据卷为 `orders-dashboard-data`。每次执行先拉取 `ghcr.io/c0versnow/orders3:latest` 最新镜像；拉取成功后，自动强制停止并删除同名旧容器，再创建新容器，更新期间服务会短暂中断。拉取失败时保留旧容器；删除容器不会删除命名数据卷，原有数据库和配置继续使用。可用 `ORDERS_CONTAINER_NAME=orders-random bash scripts/start-docker.sh` 指定其他名称。镜像和数据卷可分别通过 `ORDERS_IMAGE`、`ORDERS_VOLUME_NAME` 指定；自定义镜像时拉取的是指定标签或 digest，不会自动改为 `latest`。若页面此前保存了 `ORDERS_ALLOWED_ORIGIN`，请清除该旧值，让程序按当前随机端口校验来源。
+默认容器名为 `orders-dashboard`，数据卷为 `orders-dashboard-data`。每次执行先拉取 `ghcr.io/c0versnow/orders3:latest` 最新镜像；拉取成功后，自动强制停止并删除同名旧容器，再创建新容器，更新期间服务会短暂中断。拉取失败时保留旧容器；删除容器不会删除命名数据卷，原有数据库和配置继续使用。可用 `ORDERS_CONTAINER_NAME=orders-random bash start-docker.sh` 指定其他名称。镜像和数据卷可分别通过 `ORDERS_IMAGE`、`ORDERS_VOLUME_NAME` 指定；自定义镜像时拉取的是指定标签或 digest，不会自动改为 `latest`。若页面此前保存了 `ORDERS_ALLOWED_ORIGIN`，请清除该旧值，让程序按当前随机端口校验来源。
 
-使用已经构建或下载到本地的镜像时，设置 `ORDERS_PULL_POLICY=never`，例如 `ORDERS_IMAGE=orders-dashboard:ci ORDERS_PULL_POLICY=never bash scripts/start-docker.sh --cached`。默认值为 `always`；`never` 不访问镜像仓库，本地镜像不存在时直接失败并保留旧容器。
+使用已经构建或下载到本地的镜像时，设置 `ORDERS_PULL_POLICY=never`，例如 `ORDERS_IMAGE=orders-dashboard:ci ORDERS_PULL_POLICY=never bash start-docker.sh --cached`。默认值为 `always`；`never` 不访问镜像仓库，本地镜像不存在时直接失败并保留旧容器。
 
 这段映射逻辑必须在 Docker 宿主机上执行，容器内的 `./orders` 无法自行给 Docker 添加宿主机映射。脚本只绑定宿主机 `127.0.0.1`；远程 Linux 服务器可使用 SSH 隧道访问，例如 `ssh -L 8090:127.0.0.1:脚本输出的端口 用户@服务器`，然后在本机打开 `http://127.0.0.1:8090/`。以下是固定 8090 端口的手动方式：
 
@@ -246,7 +246,11 @@ docker run -it --name orders-manual \
 
 ### master 自动部署到 Linux
 
-master 收到 push 后，现有各平台检查和 Docker 验证全部通过、GHCR 镜像发布成功，才运行 `deploy` 作业。该作业通过 Tailscale 加入内网，使用 OpenSSH 私钥连接 Linux，执行 `scripts/start-docker.sh`，每次拉取 `ghcr.io/c0versnow/orders3:latest` 当前最新镜像并重新启动容器。标签使用 `:latest`，不是 `@latest`；`latest` 会随发布更新，不固定到某一次构建。其他分支、PR、标签和手动构建不会部署。
+SSH 连上后会检查 `~/start-docker.sh` 是否存在：有同名文件就覆盖，没有就新建。上传先写入临时文件并检查 Bash 语法，成功后再替换目标文件并执行；上传或语法检查失败时不执行脚本，原有文件保留。同名路径如果是目录会报错。启动失败会原样返回失败状态，让 Actions 显示失败。
+
+仓库根目录的 `start-docker.sh` 是启动脚本的唯一维护入口，已纳入 Git；`scripts/start-docker.sh` 兼容旧命令并调用根目录脚本。脚本可以单独上传到服务器运行，不需要整个仓库或额外的 Compose yml。现有 `.github/workflows/build.yml` 已接入上传流程，并在远端 CI 检查新建、覆盖、实际执行、失败状态以及 Docker 随机端口和网页响应。
+
+master 收到 push 后，现有各平台检查和 Docker 验证全部通过、GHCR 镜像发布成功，才运行 `deploy` 作业。该作业通过 Tailscale 加入内网，使用 OpenSSH 私钥连接 Linux，将仓库根目录的 `start-docker.sh` 上传到登录用户的 `~/start-docker.sh`，然后在该用户的主目录运行 `bash start-docker.sh`，每次拉取 `ghcr.io/c0versnow/orders3:latest` 当前最新镜像并重新启动容器。标签使用 `:latest`，不是 `@latest`；`latest` 会随发布更新，不固定到某一次构建。其他分支、PR、标签和手动构建不会部署。
 
 使用以下 **Actions Secrets**（与本地 `.env` 名称对应，`.env` 不会上传到 GitHub）。可以沿用 Organization secrets，组织需要将本仓库加入这些密钥允许访问的仓库范围；也支持仓库 Settings → Secrets and variables → Actions 中的同名 Secrets：
 
@@ -264,3 +268,13 @@ master 收到 push 后，现有各平台检查和 Docker 验证全部通过、GH
 远端需要已启动 Tailscale、允许 CI 到 SSH 端口的 Tailnet 访问规则、Bash、curl、Docker，以及与私钥匹配的 authorized_keys。`ghcr.io/c0versnow/orders3` 镜像包设为 Public，允许匿名下载，无需在服务器登录 GitHub；代码仓库公开不等于镜像包自动公开。如果以后改用私有 GHCR 镜像，需要事先在远端以该 SSH 用户执行 `docker login ghcr.io`，使用具备镜像读取权限的凭据。部署不会自动安装这些工具或覆盖应用密钥。
 
 沿用 `orders-dashboard` 容器和 `orders-dashboard-data` 数据卷，数据库、应用配置保留；拉取失败不会停止旧容器，重启期间会短暂中断，启动失败会使作业失败，没有自动回滚。看板只绑定远端 `127.0.0.1` 的随机端口，部署日志输出地址，用 SSH 隧道访问即可。首次启动后通过看板填写 Supabase / Gate 配置；已有数据卷直接沿用。自动部署不传入 `--cached`，沿用程序启动抓取设置。
+
+#### 在自己的电脑访问远端看板
+
+启动日志里的 `本地看板：http://127.0.0.1:随机端口/` 指服务器自己的地址。在自己的电脑另开终端，将下面的 `服务器随机端口`、`SSH端口`、`用户` 和 `服务器` 换成实际值：
+
+```sh
+ssh -N -o ExitOnForwardFailure=yes -p SSH端口 -L 8090:127.0.0.1:服务器随机端口 用户@服务器
+```
+
+保持终端连接，在自己的浏览器打开 `http://127.0.0.1:8090/`。例如服务器日志显示端口 54321，SSH 端口为 22，则用 `ssh -N -o ExitOnForwardFailure=yes -p 22 -L 8090:127.0.0.1:54321 用户@服务器`。本机 8090 被占用时，将 `-L` 左边的 8090 改成其他空闲端口，浏览器也使用该端口。服务器每次重启容器会重新选端口，隧道也需改用最新日志里的端口；CI 部署作业结束后不会留下供个人电脑使用的隧道。

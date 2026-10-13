@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run on the GitHub runner after joining the Tailnet. No local builds.
+# Run after joining the Tailnet. Upload the root script, then run the saved file.
 set -euo pipefail
 : "${DEPLOY_HOST:?Missing DEPLOY_HOST}"
 : "${DEPLOY_USER:?Missing DEPLOY_USER}"
@@ -11,6 +11,9 @@ DEPLOY_PORT="${DEPLOY_PORT:-22}"
 [[ "$DEPLOY_PORT" =~ ^[0-9]{1,5}$ ]] && ((10#$DEPLOY_PORT > 0 && 10#$DEPLOY_PORT <= 65535)) || { echo 'Invalid DEPLOY_PORT' >&2; exit 1; }
 [[ "$ORDERS_IMAGE" =~ ^ghcr\.io/[a-z0-9._/-]+:latest$ ]] || { echo 'Expected a GHCR image with the latest tag' >&2; exit 1; }
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+startup_script="$script_directory/../start-docker.sh"
+[[ -f "$startup_script" ]] || { echo 'Missing repository root start-docker.sh' >&2; exit 1; }
+bash -n "$startup_script"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 chmod 700 "$temporary"
@@ -30,4 +33,20 @@ ssh -T -i "$temporary/key" -p "$DEPLOY_PORT" \
     -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
     -o "UserKnownHostsFile=$temporary/known_hosts" -o "StrictHostKeyChecking=$host_check" \
     "$DEPLOY_USER@$DEPLOY_HOST" \
-    "ORDERS_IMAGE='$ORDERS_IMAGE' bash -s" < "$script_directory/start-docker.sh"
+    "bash -c 'set -euo pipefail
+cd -- \"\$HOME\"
+if [[ -d start-docker.sh ]]; then
+    echo \"远端 ~/start-docker.sh 是目录，无法覆盖。\" >&2
+    exit 1
+fi
+if [[ -e start-docker.sh || -L start-docker.sh ]]; then
+    echo \"覆盖远端 ~/start-docker.sh\"
+else
+    echo \"新建远端 ~/start-docker.sh\"
+fi
+target=\$(mktemp .start-docker.XXXXXX)
+trap \"rm -f -- \\\"\$target\\\"\" EXIT
+cat > \"\$target\"
+bash -n \"\$target\"
+mv -f -- \"\$target\" start-docker.sh
+ORDERS_IMAGE=\"$ORDERS_IMAGE\" bash start-docker.sh'" < "$startup_script"

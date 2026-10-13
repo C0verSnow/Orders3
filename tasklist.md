@@ -9,6 +9,10 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-12：当前仓库 issue #4 已完成，分支 feature-issue-4-ssh-start-script，PR #5：https://github.com/C0verSnow/Orders3/pull/5 。SSH 连上后将仓库根目录脚本写到远端 ~/start-docker.sh，有同名文件就覆盖，没有就新建；临时文件通过语法检查后替换，再执行 bash start-docker.sh，失败返回给 CI。
+- 2026-10-12：根目录 start-docker.sh 已纳入 Git，保留原有随机端口、就绪检查和数据卷行为，旧 scripts 路径调用它；README 补充部署过程和个人电脑 SSH 转发命令，无需额外 Compose yml。
+- 2026-10-12：代码 858ec52 的完整远端 CI 通过：7 项 SSH 上传执行回归、网页静态检查与 11 项脚本测试、Windows x64、Linux x64/ARM64、macOS x64/ARM64 的编译回归打包，以及 Docker x64/ARM64 网页接口和根目录脚本随机端口检查。运行记录：https://github.com/C0verSnow/Orders3/actions/runs/38331742265 。本地只做 Shell 语法和差异检查，未进行本地编译验证。
+
 - 2026-10-12：尝试通过 home@192.168.1.245 登录，默认 SSH 密钥和工作区已有部署密钥都返回 Permission denied (publickey,password)。没有修改服务器或容器，没有进行本地编译验证。
 - 2026-10-11：自动部署地址改为 ghcr.io/c0versnow/orders3:latest，同步 SSH 脚本地址校验和 README。GHCR 镜像包已从 Private 改为 Public；临时启用组织公开包开关完成设置后，恢复组织原有创建限制。匿名读取 latest 镜像清单返回 HTTP 200，包含 Linux amd64/arm64；Shell 语法和差异检查通过，未进行本地编译验证。
 - 2026-10-11：查明 Actions #4（38113788776）失败在服务器拉取 GHCR 镜像，报 unauthorized（没有下载权限）；网页、五个平台编译、镜像发布和安装包发布均成功，Tailscale 与 SSH 已连通。部署脚本没有登录 GHCR 的步骤；需检查镜像公开设置或给服务器配置可读取镜像的登录凭据。拉取失败发生在删除旧容器之前，本次没有执行替换旧容器。只阅读远端日志和脚本，未进行本地编译验证，未修改部署代码或重跑部署。
@@ -65,6 +69,7 @@
 - 将原来的 Tasklist.md 改为用户要求的 tasklist.md，继续按四个栏目记录。
 
 ## 没做：
+- 当前仓库 issue #4：PR #5 未合并 master；本次没有连接真实服务器，没有发布镜像或执行真实部署。最后仅补任务记录，使用 [skip ci]，不重复编译。
 - 本次 #1/#2：未合并 master，未执行真实部署或连接真实 Gate/Supabase。用户说明密钥在 Organization secrets 中；组织密钥元数据读取返回 403，无法确认本仓库授权范围，未复制或更改密钥。
 - issue #8、#6：没有合并 PR；没有连接真实 Supabase/Gate 操作订单，远端回归使用模拟接口。
 - issue #4：未连接真实 Supabase/Gate 操作订单，回归使用模拟接口；没有合并 PR。
