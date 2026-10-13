@@ -42,7 +42,7 @@ curl -X $method $full_url -d "$body_param" -H "Content-Type: application/json" \
 使用url = '/futures/usdt/autoorder/v1/trail/create'函数创建追踪订单时
 使用url = '/futures/usdt/autoorder/v1/trail/create'函数时 进行分类讨论
 
-1.当data.db的orderslist table还有订单 且 reduce_only = 1 且 original_status =1或2 时
+1.当data.db的orderslist table还有订单 且 reduce_only = 1 且 original_status =1 时
 先对使用url = '/futures/usdt/autoorder/v1/trail/stop'对旧追踪订单对应id发布停止追踪订单操作
 然后使用url = '/futures/usdt/autoorder/v1/trail/create'函数发布追踪订单操作
 
