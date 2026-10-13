@@ -26,7 +26,12 @@ jobs:
         with:
           node-version: '22'
       - name: Check deployment shell syntax
-        run: bash -n scripts/deploy-ssh.sh scripts/start-docker.sh
+        run: |
+          for script in scripts/deploy-ssh.sh scripts/start-docker.sh start-docker.sh; do
+            bash -n "$script"
+          done
+      - name: Check SSH script upload and execution
+        run: python3 tests/scripts/deploy_ssh_test.py
       - run: npm run check
       - run: npm test
 
@@ -311,7 +316,7 @@ jobs:
           export ORDERS_PULL_POLICY=never
           export ORDERS_CONTAINER_NAME=orders-ci-random
           trap 'docker logs orders-ci-random; docker rm -f orders-ci-random' EXIT
-          bash scripts/start-docker.sh --cached > /tmp/orders-random.log
+          bash start-docker.sh --cached > /tmp/orders-random.log
           cat /tmp/orders-random.log
           url="$(sed -n 's/^本地看板：//p' /tmp/orders-random.log)"
           port="$(docker exec orders-ci-random printenv ORDERS_PORT)"
@@ -372,7 +377,7 @@ jobs:
         with:
           authkey: ${{ secrets.AUTH_KEY }}
           ping: ${{ secrets.DEPLOY_HOST }}
-      - name: Pull published image and restart remote service
+      - name: Upload start-docker.sh and run remote service
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}

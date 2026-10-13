@@ -1,6 +1,7 @@
 # 本文档为4象限的任务清单，全文书写大白话。
 
 ## 想做：
+- 2026-10-12：完成当前仓库 issue #4，SSH 连上后覆盖或新建服务器上的 start-docker.sh，再运行它；提交 PR、更新说明并等待远端检查。
 - 2026-10-11：完成 C0verSnow/Orders3 的 #1（Tailscale + SSH 部署）和 #2（空订单清理）。
 - 完成 issue #8：平仓 value 改为 size × entry_price，并保留正负号。
 - 完成 issue #6：数据库主文件合计 450 MB、请求日志合计 50 MB。
@@ -73,6 +74,7 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
+- 2026-10-12：当前 issue #4 的上传执行、根目录统一入口、README 和远端回归用例已写好，正在做静态检查并准备提交 PR；回归与编译交给远端 CI。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。
