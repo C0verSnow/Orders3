@@ -1,6 +1,7 @@
 # 本文档为4象限的任务清单，全文书写大白话。
 
 ## 想做：
+- 2026-10-13：完成当前仓库 issue #6：只取消状态 1 的旧订单，状态 2 保留；更新说明和回归用例，提交 PR，通过远端 CI 后关闭 issue。
 - 2026-10-11：完成 C0verSnow/Orders3 的 #1（Tailscale + SSH 部署）和 #2（空订单清理）。
 - 完成 issue #8：平仓 value 改为 size × entry_price，并保留正负号。
 - 完成 issue #6：数据库主文件合计 450 MB、请求日志合计 50 MB。
@@ -9,6 +10,8 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-13：issue #6 的开仓、平仓撤单和撤单 ID 预检查均只处理状态 1；状态 2 的匹配和新单创建逻辑保留。空来源且只剩状态 2 时直接结束，无需交易密钥。
+- 2026-10-13：更新 README、开仓/平仓说明和旧设计稿；补充状态 2 参数变化、空来源、空持仓，以及状态 1/3/4/5 的远端回归断言。
 - 2026-10-12：当前仓库 issue #4 已完成，分支 feature-issue-4-ssh-start-script，PR #5：https://github.com/C0verSnow/Orders3/pull/5 。SSH 连上后将仓库根目录脚本写到远端 ~/start-docker.sh，有同名文件就覆盖，没有就新建；临时文件通过语法检查后替换，再执行 bash start-docker.sh，失败返回给 CI。
 - 2026-10-12：根目录 start-docker.sh 已纳入 Git，保留原有随机端口、就绪检查和数据卷行为，旧 scripts 路径调用它；README 补充部署过程和个人电脑 SSH 转发命令，无需额外 Compose yml。
 - 2026-10-12：代码 858ec52 的完整远端 CI 通过：7 项 SSH 上传执行回归、网页静态检查与 11 项脚本测试、Windows x64、Linux x64/ARM64、macOS x64/ARM64 的编译回归打包，以及 Docker x64/ARM64 网页接口和根目录脚本随机端口检查。运行记录：https://github.com/C0verSnow/Orders3/actions/runs/38331742265 。本地只做 Shell 语法和差异检查，未进行本地编译验证。
@@ -78,6 +81,7 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
+- 2026-10-13：已同步 Orders3，在 feature-issue-6-cancel-pending-only 分支检查开仓、平仓撤单流程；本地只做静态和差异检查。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。

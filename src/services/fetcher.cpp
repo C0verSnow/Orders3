@@ -233,14 +233,14 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
             if (!unchanged) candidates.append(entry);
         }
     }
-    const bool hasActiveOpeningOrders = std::any_of(trailing.begin(), trailing.end(),
+    const bool hasPendingOpeningOrders = std::any_of(trailing.begin(), trailing.end(),
         [](const QJsonValue &value) {
             const auto order = value.toObject();
             const int status = order.value("original_status").toInt();
-            return !order.value("reduce_only").toBool() && (status == 1 || status == 2);
+            return !order.value("reduce_only").toBool() && status == 1;
         });
     if (candidates.isEmpty() && retained.isEmpty()
-        && (!sources.isEmpty() || !hasActiveOpeningOrders))
+        && (!sources.isEmpty() || !hasPendingOpeningOrders))
         return results;
     if (config.gateKey.isEmpty() || config.gateSecret.isEmpty())
         throw Error("请在程序的「连接与存储配置」中填写 Gate API Key 和 Secret");
@@ -259,7 +259,7 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
         auto old = trailing[index].toObject();
         const int status = old.value("original_status").toInt();
         if (retained.contains(index) || old.value("reduce_only").toBool()
-            || (status != 1 && status != 2))
+            || status != 1)
             continue;
         QJsonObject result{{"action", "stopped"}, {"id", old.value("id")},
                            {"contract", old.value("contract")}};
@@ -445,7 +445,7 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
     for (qsizetype index = 0; index < trailing.size(); ++index) {
         const auto old = trailing[index].toObject();
         const int status = old.value("original_status").toInt();
-        if (retained.contains(index) || !old.value("reduce_only").toBool() || (status != 1 && status != 2)) continue;
+        if (retained.contains(index) || !old.value("reduce_only").toBool() || status != 1) continue;
         bool valid = false;
         const auto id = old.value("id").toString().toLongLong(&valid);
         if (!valid || id <= 0) throw Error("旧平仓订单 ID 无效");
@@ -453,7 +453,7 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
     for (qsizetype index = 0; index < trailing.size(); ++index) {
         auto old = trailing[index].toObject();
         const int status = old.value("original_status").toInt();
-        if (retained.contains(index) || !old.value("reduce_only").toBool() || (status != 1 && status != 2)) continue;
+        if (retained.contains(index) || !old.value("reduce_only").toBool() || status != 1) continue;
         QJsonObject result{{"action", "stopped"}, {"id", old.value("id")},
                            {"contract", old.value("contract")}};
         try {
