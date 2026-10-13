@@ -10,6 +10,8 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-13：当前仓库 issue #6 已完成，代码 099843a，分支 feature-issue-6-cancel-pending-only，PR #7：https://github.com/C0verSnow/Orders3/pull/7 。完整远端 CI 通过：网页与脚本检查、Windows x64、Linux x64/ARM64、macOS x64/ARM64 的编译、回归和打包，以及 Docker x64/ARM64、网页接口和随机端口检查：https://github.com/C0verSnow/Orders3/actions/runs/38383490455 。
+- 2026-10-13：本地差异检查通过，未进行本地编译验证。最后只更新任务记录，使用 [skip ci]；PR 保留供审阅，不合并 master。
 - 2026-10-13：issue #6 的开仓、平仓撤单和撤单 ID 预检查均只处理状态 1；状态 2 的匹配和新单创建逻辑保留。空来源且只剩状态 2 时直接结束，无需交易密钥。
 - 2026-10-13：更新 README、开仓/平仓说明和旧设计稿；补充状态 2 参数变化、空来源、空持仓，以及状态 1/3/4/5 的远端回归断言。
 - 2026-10-12：当前仓库 issue #4 已完成，分支 feature-issue-4-ssh-start-script，PR #5：https://github.com/C0verSnow/Orders3/pull/5 。SSH 连上后将仓库根目录脚本写到远端 ~/start-docker.sh，有同名文件就覆盖，没有就新建；临时文件通过语法检查后替换，再执行 bash start-docker.sh，失败返回给 CI。
@@ -72,6 +74,7 @@
 - 将原来的 Tasklist.md 改为用户要求的 tasklist.md，继续按四个栏目记录。
 
 ## 没做：
+- 2026-10-13：当前 issue #6 没有合并或部署，没有连接真实 Gate/Supabase；远端回归使用模拟接口。
 - 当前仓库 issue #4：PR #5 未合并 master；本次没有连接真实服务器，没有发布镜像或执行真实部署。最后仅补任务记录，使用 [skip ci]，不重复编译。
 - 本次 #1/#2：未合并 master，未执行真实部署或连接真实 Gate/Supabase。用户说明密钥在 Organization secrets 中；组织密钥元数据读取返回 403，无法确认本仓库授权范围，未复制或更改密钥。
 - issue #8、#6：没有合并 PR；没有连接真实 Supabase/Gate 操作订单，远端回归使用模拟接口。
@@ -81,7 +84,6 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- 2026-10-13：已同步 Orders3，在 feature-issue-6-cancel-pending-only 分支检查开仓、平仓撤单流程；本地只做静态和差异检查。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。
