@@ -9,6 +9,7 @@
 #include <QCryptographicHash>
 #include <QRegularExpression>
 #include <QSet>
+#include <QStringList>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -88,6 +89,64 @@ QJsonArray fetchSourceRecords(const Config &config) {
 }
 
 } // namespace
+
+void loadGateCredentials(Config &config) {
+    config.supabaseGateKey.clear();
+    config.supabaseGateSecret.clear();
+    QString problem;
+    if (!config.supabaseUrl.isEmpty() && !config.supabaseKey.isEmpty()) {
+        try {
+            QString base = config.supabaseUrl;
+            while (base.endsWith('/')) base.chop(1);
+            const QByteArray key = config.supabaseKey.toUtf8();
+            HttpHeaders headers{{"apikey", key}, {"Accept", "application/json"}};
+            if (key.split('.').size() == 3)
+                headers.append({"Authorization", "Bearer " + key});
+            // The actual column names include '='. No filtering, sorting or pagination.
+            const auto response = get(QUrl(base + "/rest/v1/secret?select=*"),
+                                      headers, false, config.cancelled);
+            if (response.status < 200 || response.status >= 300) {
+                problem = QString("Supabase secret 表读取失败（HTTP %1）").arg(response.status);
+            } else {
+                QJsonParseError error;
+                const auto document = QJsonDocument::fromJson(response.body, &error);
+                if (error.error != QJsonParseError::NoError || !document.isArray()
+                    || document.array().size() != 1 || !document.array().at(0).isObject()) {
+                    problem = "Supabase secret 表必须返回唯一一条对象记录";
+                } else {
+                    const auto row = document.array().at(0).toObject();
+                    const auto credential = [&](const QString &name) {
+                        const auto value = row.value(name);
+                        if (!value.isString()) return QString();
+                        auto text = value.toString().trimmed();
+                        if (text.size() >= 2
+                            && (text.front() == '"' || text.front() == '\'')
+                            && text.back() == text.front())
+                            text = text.mid(1, text.size() - 2).trimmed();
+                        if (text.size() > 4096 || text.contains('\n') || text.contains('\r')
+                            || text.contains(QChar(0))) return QString();
+                        return text;
+                    };
+                    config.supabaseGateKey = credential("API_KEY=");
+                    config.supabaseGateSecret = credential("API_SECRET=");
+                }
+            }
+        } catch (const std::exception &) {
+            // Network and parsing details may include remote-controlled sensitive text.
+            problem = "Supabase secret 表读取失败，请检查连接、读取权限和网络";
+        }
+    }
+    config.applyConnectionSettings();
+    QStringList missing;
+    if (config.gateKey.isEmpty()) missing.append("API_KEY");
+    if (config.gateSecret.isEmpty()) missing.append("API_SECRET");
+    if (!missing.isEmpty())
+        throw Error("Gate 配置缺少 " + missing.join("、")
+            + "：请填写原有配置或 Supabase secret 表对应字段"
+            + (problem.isEmpty() ? QString() : "；" + problem));
+    if (!problem.isEmpty())
+        throw Error(problem + "；继续使用原有 Gate 配置");
+}
 
 QJsonArray fetchSources(const Config &config) {
     ensureNotCancelled(config);

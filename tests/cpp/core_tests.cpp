@@ -172,6 +172,135 @@ private slots:
         QVERIFY(cleared.gateSecret.isEmpty());
     }
 
+    void supabaseGateCredentials_data() {
+        QTest::addColumn<QByteArray>("body");
+        QTest::addColumn<int>("status");
+        QTest::addColumn<QString>("configuredKey");
+        QTest::addColumn<QString>("configuredSecret");
+        QTest::addColumn<QString>("expectedKey");
+        QTest::addColumn<QString>("expectedSecret");
+        QTest::addColumn<bool>("failure");
+        const QByteArray valid = "[{\"API_KEY=\":\"backup-key\",\"API_SECRET=\":\"backup-secret\"}]";
+        QTest::newRow("quoted-backup")
+            << QByteArray("[{\"API_KEY=\":\" 'backup-key' \",\"API_SECRET=\":\" \\\"backup-secret\\\" \"}]")
+            << 200 << QString() << QString()
+            << QString("backup-key") << QString("backup-secret") << false;
+        QTest::newRow("both-backup") << valid << 200 << QString() << QString()
+            << QString("backup-key") << QString("backup-secret") << false;
+        QTest::newRow("both-configured") << valid << 200 << QString("env-key") << QString("env-secret")
+            << QString("env-key") << QString("env-secret") << false;
+        QTest::newRow("key-configured") << valid << 200 << QString("env-key") << QString()
+            << QString("env-key") << QString("backup-secret") << false;
+        QTest::newRow("secret-configured") << valid << 200 << QString() << QString("env-secret")
+            << QString("backup-key") << QString("env-secret") << false;
+        QTest::newRow("blank-env") << valid << 200 << QString("  ") << QString(" '' ")
+            << QString("backup-key") << QString("backup-secret") << false;
+        for (const QByteArray &body : {QByteArray("[]"), QByteArray("[{},{}]"),
+                 QByteArray("{}"), QByteArray("[null]"), QByteArray("do-not-expose-secret")}) {
+            QTest::newRow(body.constData()) << body << 200 << QString("env-key") << QString("env-secret")
+                << QString("env-key") << QString("env-secret") << true;
+        }
+        QTest::newRow("http-error") << QByteArray("do-not-expose-secret") << 403
+            << QString("env-key") << QString("env-secret")
+            << QString("env-key") << QString("env-secret") << true;
+        QTest::newRow("missing-secret") << QByteArray("[{\"API_KEY=\":\"backup-key\",\"API_SECRET=\":null}]")
+            << 200 << QString() << QString() << QString("backup-key") << QString() << true;
+        QTest::newRow("invalid-type") << QByteArray("[{\"API_KEY=\":123,\"API_SECRET=\":\"backup-secret\"}]")
+            << 200 << QString() << QString() << QString() << QString("backup-secret") << true;
+    }
+
+    void supabaseGateCredentials() {
+        QFETCH(QByteArray, body);
+        QFETCH(int, status);
+        QFETCH(QString, configuredKey);
+        QFETCH(QString, configuredSecret);
+        QFETCH(QString, expectedKey);
+        QFETCH(QString, expectedSecret);
+        QFETCH(bool, failure);
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        QList<QByteArray> requests;
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (server.hasPendingConnections()) {
+                auto *socket = server.nextPendingConnection();
+                auto buffer = std::make_shared<QByteArray>();
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
+                    buffer->append(socket->readAll());
+                    if (!buffer->contains("\r\n\r\n")) return;
+                    requests.append(*buffer);
+                    socket->write("HTTP/1.1 " + QByteArray::number(status)
+                        + " Test\r\nConnection: close\r\nContent-Length: "
+                        + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                    socket->disconnectFromHost();
+                });
+            }
+        });
+        orders::Config config;
+        config.supabaseUrl = QString("http://127.0.0.1:%1/").arg(server.serverPort());
+        const bool legacy = configuredKey == "env-key";
+        config.supabaseKey = legacy ? "eyJ.fixture.jwt" : "sb_publishable_fixture";
+        config.environment = {{"SUPABASE_URL", config.supabaseUrl},
+            {"SUPABASE_ANON_KEY", config.supabaseKey},
+            {"API_KEY", configuredKey}, {"API_SECRET", configuredSecret}};
+        auto future = QtConcurrent::run([config]() mutable {
+            QString error;
+            try { orders::loadGateCredentials(config); }
+            catch (const orders::Error &exception) { error = QString::fromUtf8(exception.what()); }
+            return qMakePair(config, error);
+        });
+        QTRY_VERIFY_WITH_TIMEOUT(future.isFinished(), 5000);
+        const auto result = future.result();
+        QCOMPARE(!result.second.isEmpty(), failure);
+        QCOMPARE(result.first.gateKey, expectedKey);
+        QCOMPARE(result.first.gateSecret, expectedSecret);
+        QVERIFY(!result.second.contains("do-not-expose-secret"));
+        QVERIFY(!result.second.contains("backup-secret"));
+        QVERIFY(!result.second.contains("env-secret"));
+        QCOMPARE(requests.size(), 1);
+        QVERIFY(requests.first().startsWith("GET /rest/v1/secret?select=* HTTP/1.1"));
+        const auto request = requests.first().toLower();
+        QCOMPARE(request.contains("authorization: bearer "), legacy);
+        QVERIFY(request.contains("apikey: " + config.supabaseKey.toUtf8().toLower()));
+        QTemporaryDir directory;
+        auto resolved = result.first;
+        resolved.schedulePath = directory.filePath("config");
+        orders::Dashboard dashboard(resolved);
+        const auto snapshot = dashboard.environmentSnapshot();
+        QVERIFY(!QJsonDocument(snapshot).toJson().contains("backup-secret"));
+        QCOMPARE(snapshot.value("values").toObject().value("API_KEY_SET").toBool(), !expectedKey.isEmpty());
+        QCOMPARE(snapshot.value("values").toObject().value("API_SECRET_SET").toBool(), !expectedSecret.isEmpty());
+        dashboard.configureEnvironment({{"ORDERS_ALLOWED_ORIGIN", "http://localhost"}});
+        QCOMPARE(dashboard.config().gateKey, expectedKey);
+        QCOMPARE(dashboard.config().gateSecret, expectedSecret);
+        const auto persisted = orders::loadEnvironmentSettings(resolved.schedulePath);
+        QVERIFY(!QJsonDocument(persisted).toJson().contains("backup-secret"));
+        dashboard.configureEnvironment({{"API_KEY", "replacement-key"}, {"API_SECRET", "replacement-secret"}});
+        QCOMPARE(dashboard.config().gateKey, QString("replacement-key"));
+        dashboard.configureEnvironment({{"API_KEY", ""}, {"API_SECRET", ""}});
+        QCOMPARE(dashboard.config().gateKey, resolved.supabaseGateKey);
+        QCOMPARE(dashboard.config().gateSecret, resolved.supabaseGateSecret);
+    }
+
+    void missingGateCredentialsNeverAuthenticate() {
+        orders::Config config;
+        try {
+            orders::loadGateCredentials(config);
+            QFAIL("Expected missing credential error");
+        } catch (const orders::Error &error) {
+            const auto text = QString::fromUtf8(error.what());
+            QVERIFY(text.contains("API_KEY"));
+            QVERIFY(text.contains("API_SECRET"));
+        }
+        int calls = 0;
+        QVERIFY_EXCEPTION_THROWN(orders::closePositionOrders(config,
+            [&](const QByteArray &, const QByteArray &, const QByteArray &, const orders::HttpHeaders &) {
+                ++calls;
+                return orders::HttpResult{200, "[]"};
+            }), orders::Error);
+        QCOMPARE(calls, 0);
+    }
+
     void closePricesUseExactDecimalArithmetic() {
         using orders::decimal::closePrice;
         QCOMPARE(closePrice("88.077351351351", "-3258.861999999987", "4.852279702667", "93.053", true),

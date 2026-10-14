@@ -71,6 +71,23 @@ for attempt in {1..60}; do
         exit 1
     fi
     if curl --fail --silent --connect-timeout 1 --max-time 2 "$dashboard_url" >/dev/null; then
+        # Same address as the successful readiness check and deployment output.
+        # Write beside the invocation (SSH deploy runs in the remote user's home).
+        # A temporary file keeps the previous record intact on write failure.
+        if [[ -d docker.md ]]; then
+            echo '无法保存看板地址：docker.md 是目录。' >&2
+            exit 1
+        fi
+        if ! address_file="$(mktemp .docker.md.XXXXXX)"; then
+            echo '无法创建看板地址临时文件，保留原有 docker.md。' >&2
+            exit 1
+        fi
+        if ! printf '本地看板：%s\n' "$dashboard_url" > "$address_file" \
+            || ! mv -f "$address_file" docker.md; then
+            rm -f "$address_file"
+            echo '无法保存看板地址，保留原有 docker.md。' >&2
+            exit 1
+        fi
         printf '本地看板：%s\n容器名称：%s\n' "$dashboard_url" "$container_name"
         exit 0
     fi

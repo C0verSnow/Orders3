@@ -1,6 +1,8 @@
 # 本文档为4象限的任务清单，全文书写大白话。
 
 ## 想做：
+- 2026-10-14：完成当前仓库 issue #8，新增 Supabase Gate 备用密钥和远端 docker.md 地址记录，提交 PR，通过远端 CI 后关闭 issue。
+
 - 2026-10-13：完成当前仓库 issue #6：只取消状态 1 的旧订单，状态 2 保留；更新说明和回归用例，提交 PR，通过远端 CI 后关闭 issue。
 - 2026-10-11：完成 C0verSnow/Orders3 的 #1（Tailscale + SSH 部署）和 #2（空订单清理）。
 - 完成 issue #8：平仓 value 改为 size × entry_price，并保留正负号。
@@ -10,6 +12,11 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-14：issue #8 最新代码 3c478a4 的完整远端 CI 通过：网页及脚本、Windows x64、Linux x64/ARM64、macOS x64/ARM64 编译回归打包，以及 Docker 双架构网页接口、随机端口和 docker.md 地址一致性。PR #9：https://github.com/C0verSnow/Orders3/pull/9 ，验证记录：https://github.com/C0verSnow/Orders3/actions/runs/38573489826 。
+- 2026-10-14：只读核查真实 Supabase 单条 secret 记录，确认两列名末尾带等号、两项值含外层引号；代码与回归均按真实格式处理，没有输出完整密钥。最后只更新任务记录，使用 [skip ci]；PR 保留供审阅，关闭 issue #8。
+- 2026-10-14：完成启动读取 secret 唯一记录，按现有配置分别补齐 Key/Secret，备用值仅在内存保存；保留页面配置、缺失认证前拒绝和日志脱敏。按真实列名 API_KEY=、API_SECRET= 读取。
+- 2026-10-14：start-docker.sh 看板就绪后用同一个实际地址原子更新当前目录 docker.md，SSH 部署对应服务器用户主目录；失败保留旧文件。增加远端密钥回归、脚本失败回归和真实 Docker 地址记录断言，更新 README。
+- 2026-10-14：Bash 语法及差异检查通过。未进行本地 C++ 构建或测试；曾用 py_compile 检查新增 Python 文件语法，该命令生成 Python 字节码，后续不再使用编译类检查。
 - 2026-10-13：当前仓库 issue #6 已完成，代码 099843a，分支 feature-issue-6-cancel-pending-only，PR #7：https://github.com/C0verSnow/Orders3/pull/7 。完整远端 CI 通过：网页与脚本检查、Windows x64、Linux x64/ARM64、macOS x64/ARM64 的编译、回归和打包，以及 Docker x64/ARM64、网页接口和随机端口检查：https://github.com/C0verSnow/Orders3/actions/runs/38383490455 。
 - 2026-10-13：本地差异检查通过，未进行本地编译验证。最后只更新任务记录，使用 [skip ci]；PR 保留供审阅，不合并 master。
 - 2026-10-13：issue #6 的开仓、平仓撤单和撤单 ID 预检查均只处理状态 1；状态 2 的匹配和新单创建逻辑保留。空来源且只剩状态 2 时直接结束，无需交易密钥。
@@ -74,6 +81,7 @@
 - 将原来的 Tasklist.md 改为用户要求的 tasklist.md，继续按四个栏目记录。
 
 ## 没做：
+- 2026-10-14：issue #8 未合并 master，未连接真实 Gate 操作订单，未执行真实服务器部署；远端回归使用模拟接口和 CI Docker。未进行本地 C++ 编译验证；曾执行的 Python 字节码语法检查已在上面如实记录。
 - 2026-10-13：当前 issue #6 没有合并或部署，没有连接真实 Gate/Supabase；远端回归使用模拟接口。
 - 当前仓库 issue #4：PR #5 未合并 master；本次没有连接真实服务器，没有发布镜像或执行真实部署。最后仅补任务记录，使用 [skip ci]，不重复编译。
 - 本次 #1/#2：未合并 master，未执行真实部署或连接真实 Gate/Supabase。用户说明密钥在 Organization secrets 中；组织密钥元数据读取返回 403，无法确认本仓库授权范围，未复制或更改密钥。

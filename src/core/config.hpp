@@ -20,6 +20,9 @@ struct ORDERS_CORE_EXPORT Config {
     QString supabaseKey;
     QString gateKey;
     QString gateSecret;
+    // Startup-only fallback; never persisted in environment or exposed by settings.
+    QString supabaseGateKey;
+    QString supabaseGateSecret;
     QString allowedOrigin;
     QJsonObject environment;
     // Shared by startup and live settings updates on every platform.

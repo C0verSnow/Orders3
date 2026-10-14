@@ -41,6 +41,8 @@ QJsonObject Dashboard::environmentSnapshot() const {
         values.insert(name + "_SET", !values.value(name).toString().isEmpty());
         values.remove(name);
     }
+    values.insert("API_KEY_SET", !current.gateKey.isEmpty());
+    values.insert("API_SECRET_SET", !current.gateSecret.isEmpty());
     return {{"values", values}, {"config_path", current.schedulePath},
             {"data_path", current.dataPath}};
 }
