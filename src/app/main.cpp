@@ -3,6 +3,7 @@
 #include "core/error.hpp"
 #include "infrastructure/request_log.hpp"
 #include "services/dashboard.hpp"
+#include "services/fetcher.hpp"
 #include "services/scheduler.hpp"
 #ifdef Q_OS_WIN
 #include "ui/desktop.hpp"
@@ -142,6 +143,13 @@ int main(int argc, char *argv[]) {
             config.ordersPath = config.dataPath;
         }
         orders::configureRequestLog(QFileInfo(config.dataPath).absoluteDir().filePath("logs"));
+        try {
+            orders::loadGateCredentials(config);
+        } catch (const orders::Error &error) {
+            // Keep the settings page available to repair configuration. Gate fetchers
+            // reject missing credentials before sending authenticated requests.
+            std::cerr << "密钥配置：" << error.what() << std::endl;
+        }
         orders::Dashboard dashboard(config);
         if (parser.isSet("list")) {
             const auto result = dashboard.refreshOrders(false);

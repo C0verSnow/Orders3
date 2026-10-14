@@ -8,6 +8,8 @@
 #include <functional>
 
 namespace orders {
+// Read the single secret row at startup; keep fallbacks only in memory.
+ORDERS_CORE_EXPORT void loadGateCredentials(Config &config);
 // One-shot fetches. Scheduling and persistence belong to their respective services.
 ORDERS_CORE_EXPORT QJsonArray fetchSources(const Config &config);
 ORDERS_CORE_EXPORT QJsonArray fetchTrailingOrders(const Config &config);

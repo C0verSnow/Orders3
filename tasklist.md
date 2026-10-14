@@ -1,6 +1,8 @@
 # 本文档为4象限的任务清单，全文书写大白话。
 
 ## 想做：
+- 2026-10-14：完成当前仓库 issue #8，新增 Supabase Gate 备用密钥和远端 docker.md 地址记录，提交 PR，通过远端 CI 后关闭 issue。
+
 - 2026-10-13：完成当前仓库 issue #6：只取消状态 1 的旧订单，状态 2 保留；更新说明和回归用例，提交 PR，通过远端 CI 后关闭 issue。
 - 2026-10-11：完成 C0verSnow/Orders3 的 #1（Tailscale + SSH 部署）和 #2（空订单清理）。
 - 完成 issue #8：平仓 value 改为 size × entry_price，并保留正负号。
@@ -10,6 +12,9 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-14：完成启动读取 secret 唯一记录，按现有配置分别补齐 Key/Secret，备用值仅在内存保存；保留页面配置、缺失认证前拒绝和日志脱敏。按真实列名 API_KEY=、API_SECRET= 读取。
+- 2026-10-14：start-docker.sh 看板就绪后用同一个实际地址原子更新当前目录 docker.md，SSH 部署对应服务器用户主目录；失败保留旧文件。增加远端密钥回归、脚本失败回归和真实 Docker 地址记录断言，更新 README。
+- 2026-10-14：Bash 语法及差异检查通过。未进行本地 C++ 构建或测试；曾用 py_compile 检查新增 Python 文件语法，该命令生成 Python 字节码，后续不再使用编译类检查。
 - 2026-10-13：当前仓库 issue #6 已完成，代码 099843a，分支 feature-issue-6-cancel-pending-only，PR #7：https://github.com/C0verSnow/Orders3/pull/7 。完整远端 CI 通过：网页与脚本检查、Windows x64、Linux x64/ARM64、macOS x64/ARM64 的编译、回归和打包，以及 Docker x64/ARM64、网页接口和随机端口检查：https://github.com/C0verSnow/Orders3/actions/runs/38383490455 。
 - 2026-10-13：本地差异检查通过，未进行本地编译验证。最后只更新任务记录，使用 [skip ci]；PR 保留供审阅，不合并 master。
 - 2026-10-13：issue #6 的开仓、平仓撤单和撤单 ID 预检查均只处理状态 1；状态 2 的匹配和新单创建逻辑保留。空来源且只剩状态 2 时直接结束，无需交易密钥。
@@ -84,6 +89,10 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
+- 2026-10-14：代码已实现，准备提交 PR 并等待现有远端 CI 验证；不合并 master，不操作真实 Gate 订单。
+- 2026-10-14：用户要求重试后，已有 .env 对应的 secret 表读取成功，确认仅 1 条记录，列名为 API_KEY= 和 API_SECRET=（末尾含等号）。只读访问，没有输出密钥；开始接入启动读取和独立备用逻辑。
+- 2026-10-14：重新核对 GitHub，只有 issue #8 未完成；当前 feature 分支与 origin/master 一致，已有任务记录保留。先实现部署成功后更新 docker.md，密钥读取等待确认 secret 表列名。
+- 2026-10-14：已同步远端，工作分支为 feature-issue-8-supabase-gate-secrets，开始阅读配置和部署脚本；等待确认 secret 列名及服务器登录入口。全程不做本地编译验证。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。

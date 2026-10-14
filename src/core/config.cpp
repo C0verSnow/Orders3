@@ -122,6 +122,8 @@ void Config::applyConnectionSettings() {
     supabaseKey = environment.value("SUPABASE_ANON_KEY").toString();
     gateKey = environment.value("API_KEY").toString();
     gateSecret = environment.value("API_SECRET").toString();
+    if (gateKey.isEmpty()) gateKey = supabaseGateKey;
+    if (gateSecret.isEmpty()) gateSecret = supabaseGateSecret;
     allowedOrigin = environment.value("ORDERS_ALLOWED_ORIGIN").toString();
 }
 
