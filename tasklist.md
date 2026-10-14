@@ -12,6 +12,8 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-14：issue #8 最新代码 3c478a4 的完整远端 CI 通过：网页及脚本、Windows x64、Linux x64/ARM64、macOS x64/ARM64 编译回归打包，以及 Docker 双架构网页接口、随机端口和 docker.md 地址一致性。PR #9：https://github.com/C0verSnow/Orders3/pull/9 ，验证记录：https://github.com/C0verSnow/Orders3/actions/runs/38573489826 。
+- 2026-10-14：只读核查真实 Supabase 单条 secret 记录，确认两列名末尾带等号、两项值含外层引号；代码与回归均按真实格式处理，没有输出完整密钥。最后只更新任务记录，使用 [skip ci]；PR 保留供审阅，关闭 issue #8。
 - 2026-10-14：完成启动读取 secret 唯一记录，按现有配置分别补齐 Key/Secret，备用值仅在内存保存；保留页面配置、缺失认证前拒绝和日志脱敏。按真实列名 API_KEY=、API_SECRET= 读取。
 - 2026-10-14：start-docker.sh 看板就绪后用同一个实际地址原子更新当前目录 docker.md，SSH 部署对应服务器用户主目录；失败保留旧文件。增加远端密钥回归、脚本失败回归和真实 Docker 地址记录断言，更新 README。
 - 2026-10-14：Bash 语法及差异检查通过。未进行本地 C++ 构建或测试；曾用 py_compile 检查新增 Python 文件语法，该命令生成 Python 字节码，后续不再使用编译类检查。
@@ -79,6 +81,7 @@
 - 将原来的 Tasklist.md 改为用户要求的 tasklist.md，继续按四个栏目记录。
 
 ## 没做：
+- 2026-10-14：issue #8 未合并 master，未连接真实 Gate 操作订单，未执行真实服务器部署；远端回归使用模拟接口和 CI Docker。未进行本地 C++ 编译验证；曾执行的 Python 字节码语法检查已在上面如实记录。
 - 2026-10-13：当前 issue #6 没有合并或部署，没有连接真实 Gate/Supabase；远端回归使用模拟接口。
 - 当前仓库 issue #4：PR #5 未合并 master；本次没有连接真实服务器，没有发布镜像或执行真实部署。最后仅补任务记录，使用 [skip ci]，不重复编译。
 - 本次 #1/#2：未合并 master，未执行真实部署或连接真实 Gate/Supabase。用户说明密钥在 Organization secrets 中；组织密钥元数据读取返回 403，无法确认本仓库授权范围，未复制或更改密钥。
@@ -89,11 +92,6 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- 2026-10-14：PR #9 已创建，第一轮远端网页、脚本和 Linux 双架构、macOS ARM64 检查通过。补充只读检查发现 Supabase 密钥值带外层引号，已按原有配置规则去引号，增加回归后提交最新代码重新验证。
-- 2026-10-14：代码已实现，准备提交 PR 并等待现有远端 CI 验证；不合并 master，不操作真实 Gate 订单。
-- 2026-10-14：用户要求重试后，已有 .env 对应的 secret 表读取成功，确认仅 1 条记录，列名为 API_KEY= 和 API_SECRET=（末尾含等号）。只读访问，没有输出密钥；开始接入启动读取和独立备用逻辑。
-- 2026-10-14：重新核对 GitHub，只有 issue #8 未完成；当前 feature 分支与 origin/master 一致，已有任务记录保留。先实现部署成功后更新 docker.md，密钥读取等待确认 secret 表列名。
-- 2026-10-14：已同步远端，工作分支为 feature-issue-8-supabase-gate-secrets，开始阅读配置和部署脚本；等待确认 secret 列名及服务器登录入口。全程不做本地编译验证。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。
