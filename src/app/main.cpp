@@ -143,8 +143,10 @@ int main(int argc, char *argv[]) {
             config.ordersPath = config.dataPath;
         }
         orders::configureRequestLog(QFileInfo(config.dataPath).absoluteDir().filePath("logs"));
+        bool credentialsLoaded = false;
         try {
             orders::loadGateCredentials(config);
+            credentialsLoaded = true;
         } catch (const orders::Error &error) {
             // Keep the settings page available to repair configuration. Gate fetchers
             // reject missing credentials before sending authenticated requests.
@@ -170,6 +172,7 @@ int main(int argc, char *argv[]) {
             }
             return 0;
         }
+        if (!credentialsLoaded) dashboard.reloadGateCredentials();
         orders::Scheduler scheduler(dashboard, orders::loadSchedule(config.schedulePath),
                                     config.schedulePath);
         orders::Server server(dashboard, scheduler);

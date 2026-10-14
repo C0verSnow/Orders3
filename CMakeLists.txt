@@ -10,6 +10,7 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 include(CTest)
 include(GNUInstallDirs)
+find_package(Threads REQUIRED)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Network Sql Concurrent HttpServer)
 
 add_library(orders_core SHARED
@@ -30,7 +31,7 @@ generate_export_header(orders_core)
 target_include_directories(orders_core PUBLIC src ${CMAKE_CURRENT_BINARY_DIR})
 set_target_properties(orders_core PROPERTIES
     INSTALL_RPATH "$ORIGIN")
-target_link_libraries(orders_core PUBLIC Qt6::Core Qt6::Network Qt6::Sql Qt6::Concurrent)
+target_link_libraries(orders_core PUBLIC Qt6::Core Qt6::Network Qt6::Sql Qt6::Concurrent Threads::Threads)
 
 qt_add_executable(orders src/app/main.cpp src/app/server.cpp resources.qrc)
 target_link_libraries(orders PRIVATE orders_core Qt6::HttpServer)
