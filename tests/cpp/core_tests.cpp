@@ -181,6 +181,10 @@ private slots:
         QTest::addColumn<QString>("expectedSecret");
         QTest::addColumn<bool>("failure");
         const QByteArray valid = "[{\"API_KEY=\":\"backup-key\",\"API_SECRET=\":\"backup-secret\"}]";
+        QTest::newRow("quoted-backup")
+            << QByteArray("[{\"API_KEY=\":\" 'backup-key' \",\"API_SECRET=\":\" \\\"backup-secret\\\" \"}]")
+            << 200 << QString() << QString()
+            << QString("backup-key") << QString("backup-secret") << false;
         QTest::newRow("both-backup") << valid << 200 << QString() << QString()
             << QString("backup-key") << QString("backup-secret") << false;
         QTest::newRow("both-configured") << valid << 200 << QString("env-key") << QString("env-secret")

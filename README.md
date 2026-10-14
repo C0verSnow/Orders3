@@ -38,7 +38,7 @@ C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 和 macOS �
 
 ### Gate 备用密钥
 
-启动时读取 Supabase 的 `/rest/v1/secret?select=*` 一次。表中必须只有 1 条记录，当前实际列名为 `API_KEY=`、`API_SECRET=`（列名末尾含等号），字段值为非空文本；不排序、筛选或分页。使用已有 `SUPABASE_URL`、`SUPABASE_ANON_KEY` 连接和读取权限。
+启动时读取 Supabase 的 `/rest/v1/secret?select=*` 一次。表中必须只有 1 条记录，当前实际列名为 `API_KEY=`、`API_SECRET=`（列名末尾含等号），字段值为非空文本，兼容与 `.env` 相同的外层单引号或双引号；不排序、筛选或分页。使用已有 `SUPABASE_URL`、`SUPABASE_ANON_KEY` 连接和读取权限。
 
 `API_KEY`、`API_SECRET` 各自使用原有配置中的非空值，缺少的字段才使用 Supabase 备用值，允许混合来源。原有页面配置入口及 `[environment]` > 进程环境变量 > `.env` 的配置顺序保持不变；这套配置解析后的值优先于 Supabase。备用密钥只留在内存，不写入配置文件，不在设置接口或日志里返回。页面修改仍立即生效，清除原有值后使用本次启动读取到的备用值；修改 Supabase 表后需重启程序。
 

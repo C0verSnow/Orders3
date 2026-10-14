@@ -118,7 +118,11 @@ void loadGateCredentials(Config &config) {
                     const auto credential = [&](const QString &name) {
                         const auto value = row.value(name);
                         if (!value.isString()) return QString();
-                        const auto text = value.toString().trimmed();
+                        auto text = value.toString().trimmed();
+                        if (text.size() >= 2
+                            && (text.front() == '"' || text.front() == '\'')
+                            && text.back() == text.front())
+                            text = text.mid(1, text.size() - 2).trimmed();
                         if (text.size() > 4096 || text.contains('\n') || text.contains('\r')
                             || text.contains(QChar(0))) return QString();
                         return text;
