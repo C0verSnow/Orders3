@@ -34,6 +34,34 @@ void ensureNotCancelled(const Config &config) {
         throw Error("程序正在关闭");
 }
 
+void requireGateCredentials(const Config &config) {
+    QStringList missing;
+    if (normalizeGateCredential(config.gateKey).isEmpty()) missing.append("API_KEY");
+    if (normalizeGateCredential(config.gateSecret).isEmpty()) missing.append("API_SECRET");
+    if (!missing.isEmpty())
+        throw Error("Gate 配置缺少 " + missing.join("、")
+            + "：请填写连接配置或 Supabase secret 表对应字段");
+}
+
+// Legacy Gate responses use JSON integers; newer responses use decimal strings.
+// Never round an unsafe JSON number or convert decimal text through a double.
+decimal::Number fillQuantity(const QJsonValue &value, const QString &field) {
+    QString text;
+    if (value.isString()) text = value.toString();
+    else if (value.isDouble()) {
+        const double number = value.toDouble();
+        if (std::isfinite(number) && std::floor(number) == number
+            && std::abs(number) <= 9007199254740991.0)
+            text = QString::number(qint64(number));
+    }
+    try {
+        if (!text.isEmpty()) return decimal::parse(text);
+    } catch (const Error &) {
+        // Do not expose remote values (which may contain secrets) in diagnostics.
+    }
+    throw Error("成交历史 " + field + " 必须为有效十进制文本或安全整数");
+}
+
 void ensureHttpSuccess(const HttpResult &result) {
     if (result.status < 200 || result.status >= 300)
         throw Error(QString("接口返回 HTTP %1").arg(result.status));
@@ -158,20 +186,21 @@ void syncEntryHistory(const Config &config, const ClosePositionRequester &reques
                 || time.toDouble() > 9007199254740.0)
                 throw Error("成交历史时间无效");
             const qint64 timeMs = qint64(std::floor(time.toDouble() * 1000));
-            bool sizeOk = false, closeOk = false;
-            const auto size = fill.value("size").toString().toLongLong(&sizeOk);
-            const auto closed = fill.value("close_size").toString().toLongLong(&closeOk);
+            const auto size = fillQuantity(fill.value("size"), "size");
+            const auto closed = fillQuantity(fill.value("close_size"), "close_size");
             const auto contract = fill.value("contract").toString();
             static const QRegularExpression contractPattern(R"(^[A-Z0-9]+_USDT$)");
-            if (!sizeOk || !closeOk || size == 0
-                || !contractPattern.match(contract).hasMatch()
-                || (closed != 0 && ((closed > 0) != (size > 0))))
-                throw Error("成交历史合约或开平仓数量无效");
-            // Same-side fill beyond close_size opens/adds; a pure/partial close does not.
-            const bool opens = size > 0 ? size > closed : size < closed;
+            if (!contractPattern.match(contract).hasMatch())
+                throw Error("成交历史 contract 必须为有效 USDT 合约");
+            if (size.digits == "0") throw Error("成交历史 size 不能为零");
+            if (closed.digits != "0" && closed.negative != size.negative)
+                throw Error("成交历史 size 与 close_size 方向不一致");
+            const int scale = std::max(size.scale, closed.scale);
+            const bool opens = decimal::compare(decimal::scaled(size, scale),
+                                                decimal::scaled(closed, scale)) > 0;
             if (opens && timeMs > previous && timeMs <= throughMs)
                 events.append(QJsonObject{{"event_id", id}, {"entry_time", timeMs},
-                    {"contract", contract}, {"side", size > 0 ? 1 : -1}});
+                    {"contract", contract}, {"side", size.negative ? -1 : 1}});
         }
         offset += page.size(); // Do not assume the server honors the requested page size.
         if (offset > (std::numeric_limits<int>::max)()) throw Error("成交历史分页数量过多");
@@ -210,14 +239,7 @@ void loadGateCredentials(Config &config) {
                     const auto credential = [&](const QString &name) {
                         const auto value = row.value(name);
                         if (!value.isString()) return QString();
-                        auto text = value.toString().trimmed();
-                        if (text.size() >= 2
-                            && (text.front() == '"' || text.front() == '\'')
-                            && text.back() == text.front())
-                            text = text.mid(1, text.size() - 2).trimmed();
-                        if (text.size() > 4096 || text.contains('\n') || text.contains('\r')
-                            || text.contains(QChar(0))) return QString();
-                        return text;
+                        return normalizeGateCredential(value.toString());
                     };
                     config.supabaseGateKey = credential("API_KEY=");
                     config.supabaseGateSecret = credential("API_SECRET=");
@@ -265,8 +287,7 @@ QJsonArray fetchSources(const Config &config, const ClosePositionRequester &requ
 QJsonArray fetchTrailingOrders(const Config &config) {
     // Scheduler runs this one-shot operation independently every minute.
     ensureNotCancelled(config);
-    if (config.gateKey.isEmpty() || config.gateSecret.isEmpty())
-        throw Error("请在程序的「连接与存储配置」中填写 Gate API Key 和 Secret");
+    requireGateCredentials(config);
 
     const auto headers = gate::signedGetHeaders(kTrailingOrdersPath, config.gateKey,
                                                config.gateSecret);
@@ -385,8 +406,7 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
     if (candidates.isEmpty() && retained.isEmpty()
         && (!sources.isEmpty() || !hasPendingOpeningOrders))
         return results;
-    if (config.gateKey.isEmpty() || config.gateSecret.isEmpty())
-        throw Error("请在程序的「连接与存储配置」中填写 Gate API Key 和 Secret");
+    requireGateCredentials(config);
     if (!candidates.isEmpty()) syncEntryHistory(config, requester);
     const auto send = [&](const QByteArray &path, const QJsonObject &payload) {
         ensureNotCancelled(config);
@@ -475,8 +495,7 @@ QJsonArray createTrailingOrders() {
 QJsonArray closePositionOrders(const Config &config, const ClosePositionRequester &requester) {
     QMutexLocker<QRecursiveMutex> tradingLock(&tradingMutex);
     ensureNotCancelled(config);
-    if (config.gateKey.isEmpty() || config.gateSecret.isEmpty())
-        throw Error("请在程序的「连接与存储配置」中填写 Gate API Key 和 Secret");
+    requireGateCredentials(config);
     const auto request = [&](const QByteArray &method, const QByteArray &path,
                              const QByteArray &body = QByteArray{}) {
         ensureNotCancelled(config);

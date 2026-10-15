@@ -104,8 +104,13 @@ QJsonObject Dashboard::environmentSnapshot() const {
         values.insert(name + "_SET", !values.value(name).toString().isEmpty());
         values.remove(name);
     }
-    values.insert("API_KEY_SET", !current.gateKey.isEmpty());
-    values.insert("API_SECRET_SET", !current.gateSecret.isEmpty());
+    for (const QString &name : {"API_KEY", "API_SECRET"}) {
+        const auto effective = normalizeGateCredential(name == "API_KEY" ? current.gateKey : current.gateSecret);
+        const bool configured = !effective.isEmpty();
+        values.insert(name + "_SET", configured);
+        const bool manual = !normalizeGateCredential(current.environment.value(name).toString()).isEmpty();
+        values.insert(name + "_SOURCE", configured ? (manual ? "configuration" : "supabase") : "missing");
+    }
     return {{"values", values}, {"config_path", current.schedulePath},
             {"data_path", current.dataPath}};
 }
@@ -132,6 +137,9 @@ QJsonObject Dashboard::configureEnvironment(const QJsonObject &payload) {
                     || (it.key() == "ORDERS_ALLOWED_ORIGIN" && !url.path().isEmpty()))
                     throw Error("请填写有效的 HTTP/HTTPS 地址；允许的网页来源不带路径");
             }
+            if ((it.key() == "API_KEY" || it.key() == "API_SECRET") && !value.isEmpty()
+                && normalizeGateCredential(value).isEmpty() && value != "\"\"" && value != "''")
+                throw Error(it.key() + " 内容无效：请填写凭证，不要填写界面提示文字");
             next.environment.insert(it.key(), value);
         }
         const bool supabaseChanged = next.environment.value("SUPABASE_URL") != config_.environment.value("SUPABASE_URL")
