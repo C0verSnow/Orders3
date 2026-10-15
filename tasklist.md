@@ -18,6 +18,7 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-15：issue #19 首轮修复远端已通过全部 15 类成交数量回归和凭证拦截用例；发现原有空任务应直接返回、无需凭证的兼容行为被前置检查改变，已恢复；同步旧错误提示断言与空白凭证来源断言，继续完整远端复验。
 - 2026-10-15：issue #19 远端复现成功：987f0ae 的 Linux x64/ARM64 回归失败，日志确认提示文字被识别为凭证、数字成交数量触发原始错误；复现记录 https://github.com/C0verSnow/Orders3/actions/runs/38753344323 。本地未运行编译。
 - 2026-10-15：issue #19 已通过 root SSH 进入 /home/deploy 只读核查：运行版本 5938e99；配置中的 Gate 双凭证为空，但 Supabase 备用凭证非空；真实成交 3 条均使用数字 size/close_size，PR #18 的字符串整数解析会全部拒绝。未输出密钥或修改现场交易数据。已补实际调用链回归用例，先交远端复现。
 - 2026-10-15：issue #16 已完成并关闭，PR #18 已转为可审阅状态：https://github.com/C0verSnow/Orders3/pull/18 。代码 43aa691 的完整远端 CI 通过：https://github.com/C0verSnow/Orders3/actions/runs/38745943242 ，包含网页和脚本、Windows x64、Linux x64/ARM64、macOS x64/ARM64 编译回归打包，以及 AMD64/ARM64 原生 Docker 架构、网页、接口、三种启动方式、随机端口和 docker.md 地址记录检查。

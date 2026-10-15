@@ -964,6 +964,8 @@ private slots:
             config.dataPath = config.ordersPath = directory.filePath("data.db");
             config.gateKey = missing == "API_KEY" ? "已配置" : "offline";
             config.gateSecret = missing == "API_SECRET" ? "" : "offline";
+            orders::saveSources(config.dataPath, QJsonArray{QJsonObject{{"data",
+                "contract: BTC_USDT\nactivation_price: 100\namount: 1\nTimestamp: 1"}}});
             int requests = 0;
             const auto reader = [&](const QByteArray &, const QByteArray &, const QByteArray &,
                                     const orders::HttpHeaders &) {
@@ -980,7 +982,9 @@ private slots:
                 }
             }
             QCOMPARE(requests, 0);
-            QVERIFY(!QFile::exists(config.dataPath));
+            const auto owner = QString::fromLatin1(QCryptographicHash::hash(
+                config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
+            QCOMPARE(orders::entryHistoryWatermark(config.dataPath, owner), qint64(-1));
         }
     }
 
@@ -1334,7 +1338,7 @@ private slots:
         const auto snapshot = dashboard.sourceSnapshot();
         QCOMPARE(snapshot.value("orders").toArray().size(), 1);
         QCOMPARE(snapshot.value("phase").toString(), QString("failed"));
-        QVERIFY(snapshot.value("error").toString().contains("Gate API Key"));
+        QVERIFY(snapshot.value("error").toString().contains("Gate 配置缺少 API_KEY、API_SECRET"));
         QVERIFY(snapshot.value("error").toString().contains("来源已保存"));
         QVERIFY(!snapshot.value("refreshing").toBool());
         QVERIFY(!dashboard.ordersSnapshot().value("refreshing").toBool());

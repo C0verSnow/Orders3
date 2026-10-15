@@ -361,7 +361,6 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
                                 const ClosePositionRequester &requester) {
     QMutexLocker<QRecursiveMutex> tradingLock(&tradingMutex);
     ensureNotCancelled(config);
-    requireGateCredentials(config);
     const auto sources = readSources(config.dataPath).orders;
     auto trailing = readTrailingOrders(config.ordersPath).orders;
     QJsonArray results;
@@ -407,6 +406,7 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
     if (candidates.isEmpty() && retained.isEmpty()
         && (!sources.isEmpty() || !hasPendingOpeningOrders))
         return results;
+    requireGateCredentials(config);
     if (!candidates.isEmpty()) syncEntryHistory(config, requester);
     const auto send = [&](const QByteArray &path, const QJsonObject &payload) {
         ensureNotCancelled(config);
