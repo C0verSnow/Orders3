@@ -112,6 +112,7 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
+- 2026-10-15：首轮代码 ae38f0a 已推送，草稿 PR #18：https://github.com/C0verSnow/Orders3/pull/18 。远端网页和脚本检查已通过，五个平台正在编译验证；复查补齐首次历史同步的 7 天起点秒边界，准备继续远端复验。GitHub 连接器创建 PR 返回 403，已用本机现有 GitHub 登录完成，未输出凭据。
 - 2026-10-15：已同步 origin/master，工作区干净；确认唯一未完成 issue 为 #16。用户确认加仓也记入仓历史并重新算 7 天；正在核对 Gate 成交记录、合约参数及追踪激活价定义。不进行本地编译验证。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。

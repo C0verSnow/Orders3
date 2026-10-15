@@ -126,7 +126,7 @@ void syncEntryHistory(const Config &config, const ClosePositionRequester &reques
     const qint64 throughMs = QDateTime::currentMSecsSinceEpoch();
     const qint64 endSeconds = throughMs / 1000 + 1;
     if (previous >= throughMs) return;
-    const qint64 startSeconds = previous < 0 ? endSeconds - 7LL * 24 * 60 * 60
+    const qint64 startSeconds = previous < 0 ? (throughMs - 7LL * 24 * 60 * 60 * 1000) / 1000
                                            : previous / 1000;
     QJsonArray events;
     QSet<QString> seen;
