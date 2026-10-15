@@ -218,6 +218,24 @@ private slots:
         QVERIFY(!QFile::exists(config.schedulePath));
     }
 
+    void emptyQuotedCredentialsAndInvalidFallbackAreMissing() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.schedulePath = directory.filePath("config");
+        config.environment = {{"API_KEY", "  \"\"  "}, {"API_SECRET", " ' ' "}};
+        config.supabaseGateKey = "已配置；留空保留，输入可替换";
+        config.supabaseGateSecret = "secret\ninvalid";
+        config.applyConnectionSettings();
+        QVERIFY(config.gateKey.isEmpty());
+        QVERIFY(config.gateSecret.isEmpty());
+        orders::Dashboard dashboard(config);
+        dashboard.configureEnvironment({{"API_KEY", "\"\""}, {"API_SECRET", "''"}});
+        const auto persisted = orders::loadEnvironmentSettings(config.schedulePath);
+        QVERIFY(persisted.value("API_KEY").toString().isEmpty());
+        QVERIFY(persisted.value("API_SECRET").toString().isEmpty());
+    }
+
     void supabaseGateCredentials_data() {
         QTest::addColumn<QByteArray>("body");
         QTest::addColumn<int>("status");
@@ -316,6 +334,9 @@ private slots:
         QVERIFY(!QJsonDocument(snapshot).toJson().contains("backup-secret"));
         QCOMPARE(snapshot.value("values").toObject().value("API_KEY_SET").toBool(), !expectedKey.isEmpty());
         QCOMPARE(snapshot.value("values").toObject().value("API_SECRET_SET").toBool(), !expectedSecret.isEmpty());
+        const auto values = snapshot.value("values").toObject();
+        QCOMPARE(values.value("API_KEY_SOURCE").toString(), expectedKey.isEmpty() ? QString("missing")
+            : (!configuredKey.isEmpty() ? QString("configuration") : QString("supabase")));
         dashboard.configureEnvironment({{"ORDERS_ALLOWED_ORIGIN", "http://localhost"}});
         QCOMPARE(dashboard.config().gateKey, expectedKey);
         QCOMPARE(dashboard.config().gateSecret, expectedSecret);
@@ -819,7 +840,7 @@ private slots:
         QJsonArray fills{QJsonObject{{"trade_id", "9007199254740993"}, {"contract", "BTC_USDT"},
                 {"size", 1}, {"close_size", 0}, {"create_time", time}}, // Opening.
             fill("2", "BTC_USDT", "2", "0"), // Adding is a separate real fill.
-            fill("3", "ETH_USDT", "-5", "-2"), // Reverse opens a short.
+            fill("3", "ETH_USDT", "-0.5", "-0.2"), // Reverse opens a short.
             fill("4", "SOL_USDT", "1", "1"), // Pure close.
             fill("5", "SOL_USDT", "-1", "-2")}; // Partial close.
         bool unavailable = true;
@@ -862,6 +883,103 @@ private slots:
         submitted.clear();
         orders::createTrailingOrders(config, sender, reader); // Restart/unchanged polling: no replay.
         QVERIFY(submitted.isEmpty());
+    }
+
+    void historyQuantityFormats_data() {
+        QTest::addColumn<QJsonValue>("size");
+        QTest::addColumn<QJsonValue>("closed");
+        QTest::addColumn<int>("side");
+        QTest::addColumn<bool>("valid");
+        QTest::newRow("numeric-long") << QJsonValue(1) << QJsonValue(0) << 1 << true;
+        QTest::newRow("numeric-short-reverse") << QJsonValue(-5) << QJsonValue(-2) << -1 << true;
+        QTest::newRow("mixed") << QJsonValue("2") << QJsonValue(0) << 1 << true;
+        QTest::newRow("decimal-long") << QJsonValue("0.25") << QJsonValue("0.1") << 1 << true;
+        QTest::newRow("decimal-short") << QJsonValue("-0.25") << QJsonValue("-0.1") << -1 << true;
+        QTest::newRow("exact-large") << QJsonValue("9007199254740993.01")
+            << QJsonValue("9007199254740993.00") << 1 << true;
+        QTest::newRow("pure-close") << QJsonValue(1) << QJsonValue(1) << 0 << true;
+        QTest::newRow("partial-close") << QJsonValue("-0.1") << QJsonValue("-0.25") << 0 << true;
+        QTest::newRow("zero") << QJsonValue(0) << QJsonValue(0) << 0 << false;
+        QTest::newRow("opposite-direction") << QJsonValue(1) << QJsonValue(-1) << 0 << false;
+        QTest::newRow("missing-close") << QJsonValue(1) << QJsonValue() << 0 << false;
+        QTest::newRow("bool-size") << QJsonValue(true) << QJsonValue(0) << 0 << false;
+        QTest::newRow("garbage") << QJsonValue("secret-value") << QJsonValue(0) << 0 << false;
+        QTest::newRow("unsafe-number") << QJsonValue(9007199254740992.0) << QJsonValue(0) << 0 << false;
+        QTest::newRow("fractional-json-number") << QJsonValue(0.25) << QJsonValue(0) << 0 << false;
+    }
+
+    void historyQuantityFormats() {
+        QFETCH(QJsonValue, size);
+        QFETCH(QJsonValue, closed);
+        QFETCH(int, side);
+        QFETCH(bool, valid);
+        // Both user-visible failing call chains must parse the same history safely.
+        for (const bool closing : {false, true}) {
+            QTemporaryDir directory;
+            orders::Config config;
+            config.dataPath = config.ordersPath = directory.filePath("data.db");
+            config.gateKey = config.gateSecret = "offline";
+            orders::saveSources(config.dataPath, QJsonArray{QJsonObject{{"data",
+                "contract: BTC_USDT\nactivation_price: 100\namount: 1\nTimestamp: 1"}}});
+            const double time = double(QDateTime::currentMSecsSinceEpoch() - 10000) / 1000;
+            const QJsonObject fill{{"trade_id", "1"}, {"contract", "BTC_USDT"}, {"size", size},
+                {"close_size", closed}, {"create_time", time}};
+            int writes = 0;
+            const auto requester = [&](const QByteArray &method, const QByteArray &path,
+                                       const QByteArray &, const orders::HttpHeaders &) {
+                if (method != "GET") ++writes;
+                if (path.endsWith("/positions")) return orders::HttpResult{200, "[]"};
+                const bool first = path.endsWith("offset=0");
+                return orders::HttpResult{200, QJsonDocument(first ? QJsonArray{fill} : QJsonArray{}).toJson()};
+            };
+            const auto sender = [&](const QByteArray &, const QByteArray &, const orders::HttpHeaders &) {
+                ++writes;
+                return orders::HttpResult{200, R"({"code":0,"data":{"id":"100"}})"};
+            };
+            bool succeeded = false;
+            try {
+                if (closing) orders::closePositionOrders(config, requester);
+                else orders::createTrailingOrders(config, sender, requester);
+                succeeded = true;
+            } catch (const orders::Error &error) {
+                QVERIFY(!QString::fromUtf8(error.what()).contains("secret-value"));
+            }
+            QCOMPARE(succeeded, valid);
+            if (!valid) QCOMPARE(writes, 0);
+            const auto now = QDateTime::currentMSecsSinceEpoch();
+            QCOMPARE(orders::hasRecentEntry(config.dataPath, "BTC_USDT", 1, now), valid && side == 1);
+            QCOMPARE(orders::hasRecentEntry(config.dataPath, "BTC_USDT", -1, now), valid && side == -1);
+            const auto owner = QString::fromLatin1(QCryptographicHash::hash(
+                config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
+            QCOMPARE(orders::entryHistoryWatermark(config.dataPath, owner) >= 0, valid);
+        }
+    }
+
+    void missingCredentialsStopTradingBeforeAnyRequest() {
+        for (const QString &missing : {QString("API_KEY"), QString("API_SECRET")}) {
+            QTemporaryDir directory;
+            orders::Config config;
+            config.dataPath = config.ordersPath = directory.filePath("data.db");
+            config.gateKey = missing == "API_KEY" ? "已配置" : "offline";
+            config.gateSecret = missing == "API_SECRET" ? "" : "offline";
+            int requests = 0;
+            const auto reader = [&](const QByteArray &, const QByteArray &, const QByteArray &,
+                                    const orders::HttpHeaders &) {
+                ++requests;
+                return orders::HttpResult{200, "[]"};
+            };
+            for (const bool closing : {false, true}) {
+                try {
+                    if (closing) orders::closePositionOrders(config, reader);
+                    else orders::createTrailingOrders(config, {}, reader);
+                    QFAIL("Expected missing Gate credential error");
+                } catch (const orders::Error &error) {
+                    QVERIFY(QString::fromUtf8(error.what()).contains("Gate 配置缺少 " + missing));
+                }
+            }
+            QCOMPARE(requests, 0);
+            QVERIFY(!QFile::exists(config.dataPath));
+        }
     }
 
     void closeRejectsMissingContractParametersBeforeExchangeWrites() {

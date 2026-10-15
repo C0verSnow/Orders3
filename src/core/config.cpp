@@ -107,23 +107,30 @@ Config Config::load() {
     return result;
 }
 
-void Config::applyConnectionSettings() {
-    // Docker --env-file preserves enclosing quotes, unlike our legacy .env reader.
-    // Gate credentials cannot contain quotes; normalize all input paths identically.
-    for (const QString &name : {"API_KEY", "API_SECRET"}) {
-        QString credential = environment.value(name).toString().trimmed();
-        if (credential.size() >= 2
-            && (credential.front() == '"' || credential.front() == '\'')
-            && credential.back() == credential.front())
-            credential = credential.mid(1, credential.size() - 2).trimmed();
-        environment.insert(name, credential);
+QString normalizeGateCredential(QString value) {
+    value = value.trimmed();
+    if (value.size() >= 2 && (value.front() == '"' || value.front() == '\'')
+        && value.back() == value.front())
+        value = value.mid(1, value.size() - 2).trimmed();
+    if (value.size() > 4096) return {};
+    // Gate credentials are printable ASCII without whitespace or enclosing quotes.
+    // UI labels, broken quoting and control characters must never become credentials.
+    for (const auto character : value) {
+        if (character.unicode() < 33 || character.unicode() > 126
+            || character == '"' || character == '\'') return {};
     }
+    return value;
+}
+
+void Config::applyConnectionSettings() {
+    for (const QString &name : {"API_KEY", "API_SECRET"})
+        environment.insert(name, normalizeGateCredential(environment.value(name).toString()));
     supabaseUrl = environment.value("SUPABASE_URL").toString();
     supabaseKey = environment.value("SUPABASE_ANON_KEY").toString();
     gateKey = environment.value("API_KEY").toString();
     gateSecret = environment.value("API_SECRET").toString();
-    if (gateKey.isEmpty()) gateKey = supabaseGateKey;
-    if (gateSecret.isEmpty()) gateSecret = supabaseGateSecret;
+    if (gateKey.isEmpty()) gateKey = normalizeGateCredential(supabaseGateKey);
+    if (gateSecret.isEmpty()) gateSecret = normalizeGateCredential(supabaseGateSecret);
     allowedOrigin = environment.value("ORDERS_ALLOWED_ORIGIN").toString();
 }
 

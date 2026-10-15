@@ -169,7 +169,7 @@
         <label>允许的网页来源（可选） <input id="settings-origin" type="url" placeholder="留空使用本地页面地址" maxlength="4096"></label>
         <button id="settings-save" class="primary" type="submit" disabled>保存程序配置</button>
       </form>
-      <p>首次使用请填写连接信息。密钥留空保留原值，勾选清除可删除。保存后连接配置立即生效，可点击获取订单按钮更新数据；正在执行的任务使用原配置。</p>
+      <p>首次使用请填写连接信息。密钥留空保留原值，勾选清除可删除本地配置。Gate 本地配置为空时可使用 Supabase 备用凭证；输入框会标明来源。“已配置”只表示存在格式有效的非空凭证，不代表已经通过交易所验证。保存后连接配置立即生效，可点击获取订单按钮更新数据；正在执行的任务使用原配置。</p>
       <p>数据目录在重启后生效，不会搬移已有数据库。网页来源只在使用代理时填写，保存后请用对应地址访问。</p>
       <p>配置保存位置：<span id="settings-path">—</span></p>
       <p id="settings-notice" class="notice" role="status" aria-live="polite" hidden></p>

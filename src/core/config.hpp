@@ -30,6 +30,8 @@ struct ORDERS_CORE_EXPORT Config {
     static Config load();
 };
 
+// Empty means missing or malformed; this does not authenticate with Gate.
+ORDERS_CORE_EXPORT QString normalizeGateCredential(QString value);
 ORDERS_CORE_EXPORT QString validateOutput(const QString &path);
 ORDERS_CORE_EXPORT ScheduleConfig loadSchedule(const QString &path);
 ORDERS_CORE_EXPORT void saveSchedule(const QString &path, const ScheduleConfig &config);

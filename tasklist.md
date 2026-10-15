@@ -18,6 +18,7 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-15：issue #19 远端复现成功：987f0ae 的 Linux x64/ARM64 回归失败，日志确认提示文字被识别为凭证、数字成交数量触发原始错误；复现记录 https://github.com/C0verSnow/Orders3/actions/runs/38753344323 。本地未运行编译。
 - 2026-10-15：issue #19 已通过 root SSH 进入 /home/deploy 只读核查：运行版本 5938e99；配置中的 Gate 双凭证为空，但 Supabase 备用凭证非空；真实成交 3 条均使用数字 size/close_size，PR #18 的字符串整数解析会全部拒绝。未输出密钥或修改现场交易数据。已补实际调用链回归用例，先交远端复现。
 - 2026-10-15：issue #16 已完成并关闭，PR #18 已转为可审阅状态：https://github.com/C0verSnow/Orders3/pull/18 。代码 43aa691 的完整远端 CI 通过：https://github.com/C0verSnow/Orders3/actions/runs/38745943242 ，包含网页和脚本、Windows x64、Linux x64/ARM64、macOS x64/ARM64 编译回归打包，以及 AMD64/ARM64 原生 Docker 架构、网页、接口、三种启动方式、随机端口和 docker.md 地址记录检查。
 - 2026-10-15：issue #16 文档已同步；用户确认加仓也记入仓历史并重新算 7 天。最终只更新任务记录，使用 [skip ci]，不重复远端构建；本地仅阅读、静态差异检查和十进制算例复核，未进行本地编译验证。GitHub 连接器写入权限不足，PR 创建与更新、转可审阅和关闭 issue 使用本机已有 GitHub 登录完成，没有输出凭据。
@@ -118,7 +119,7 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- 2026-10-15：issue #19 已确认是唯一待办，已同步 origin/master 并新建 feature-issue-19-credentials-history；SSH 现有登录被拒绝，已向用户询问登录方式。按约定不做本地编译，使用远端回归验证。
+- 2026-10-15：issue #19 已修复数字成交数量和提示文字凭证问题，新增来源标记、凭证前置拦截与两条调用链回归；更新说明，准备提 PR 并跑修复后的完整远端 CI。用户提供 root 登录后现场只读核查成功，无需继续等待 SSH。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。
