@@ -104,28 +104,29 @@ inline QString divideRounded(const QString &numerator, const QString &denominato
         quotient = add(quotient, "1");
     return quotient;
 }
-inline QString closePrice(const QString &entryText, const QString &valueText,
-                          const QString &marginText, const QString &markText, bool shortPosition) {
-    const auto entry = parse(entryText), value = parse(valueText);
-    const auto margin = parse(marginText), mark = parse(markText);
-    if (entry.negative || margin.negative || mark.negative
-        || entry.digits == "0" || value.digits == "0" || mark.digits == "0")
-        throw Error("持仓价格必须大于零，价值不能为零，初始保证金不能为负数");
-    if (value.negative != shortPosition)
-        throw Error("持仓价值的正负号与持仓方向不一致");
-    const int scale = std::max(value.scale, margin.scale);
-    const auto denominator = multiply(scaled(value, scale), "10");
-    const auto adjustment = multiply(scaled(margin, scale), "31");
-    if (value.negative && compare(denominator, adjustment) <= 0)
-        throw Error("计算出的空仓平仓价格不大于零");
-    const auto factor = value.negative ? subtract(denominator, adjustment)
-                                      : add(denominator, adjustment);
-    const auto priceMultiplier = shortPosition ? "99" : "101";
-    const auto numerator = multiply(multiply(entry.digits, factor), priceMultiplier)
-        + QString(mark.scale, '0');
-    const auto divisor = multiply(denominator, "100") + QString(entry.scale, '0');
-    const auto rounded = divideRounded(normalized(numerator), normalized(divisor));
-    if (rounded == "0") throw Error("平仓价格对齐步长后为零");
-    return format(rounded, mark.scale);
+// Exact rational arithmetic followed by rounding to a multiple of the contract tick.
+inline QString closePrice(const QString &entryText, const QString &sizeText,
+                          const QString &marginText, const QString &multiplierText,
+                          const QString &tickText) {
+    const auto entry = parse(entryText), size = parse(sizeText), margin = parse(marginText);
+    const auto multiplier = parse(multiplierText), tick = parse(tickText);
+    if (entry.negative || entry.digits == "0" || size.digits == "0"
+        || margin.negative || multiplier.negative || multiplier.digits == "0"
+        || tick.negative || tick.digits == "0")
+        throw Error("开仓价、合约数量、乘数和价格步长必须有效且非零，保证金不能为负数");
+    const auto quantity = parse(product(format(size.digits, size.scale), multiplierText));
+    // (entry * quantity +/- margin * 3.1) / quantity / tick, without division loss.
+    const auto base = parse(product(entryText, format(quantity.digits, quantity.scale)));
+    const auto profit = parse(product(marginText, "3.1"));
+    const int scale = std::max(base.scale, profit.scale);
+    const auto left = scaled(base, scale), right = scaled(profit, scale);
+    if (size.negative && compare(left, right) <= 0)
+        throw Error("计算出的空仓目标价格不大于零");
+    const auto total = size.negative ? subtract(left, right) : add(left, right);
+    const auto numerator = normalized(total + QString(quantity.scale + tick.scale, '0'));
+    const auto denominator = normalized(multiply(quantity.digits, tick.digits) + QString(scale, '0'));
+    const auto ticks = divideRounded(numerator, denominator);
+    if (ticks == "0") throw Error("目标价格对齐合约步长后为零");
+    return format(multiply(ticks, tick.digits), tick.scale);
 }
 } // namespace orders::decimal

@@ -1,3 +1,5 @@
+> 历史分析资料：issue #16 已更新实现，现行公式及实际入仓规则请看 [自动平仓](close-position-orders.md) 和 [入仓历史](position-entry-history.md)。本文保留当时的旧公式背景。
+
 # Issue #12：平多仓净利润怎么算
 
 核查日期：2026-10-14。需求见 [issue #12](https://github.com/C0verSnow/Orders3/issues/12)。本次交付公式分析和示例，不修改自动交易代码。

@@ -312,7 +312,7 @@ void saveSources(const QString &path, const QJsonArray &items) {
     execute(query, R"(CREATE TABLE orders (
         record_position INTEGER NOT NULL REFERENCES records(position),
         order_index INTEGER NOT NULL, contract TEXT NOT NULL, activation_price TEXT, side TEXT,
-        amount TEXT, timestamp INTEGER,
+        amount TEXT, timestamp INTEGER, quanto_multiplier TEXT, order_price_round TEXT,
         PRIMARY KEY (record_position, order_index)))");
     for (qsizetype index = 0; index < items.size(); ++index) {
         if (!items[index].isObject())
@@ -342,10 +342,10 @@ void saveSources(const QString &path, const QJsonArray &items) {
             : data.isString() ? parseOrders(data.toString(), int(index)) : QJsonArray{};
         for (const auto &value : orders) {
             if (value.toObject().isEmpty()) continue;
-            prepare(query, "INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?)");
+            prepare(query, "INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
             const auto order = value.toObject();
             for (const QString &field : {"record_position", "order_index", "contract", "activation_price",
-                                         "side", "amount", "timestamp"})
+                                         "side", "amount", "timestamp", "quanto_multiplier", "order_price_round"})
                 query.addBindValue(sqlValue(order.value(field)));
             prepared(query);
         }
@@ -428,6 +428,10 @@ void savePositions(const QString &path, const QJsonArray &positions) {
         leverage_max TEXT NOT NULL, unrealised_pnl TEXT NOT NULL, realised_pnl TEXT NOT NULL,
         size INTEGER NOT NULL, initial_margin TEXT NOT NULL, mark_price TEXT NOT NULL,
         close_price TEXT NOT NULL))");
+    for (const QString &field : {"quanto_multiplier", "order_price_round"}) {
+        if (!columns(db, "position").contains(field))
+            execute(query, "ALTER TABLE position ADD COLUMN " + field + " TEXT");
+    }
     execute(query, "DELETE FROM position");
     for (const auto &value : positions) {
         if (!value.isObject())
@@ -435,44 +439,84 @@ void savePositions(const QString &path, const QJsonArray &positions) {
         const auto position = value.toObject();
         prepare(query, R"(INSERT INTO position
             (contract, entry_price, value, leverage_max, unrealised_pnl, realised_pnl,
-             size, initial_margin, mark_price, close_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?))");
+             size, initial_margin, mark_price, close_price, quanto_multiplier, order_price_round)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?))");
         for (const QString &field : {"contract", "entry_price", "value", "leverage_max",
                                      "unrealised_pnl", "realised_pnl", "size", "initial_margin",
-                                     "mark_price", "close_price"})
+                                     "mark_price", "close_price", "quanto_multiplier", "order_price_round"})
             query.addBindValue(sqlValue(position.value(field)));
         prepared(query);
     }
     transaction.commit();
 }
 
-QStringList readManagedCloseOrderIds(const QString &path, const QString &owner) {
-    QStringList ids;
-    if (!QFileInfo::exists(path))
-        return ids;
+qint64 entryHistoryWatermark(const QString &path, const QString &owner) {
+    if (!QFileInfo::exists(path)) return -1;
     Database database(path, true);
-    if (columns(database.connection(), "managed_close_orders").isEmpty())
-        return ids;
+    if (columns(database.connection(), "position_entry_sync").isEmpty()) return -1;
     QSqlQuery query(database.connection());
-    prepare(query, "SELECT id FROM managed_close_orders WHERE owner = ?");
+    prepare(query, "SELECT through_ms FROM position_entry_sync WHERE owner = ?");
     query.addBindValue(owner);
     prepared(query);
-    while (query.next())
-        ids.append(query.value(0).toString());
-    return ids;
+    return query.next() ? query.value(0).toLongLong() : -1;
 }
 
-void saveManagedCloseOrderId(const QString &path, const QString &owner, const QString &id) {
+void saveEntryHistory(const QString &path, const QString &owner,
+                      const QJsonArray &events, qint64 throughMs) {
     ensureDirectory(path);
     Database database(path);
-    Transaction transaction(database.connection());
-    QSqlQuery query(database.connection());
-    execute(query, R"(CREATE TABLE IF NOT EXISTS managed_close_orders (
-        owner TEXT NOT NULL, id TEXT NOT NULL, PRIMARY KEY (owner, id)))");
-    prepare(query, "INSERT OR IGNORE INTO managed_close_orders (owner, id) VALUES (?, ?)");
+    auto &db = database.connection();
+    Transaction transaction(db);
+    QSqlQuery query(db);
+    execute(query, R"(CREATE TABLE IF NOT EXISTS position_entry_history (
+        event_id TEXT PRIMARY KEY NOT NULL, entry_time INTEGER NOT NULL,
+        contract TEXT NOT NULL, side INTEGER NOT NULL CHECK (side IN (1, -1))))");
+    execute(query, R"(CREATE TABLE IF NOT EXISTS position_entry_sync (
+        owner TEXT PRIMARY KEY NOT NULL, through_ms INTEGER NOT NULL))");
+    prepare(query, "SELECT through_ms FROM position_entry_sync WHERE owner = ?");
     query.addBindValue(owner);
-    query.addBindValue(id);
+    prepared(query);
+    const qint64 previous = query.next() ? query.value(0).toLongLong() : -1;
+    query.finish();
+    if (throughMs < previous) throw Error("入仓历史同步进度已变化，请重新获取");
+    for (const auto &value : events) {
+        const auto event = value.toObject();
+        const auto time = event.value("entry_time").toInteger(-1);
+        const auto side = event.value("side").toInt();
+        if (event.value("event_id").toString().isEmpty()
+            || event.value("contract").toString().isEmpty() || (side != 1 && side != -1)
+            || time < 0 || time > throughMs)
+            throw Error("入仓历史记录无效");
+        if (time <= previous) continue; // Also prevents replay of records removed by the 100-row cap.
+        prepare(query, "INSERT OR IGNORE INTO position_entry_history VALUES (?, ?, ?, ?)");
+        query.addBindValue(owner + ":" + event.value("event_id").toString());
+        for (const QString &field : {"entry_time", "contract", "side"})
+            query.addBindValue(sqlValue(event.value(field)));
+        prepared(query);
+    }
+    execute(query, R"(DELETE FROM position_entry_history WHERE event_id NOT IN (
+        SELECT event_id FROM position_entry_history ORDER BY entry_time DESC, event_id DESC LIMIT 100))");
+    prepare(query, "INSERT OR REPLACE INTO position_entry_sync VALUES (?, ?)");
+    query.addBindValue(owner);
+    query.addBindValue(throughMs);
     prepared(query);
     transaction.commit();
+}
+
+bool hasRecentEntry(const QString &path, const QString &contract, int side, qint64 nowMs) {
+    if (side != 1 && side != -1) throw Error("入仓方向必须为 1 或 -1");
+    if (!QFileInfo::exists(path)) return false;
+    Database database(path, true);
+    if (columns(database.connection(), "position_entry_history").isEmpty()) return false;
+    QSqlQuery query(database.connection());
+    prepare(query, R"(SELECT 1 FROM position_entry_history
+        WHERE contract = ? AND side = ? AND entry_time >= ? AND entry_time <= ? LIMIT 1)");
+    query.addBindValue(contract);
+    query.addBindValue(side);
+    query.addBindValue(nowMs - 7LL * 24 * 60 * 60 * 1000);
+    query.addBindValue(nowMs);
+    prepared(query);
+    return query.next();
 }
 
 QByteArray exportDatabase(const QString &path) {
