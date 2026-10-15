@@ -200,6 +200,24 @@ private slots:
         QVERIFY(cleared.gateSecret.isEmpty());
     }
 
+    void gateCredentialPlaceholdersAreNotConfigured() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.schedulePath = directory.filePath("config");
+        config.environment = {{"API_KEY", "已配置；留空保留，输入可替换"},
+                              {"API_SECRET", "\"\"(已配置；留空保留，输入可替换)"}};
+        config.applyConnectionSettings();
+        QVERIFY(config.gateKey.isEmpty());
+        QVERIFY(config.gateSecret.isEmpty());
+        orders::Dashboard dashboard(config);
+        const auto values = dashboard.environmentSnapshot().value("values").toObject();
+        QVERIFY(!values.value("API_KEY_SET").toBool());
+        QVERIFY(!values.value("API_SECRET_SET").toBool());
+        QVERIFY_EXCEPTION_THROWN(dashboard.configureEnvironment({{"API_KEY", "已配置"}}), orders::Error);
+        QVERIFY(!QFile::exists(config.schedulePath));
+    }
+
     void supabaseGateCredentials_data() {
         QTest::addColumn<QByteArray>("body");
         QTest::addColumn<int>("status");
@@ -798,7 +816,8 @@ private slots:
             return QJsonObject{{"trade_id", id}, {"contract", contract}, {"size", size},
                 {"close_size", closed}, {"create_time", time}};
         };
-        QJsonArray fills{fill("9007199254740993", "BTC_USDT", "1", "0"), // Opening.
+        QJsonArray fills{QJsonObject{{"trade_id", "9007199254740993"}, {"contract", "BTC_USDT"},
+                {"size", 1}, {"close_size", 0}, {"create_time", time}}, // Opening.
             fill("2", "BTC_USDT", "2", "0"), // Adding is a separate real fill.
             fill("3", "ETH_USDT", "-5", "-2"), // Reverse opens a short.
             fill("4", "SOL_USDT", "1", "1"), // Pure close.
