@@ -20,7 +20,7 @@ struct ORDERS_CORE_EXPORT Config {
     QString supabaseKey;
     QString gateKey;
     QString gateSecret;
-    // Startup-only fallback; never persisted in environment or exposed by settings.
+    // In-memory fallback; never persisted in environment or exposed by settings.
     QString supabaseGateKey;
     QString supabaseGateSecret;
     QString allowedOrigin;

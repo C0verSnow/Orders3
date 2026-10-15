@@ -7,6 +7,7 @@
 #include <QStringList>
 #include <QUrl>
 #include <utility>
+#include <chrono>
 
 namespace orders {
 namespace {
@@ -24,6 +25,67 @@ QJsonValue nullable(const QString &text) {
 
 Dashboard::Dashboard(Config config) : config_(std::move(config)) {
     uptime_.start();
+}
+
+Dashboard::~Dashboard() {
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        credentialsStopping_ = true;
+        if (credentialsCancelled_) credentialsCancelled_->store(true);
+        credentialsChanged_.notify_all();
+    }
+    if (credentialsThread_.joinable()) credentialsThread_.join();
+}
+
+void Dashboard::requestCredentialsLocked() {
+    ++credentialsGeneration_;
+    if (credentialsCancelled_) credentialsCancelled_->store(true);
+    credentialsChanged_.notify_all();
+    if (!credentialsThread_.joinable())
+        credentialsThread_ = std::thread([this] { credentialLoop(); });
+}
+
+void Dashboard::reloadGateCredentials() {
+    std::lock_guard<std::mutex> lock(configMutex_);
+    requestCredentialsLocked();
+}
+
+void Dashboard::credentialLoop() {
+    std::unique_lock<std::mutex> lock(configMutex_);
+    quint64 completed = 0;
+    while (!credentialsStopping_) {
+        credentialsChanged_.wait(lock, [&] {
+            return credentialsStopping_ || credentialsGeneration_ != completed;
+        });
+        if (credentialsStopping_ || config_.cancelled->load()) return;
+        const auto generation = credentialsGeneration_;
+        auto next = config_;
+        // Each generation owns its cancellation flag: changing settings aborts old I/O.
+        credentialsCancelled_ = std::make_shared<std::atomic<bool>>(false);
+        next.cancelled = credentialsCancelled_;
+        lock.unlock();
+        bool success = false;
+        try {
+            loadGateCredentials(next);
+            success = true;
+        } catch (const std::exception &) {
+            // Never expose remote response bodies or credentials in status/logs.
+        }
+        lock.lock();
+        if (credentialsStopping_ || config_.cancelled->load()) return;
+        if (generation != credentialsGeneration_) continue;
+        if (success) {
+            config_.supabaseGateKey = next.supabaseGateKey;
+            config_.supabaseGateSecret = next.supabaseGateSecret;
+            config_.applyConnectionSettings();
+            completed = generation;
+        } else {
+            // Wait after completion, so slow requests never overlap or queue retries.
+            credentialsChanged_.wait_for(lock, std::chrono::seconds(5), [&] {
+                return credentialsStopping_ || generation != credentialsGeneration_;
+            });
+        }
+    }
 }
 
 Config Dashboard::config() const {
@@ -71,9 +133,18 @@ QJsonObject Dashboard::configureEnvironment(const QJsonObject &payload) {
             }
             next.environment.insert(it.key(), value);
         }
+        const bool supabaseChanged = next.environment.value("SUPABASE_URL") != config_.environment.value("SUPABASE_URL")
+            || next.environment.value("SUPABASE_ANON_KEY") != config_.environment.value("SUPABASE_ANON_KEY");
+        if (supabaseChanged) {
+            next.supabaseGateKey.clear();
+            next.supabaseGateSecret.clear();
+        }
         next.applyConnectionSettings();
         saveEnvironmentSettings(next.schedulePath, next.environment);
         config_ = std::move(next);
+        if (payload.contains("SUPABASE_URL") || payload.contains("SUPABASE_ANON_KEY")
+            || payload.contains("API_KEY") || payload.contains("API_SECRET"))
+            requestCredentialsLocked();
     }
     return environmentSnapshot();
 }

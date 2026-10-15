@@ -1,6 +1,7 @@
 # 本文档为4象限的任务清单，全文书写大白话。
 
 ## 想做：
+- 2026-10-14：完成 issue #10，保存 Supabase 配置后后台重新读取 Gate 密钥，失败每隔 5 秒重试，交给远端 CI 验证。
 - 2026-10-14：完成当前仓库 issue #8，新增 Supabase Gate 备用密钥和远端 docker.md 地址记录，提交 PR，通过远端 CI 后关闭 issue。
 
 - 2026-10-13：完成当前仓库 issue #6：只取消状态 1 的旧订单，状态 2 保留；更新说明和回归用例，提交 PR，通过远端 CI 后关闭 issue。
@@ -12,6 +13,9 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-14：issue #10 已完成并关闭，PR #11 已转为可审阅状态：https://github.com/C0verSnow/Orders3/pull/11 。代码 91a474a 的完整远端 CI 通过，包含网页及脚本、Windows x64、Linux x64/ARM64、macOS x64/ARM64 编译回归打包，以及 Docker 双架构网页、接口、随机端口和地址记录验证：https://github.com/C0verSnow/Orders3/actions/runs/38584005810 。
+- 2026-10-14：issue #10 最后只更新任务记录，使用 [skip ci]；本地仅做代码阅读和差异检查，没有本地编译验证。
+- 2026-10-14：issue #10 已补后台密钥重载；保存连接配置触发读取，失败等待 5 秒再试，成功停止，旧请求取消且结果隔离。启动失败也会重试，密钥仍只在内存。补充自动重试、重复保存、更换连接、手填优先、脱敏和退出回归，差异检查通过。
 - 2026-10-14：issue #8 最新代码 3c478a4 的完整远端 CI 通过：网页及脚本、Windows x64、Linux x64/ARM64、macOS x64/ARM64 编译回归打包，以及 Docker 双架构网页接口、随机端口和 docker.md 地址一致性。PR #9：https://github.com/C0verSnow/Orders3/pull/9 ，验证记录：https://github.com/C0verSnow/Orders3/actions/runs/38573489826 。
 - 2026-10-14：只读核查真实 Supabase 单条 secret 记录，确认两列名末尾带等号、两项值含外层引号；代码与回归均按真实格式处理，没有输出完整密钥。最后只更新任务记录，使用 [skip ci]；PR 保留供审阅，关闭 issue #8。
 - 2026-10-14：完成启动读取 secret 唯一记录，按现有配置分别补齐 Key/Secret，备用值仅在内存保存；保留页面配置、缺失认证前拒绝和日志脱敏。按真实列名 API_KEY=、API_SECRET= 读取。
@@ -81,6 +85,7 @@
 - 将原来的 Tasklist.md 改为用户要求的 tasklist.md，继续按四个栏目记录。
 
 ## 没做：
+- 2026-10-14：issue #10 没有合并 master、部署服务器或连接真实 Gate 下单；密钥读取回归使用远端 CI 模拟 Supabase 接口。
 - 2026-10-14：issue #8 未合并 master，未连接真实 Gate 操作订单，未执行真实服务器部署；远端回归使用模拟接口和 CI Docker。未进行本地 C++ 编译验证；曾执行的 Python 字节码语法检查已在上面如实记录。
 - 2026-10-13：当前 issue #6 没有合并或部署，没有连接真实 Gate/Supabase；远端回归使用模拟接口。
 - 当前仓库 issue #4：PR #5 未合并 master；本次没有连接真实服务器，没有发布镜像或执行真实部署。最后仅补任务记录，使用 [skip ci]，不重复编译。
