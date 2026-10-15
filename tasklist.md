@@ -13,6 +13,9 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-14：issue #12 的完整分析已回复到 GitHub 并关闭，PR #13 保留供审阅：https://github.com/C0verSnow/Orders3/pull/13 。分支 docs-issue-12-close-profit。GitHub 连接器写入返回 403，改用本机已有 GitHub 登录完成提交；没有输出登录凭据。
+- 2026-10-14：issue #12 已完成公式分析文档，区分保证金、名义价值、释放本金、毛利润、净利润和 ROI；补充含费目标成交价、投入 1 净赚 3 的完整示例，以及现行公式漏合约乘数、当前保证金变化、追踪激活价与成交价不一致的问题。
+- 2026-10-14：issue #12 十进制算术复核、新增文档链接和差异检查通过；README 原有 AGENTS.md 链接目标缺失，与本次修改无关。本次只有文档和任务记录，提交使用 [skip ci]，未触发远端编译，也未进行本地编译验证。
 - 2026-10-14：issue #8 最新代码 3c478a4 的完整远端 CI 通过：网页及脚本、Windows x64、Linux x64/ARM64、macOS x64/ARM64 编译回归打包，以及 Docker 双架构网页接口、随机端口和 docker.md 地址一致性。PR #9：https://github.com/C0verSnow/Orders3/pull/9 ，验证记录：https://github.com/C0verSnow/Orders3/actions/runs/38573489826 。
 - 2026-10-14：只读核查真实 Supabase 单条 secret 记录，确认两列名末尾带等号、两项值含外层引号；代码与回归均按真实格式处理，没有输出完整密钥。最后只更新任务记录，使用 [skip ci]；PR 保留供审阅，关闭 issue #8。
 - 2026-10-14：完成启动读取 secret 唯一记录，按现有配置分别补齐 Key/Secret，备用值仅在内存保存；保留页面配置、缺失认证前拒绝和日志脱敏。按真实列名 API_KEY=、API_SECRET= 读取。
@@ -82,6 +85,7 @@
 - 将原来的 Tasklist.md 改为用户要求的 tasklist.md，继续按四个栏目记录。
 
 ## 没做：
+- 2026-10-14：issue #12 按需求交付分析说明，未修改交易策略、未合并或部署、未连接真实交易接口；逐笔成本定义和下单方式需在后续策略实现时确定。
 - 2026-10-14：issue #8 未合并 master，未连接真实 Gate 操作订单，未执行真实服务器部署；远端回归使用模拟接口和 CI Docker。未进行本地 C++ 编译验证；曾执行的 Python 字节码语法检查已在上面如实记录。
 - 2026-10-13：当前 issue #6 没有合并或部署，没有连接真实 Gate/Supabase；远端回归使用模拟接口。
 - 当前仓库 issue #4：PR #5 未合并 master；本次没有连接真实服务器，没有发布镜像或执行真实部署。最后仅补任务记录，使用 [skip ci]，不重复编译。
@@ -93,7 +97,6 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- 2026-10-14：issue #12 已读取代码和 Gate 官方说明，正在整理公式核查；本次按 issue 要求交付分析文档，不修改自动交易策略，不进行本地编译验证。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。
