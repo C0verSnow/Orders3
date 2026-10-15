@@ -205,60 +205,65 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  container:
-    name: Native Linux container / GHCR
+  container-build:
+    name: Native Linux ${{ matrix.arch }} container
     needs: [web, publication, windows, linux, macos]
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+            host_arch: x86_64
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            host_arch: aarch64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     permissions:
       contents: read
       packages: write
-    outputs:
-      image: ${{ steps.image.outputs.name }}
-      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+      - name: Verify native runner and Docker architecture
+        shell: bash
+        env:
+          EXPECTED_HOST_ARCH: ${{ matrix.host_arch }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "$EXPECTED_HOST_ARCH"
+          test "$(docker info --format '{{.Architecture}}')" = "$EXPECTED_HOST_ARCH"
       - name: Set lowercase image name
         id: image
         shell: bash
         env:
           REPOSITORY: ${{ github.repository }}
         run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
       - uses: docker/setup-buildx-action@v4.4.1
-      - name: Image tags and repository labels
+      - name: Repository image labels
         id: meta
         uses: docker/metadata-action@v6.2.0
         with:
           images: ${{ steps.image.outputs.name }}
-          tags: |
-            type=raw,value=${{ needs.publication.outputs.tag }},enable=${{ needs.publication.outputs.enabled == 'true' }}
-            type=raw,value=master,enable=${{ github.ref == 'refs/heads/master' }}
-            type=raw,value=latest,enable=${{ needs.publication.outputs.enabled == 'true' && (github.ref == 'refs/heads/master' || needs.publication.outputs.prerelease == 'false') }}
-            type=sha
-          flavor: latest=false
-      - name: Build image for verification
+      - name: Build native image for verification
         uses: docker/build-push-action@v7.4.0
         with:
           context: .
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           load: true
           tags: orders-dashboard:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Build ARM64 image for verification
-        uses: docker/build-push-action@v7.4.0
-        with:
-          context: .
-          platforms: linux/arm64
-          load: true
-          tags: orders-dashboard:ci-arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=container-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=container-${{ matrix.arch }}
+      - name: Verify built image architecture
+        shell: bash
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: test "$(docker image inspect orders-dashboard:ci --format '{{.Architecture}}')" = "$EXPECTED_ARCH"
       - name: Verify container pages and APIs
         shell: bash
         run: |
@@ -304,12 +309,9 @@ jobs:
             docker rm -f orders-ci
             trap - EXIT
           }
-          verify_container linux/amd64 orders-dashboard:ci automatic
-          verify_container linux/amd64 orders-dashboard:ci manual
-          verify_container linux/amd64 orders-dashboard:ci manual-without-env
-          verify_container linux/arm64 orders-dashboard:ci-arm64 automatic
-          verify_container linux/arm64 orders-dashboard:ci-arm64 manual
-          verify_container linux/arm64 orders-dashboard:ci-arm64 manual-without-env
+          verify_container "${{ matrix.platform }}" orders-dashboard:ci automatic
+          verify_container "${{ matrix.platform }}" orders-dashboard:ci manual
+          verify_container "${{ matrix.platform }}" orders-dashboard:ci manual-without-env
       - name: Verify automatic random port mapping
         shell: bash
         run: |
@@ -334,17 +336,108 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push versioned image to GitHub Packages
+      - name: Push verified native image by digest
         id: push
         if: needs.publication.outputs.enabled == 'true'
         uses: docker/build-push-action@v7.4.0
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          outputs: type=image,name=${{ steps.image.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=container-${{ matrix.arch }}
+      - name: Export image digest
+        if: needs.publication.outputs.enabled == 'true'
+        shell: bash
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v7.0.1
+        if: needs.publication.outputs.enabled == 'true'
+        with:
+          name: container-digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  container:
+    name: Assemble multi-platform container / GHCR
+    needs: [publication, container-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.manifest.outputs.digest }}
+    steps:
+      - name: Set lowercase image name
+        id: image
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4.4.1
+        if: needs.publication.outputs.enabled == 'true'
+      - name: Image tags and repository labels
+        id: meta
+        if: needs.publication.outputs.enabled == 'true'
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=raw,value=${{ needs.publication.outputs.tag }},enable=${{ needs.publication.outputs.enabled == 'true' }}
+            type=raw,value=master,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=latest,enable=${{ needs.publication.outputs.enabled == 'true' && (github.ref == 'refs/heads/master' || needs.publication.outputs.prerelease == 'false') }}
+            type=sha
+          flavor: latest=false
+      - name: Download native image digests
+        if: needs.publication.outputs.enabled == 'true'
+        uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: container-digests-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+      - name: Log in to GHCR
+        if: needs.publication.outputs.enabled == 'true'
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish and verify multi-platform manifest
+        id: manifest
+        if: needs.publication.outputs.enabled == 'true'
+        shell: bash
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          VERSION: ${{ needs.publication.outputs.tag }}
+        run: |
+          set -euo pipefail
+          sources=()
+          for digest in *; do
+            [[ "$digest" =~ ^[a-f0-9]{64}$ ]]
+            sources+=("$IMAGE@sha256:$digest")
+          done
+          test "${#sources[@]}" -eq 2
+          tag_args=()
+          while IFS= read -r tag; do
+            test -n "$tag"
+            tag_args+=(--tag "$tag")
+          done <<< "$TAGS"
+          docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
+          digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{.Manifest.Digest}}')"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker buildx imagetools inspect "$IMAGE@$digest" --raw | jq -e '
+            [.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64", "arm64"]'
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
   deploy:
     name: Deploy master over Tailscale and SSH

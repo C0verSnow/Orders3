@@ -192,7 +192,7 @@ CMake 是唯一构建入口。测试覆盖 Cron、字符串精度、事务回滚
 
 ## 容器
 
-Docker 使用 Ubuntu 多阶段 C++ 构建，运行阶段直接启动原生程序。GHCR 镜像同时提供 `linux/amd64` 和 `linux/arm64`，Docker 自动选择对应架构；CI 分别启动两种架构的镜像检查网页和接口。
+Docker 使用 Ubuntu 多阶段 C++ 构建，运行阶段直接启动原生程序。GHCR 镜像同时提供 `linux/amd64` 和 `linux/arm64`，Docker 自动选择对应架构；CI 在 `ubuntu-24.04`（AMD64）和 `ubuntu-24.04-arm`（ARM64）原生 Runner 上分别构建并启动对应架构的镜像，不使用 QEMU；两边均检查网页、接口、三种启动方式、随机端口和 `docker.md` 地址记录。构建缓存按架构分开；仅发布时上传各自镜像摘要，全部检查成功后合并为同一个双架构镜像，再交给 Release 和部署任务。仓库需要具备对应 Runner 的使用权限，Runner 需要提供 Docker 和 Buildx；CI 会检查宿主机、Docker 引擎和镜像架构，架构不匹配直接失败。
 
 ```powershell
 docker run -d --name orders-dashboard --restart unless-stopped `
