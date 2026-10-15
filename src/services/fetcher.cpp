@@ -486,7 +486,6 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
         return method == "GET" ? get(url, headers, false, config.cancelled)
                                : post(url, body, headers, config.cancelled);
     };
-    syncEntryHistory(config, requester);
     const auto response = request("GET", "/api/v4/futures/usdt/positions");
     gate::ensureSuccess(response);
     QJsonParseError error;
@@ -494,6 +493,7 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
     if (error.error != QJsonParseError::NoError || !document.isArray())
         throw Error("持仓接口必须返回有效的 JSON 数组");
 
+    syncEntryHistory(config, requester);
     QJsonArray positions;
     QMap<QString, QJsonObject> contracts;
     QSet<QString> positionDirections;
