@@ -336,7 +336,7 @@ private slots:
         QCOMPARE(snapshot.value("values").toObject().value("API_SECRET_SET").toBool(), !expectedSecret.isEmpty());
         const auto values = snapshot.value("values").toObject();
         QCOMPARE(values.value("API_KEY_SOURCE").toString(), expectedKey.isEmpty() ? QString("missing")
-            : (!configuredKey.isEmpty() ? QString("configuration") : QString("supabase")));
+            : (!orders::normalizeGateCredential(configuredKey).isEmpty() ? QString("configuration") : QString("supabase")));
         dashboard.configureEnvironment({{"ORDERS_ALLOWED_ORIGIN", "http://localhost"}});
         QCOMPARE(dashboard.config().gateKey, expectedKey);
         QCOMPARE(dashboard.config().gateSecret, expectedSecret);
