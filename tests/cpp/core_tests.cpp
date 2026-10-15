@@ -282,6 +282,125 @@ private slots:
         QCOMPARE(dashboard.config().gateSecret, resolved.supabaseGateSecret);
     }
 
+    void savedSupabaseSettingsReloadAndRetryWithoutRestart() {
+        QTemporaryDir directory;
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        int requests = 0;
+        QElapsedTimer sinceFailure;
+        qint64 retryDelay = 0;
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (server.hasPendingConnections()) {
+                auto *socket = server.nextPendingConnection();
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                auto buffer = std::make_shared<QByteArray>();
+                connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
+                    buffer->append(socket->readAll());
+                    if (!buffer->contains("\r\n\r\n")) return;
+                    ++requests;
+                    const bool fail = requests == 1;
+                    if (fail) sinceFailure.start();
+                    else retryDelay = sinceFailure.elapsed();
+                    const QByteArray body = fail ? QByteArray("private-error-body")
+                        : QByteArray(R"([{"API_KEY=":"reloaded-key","API_SECRET=":"reloaded-secret"}])");
+                    socket->write(QByteArray("HTTP/1.1 ") + (fail ? "503 Failed" : "200 OK")
+                        + "\r\nConnection: close\r\nContent-Length: "
+                        + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                    socket->disconnectFromHost();
+                });
+            }
+        });
+        orders::Config config;
+        config.schedulePath = directory.filePath("config");
+        orders::Dashboard dashboard(config);
+        QElapsedTimer saveTime;
+        saveTime.start();
+        dashboard.configureEnvironment({
+            {"SUPABASE_URL", QString("http://127.0.0.1:%1").arg(server.serverPort())},
+            {"SUPABASE_ANON_KEY", "sb_publishable_fixture"}});
+        QVERIFY(saveTime.elapsed() < 1000); // The save does not wait for network/retries.
+        QTRY_COMPARE_WITH_TIMEOUT(requests, 1, 2000);
+        QVERIFY(dashboard.config().gateKey.isEmpty());
+        QTRY_COMPARE_WITH_TIMEOUT(dashboard.config().gateSecret, QString("reloaded-secret"), 8000);
+        QCOMPARE(dashboard.config().gateKey, QString("reloaded-key"));
+        QCOMPARE(requests, 2);
+        QVERIFY(retryDelay >= 4900);
+        const auto snapshot = QJsonDocument(dashboard.environmentSnapshot()).toJson();
+        QVERIFY(!snapshot.contains("reloaded-secret"));
+        QVERIFY(!snapshot.contains("private-error-body"));
+        QVERIFY(!QJsonDocument(orders::loadEnvironmentSettings(config.schedulePath)).toJson()
+            .contains("reloaded-secret"));
+        QTest::qWait(5500);
+        QCOMPARE(requests, 2); // Success stops retries.
+        // Saving again (even the same URL) must request the latest remote values.
+        dashboard.configureEnvironment({{"SUPABASE_URL", dashboard.config().supabaseUrl}});
+        QTRY_COMPARE_WITH_TIMEOUT(requests, 3, 2000);
+    }
+
+    void changedSupabaseSettingsDiscardOldRequestAndFallback() {
+        QTemporaryDir directory;
+        QTcpServer oldServer, newServer;
+        QVERIFY(oldServer.listen(QHostAddress::LocalHost, 0));
+        QVERIFY(newServer.listen(QHostAddress::LocalHost, 0));
+        int oldRequests = 0, newRequests = 0;
+        const auto serve = [&](QTcpServer &server, int &count, const QByteArray &body, bool delay) {
+            connect(&server, &QTcpServer::newConnection, &server, [&, body, delay, serverPtr = &server, countPtr = &count] {
+                while (serverPtr->hasPendingConnections()) {
+                    auto *socket = serverPtr->nextPendingConnection();
+                    auto buffer = std::make_shared<QByteArray>();
+                    connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                    connect(socket, &QTcpSocket::readyRead, socket, [socket, buffer, body, delay, countPtr] {
+                        buffer->append(socket->readAll());
+                        if (!buffer->contains("\r\n\r\n")) return;
+                        ++*countPtr;
+                        const auto respond = [socket, body] {
+                            socket->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: "
+                                + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                            socket->disconnectFromHost();
+                        };
+                        QTimer::singleShot(delay ? 1000 : 0, socket, respond);
+                    });
+                }
+            });
+        };
+        serve(oldServer, oldRequests, R"([{"API_KEY=":"stale-key","API_SECRET=":"stale-secret"}])", true);
+        serve(newServer, newRequests, R"([{"API_KEY=":"latest-key","API_SECRET=":"latest-secret"}])", false);
+        orders::Config config;
+        config.schedulePath = directory.filePath("config");
+        config.supabaseGateKey = "previous-key";
+        config.supabaseGateSecret = "previous-secret";
+        config.applyConnectionSettings();
+        orders::Dashboard dashboard(config);
+        dashboard.configureEnvironment({
+            {"SUPABASE_URL", QString("http://127.0.0.1:%1").arg(oldServer.serverPort())},
+            {"SUPABASE_ANON_KEY", "sb_publishable_old"}});
+        QVERIFY(dashboard.config().supabaseGateKey.isEmpty());
+        QTRY_COMPARE_WITH_TIMEOUT(oldRequests, 1, 2000);
+        dashboard.configureEnvironment({
+            {"SUPABASE_URL", QString("http://127.0.0.1:%1").arg(newServer.serverPort())},
+            {"SUPABASE_ANON_KEY", "sb_publishable_new"}, {"API_KEY", "manual-key"}});
+        QTRY_COMPARE_WITH_TIMEOUT(dashboard.config().gateSecret, QString("latest-secret"), 3000);
+        QCOMPARE(dashboard.config().gateKey, QString("manual-key"));
+        QCOMPARE(newRequests, 1);
+        QTest::qWait(1200);
+        QCOMPARE(dashboard.config().supabaseGateKey, QString("latest-key"));
+        QCOMPARE(dashboard.config().gateSecret, QString("latest-secret"));
+    }
+
+    void credentialRetryStopsOnDestruction() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.schedulePath = directory.filePath("config");
+        QElapsedTimer elapsed;
+        elapsed.start();
+        {
+            orders::Dashboard dashboard(config);
+            dashboard.reloadGateCredentials(); // Missing startup configuration starts retries.
+            QTest::qWait(100);
+        }
+        QVERIFY(elapsed.elapsed() < 1000); // Does not wait for the five-second retry delay.
+    }
+
     void missingGateCredentialsNeverAuthenticate() {
         orders::Config config;
         try {

@@ -7,6 +7,8 @@
 #include <QElapsedTimer>
 #include <atomic>
 #include <mutex>
+#include <condition_variable>
+#include <thread>
 
 namespace orders {
 struct RefreshResult {
@@ -18,6 +20,8 @@ struct RefreshResult {
 class ORDERS_CORE_EXPORT Dashboard {
 public:
     explicit Dashboard(Config config);
+    ~Dashboard();
+    void reloadGateCredentials();
     RefreshResult refreshSources();
     RefreshResult refreshOrders(bool executeCloseOrders = true);
     QJsonObject sourceSnapshot() const;
@@ -30,9 +34,16 @@ public:
     bool sourcesBusy() const { return sourcesBusy_; }
 
 private:
+    void requestCredentialsLocked();
+    void credentialLoop();
     Config config_;
     Activity activity_;
     mutable std::mutex configMutex_;
+    std::condition_variable credentialsChanged_;
+    std::thread credentialsThread_;
+    bool credentialsStopping_ = false;
+    quint64 credentialsGeneration_ = 0;
+    std::shared_ptr<std::atomic<bool>> credentialsCancelled_;
     std::atomic<bool> sourcesBusy_{false};
     std::atomic<bool> ordersBusy_{false};
     mutable std::mutex sourceMutex_;
