@@ -2,6 +2,7 @@
 #include "orders_core_export.h"
 #include "core/config.hpp"
 #include "services/activity.hpp"
+#include "services/fetcher.hpp"
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QElapsedTimer>
@@ -19,7 +20,7 @@ struct RefreshResult {
 // Source and Gate refreshes have separate exclusion locks; SQL access is serialized per file.
 class ORDERS_CORE_EXPORT Dashboard {
 public:
-    explicit Dashboard(Config config);
+    explicit Dashboard(Config config, ClosePositionRequester gateRequester = {});
     ~Dashboard();
     void reloadGateCredentials();
     RefreshResult refreshSources();
@@ -37,6 +38,7 @@ private:
     void requestCredentialsLocked();
     void credentialLoop();
     Config config_;
+    ClosePositionRequester gateRequester_;
     Activity activity_;
     mutable std::mutex configMutex_;
     std::condition_variable credentialsChanged_;

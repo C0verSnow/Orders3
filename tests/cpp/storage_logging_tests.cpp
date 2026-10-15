@@ -59,7 +59,7 @@ private slots:
         orders::saveSources(path, {});
         orders::saveTrailingOrders(path, {});
         orders::savePositions(path, {});
-        orders::saveManagedCloseOrderId(path, "account", "old-id");
+        orders::saveEntryHistory(path, "account", {}, 1);
         {
             QFile file(path);
             QVERIFY(file.open(QIODevice::ReadWrite));
@@ -68,8 +68,8 @@ private slots:
         QVERIFY_EXCEPTION_THROWN(orders::saveSources(path, {}), orders::Error);
         QVERIFY_EXCEPTION_THROWN(orders::saveTrailingOrders(path, {}), orders::Error);
         QVERIFY_EXCEPTION_THROWN(orders::savePositions(path, {}), orders::Error);
-        QVERIFY_EXCEPTION_THROWN(orders::saveManagedCloseOrderId(path, "account", "new-id"), orders::Error);
-        QCOMPARE(orders::readManagedCloseOrderIds(path, "account"), QStringList{"old-id"});
+        QVERIFY_EXCEPTION_THROWN(orders::saveEntryHistory(path, "account", {}, 2), orders::Error);
+        QCOMPARE(orders::entryHistoryWatermark(path, "account"), qint64(1));
         QVERIFY(orders::readSources(path).items.isEmpty());
         QVERIFY(orders::readTrailingOrders(path).orders.isEmpty());
         QVERIFY(orders::readPositions(path).isEmpty());
@@ -120,8 +120,8 @@ private slots:
         QVERIFY_EXCEPTION_THROWN(orders::saveSources(first, large), orders::Error);
         QCOMPARE(orders::readSources(first).items, old);
         QVERIFY(QFileInfo(first).size() + QFileInfo(second).size() <= orders::databaseLimitBytes);
-        orders::saveManagedCloseOrderId(first, "account", "small-write");
-        QCOMPARE(orders::readManagedCloseOrderIds(first, "account"), QStringList{"small-write"});
+        orders::saveEntryHistory(first, "account", {}, 1);
+        QCOMPARE(orders::entryHistoryWatermark(first, "account"), qint64(1));
     }
 
     void concurrentDatabasesCannotEachSpendTheSameSpace() {

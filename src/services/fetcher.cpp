@@ -8,7 +8,10 @@
 #include <QDateTime>
 #include <QCryptographicHash>
 #include <QRegularExpression>
+#include <QMap>
 #include <QSet>
+#include <QMutexLocker>
+#include <QRecursiveMutex>
 #include <QStringList>
 #include <algorithm>
 #include <cmath>
@@ -23,6 +26,7 @@ namespace {
 constexpr int kSourcePageSize = 1000;
 const QString kSourcePath = QStringLiteral("/rest/v1/orders");
 const QString kGateHost = QStringLiteral("https://api.gateio.ws");
+QRecursiveMutex tradingMutex;
 const QByteArray kTrailingOrdersPath = "/api/v4/futures/usdt/autoorder/v1/trail/list";
 
 void ensureNotCancelled(const Config &config) {
@@ -88,6 +92,94 @@ QJsonArray fetchSourceRecords(const Config &config) {
     }
 }
 
+QJsonObject contractParameters(const QString &contract, const ClosePositionRequester &requester,
+                               const Config &config) {
+    static const QRegularExpression pattern(R"(^[A-Z0-9]+_USDT$)");
+    if (!pattern.match(contract).hasMatch()) throw Error("合约无效");
+    const auto path = "/api/v4/futures/usdt/contracts/" + contract.toUtf8();
+    ensureNotCancelled(config);
+    const auto response = requester ? requester("GET", path, {}, {})
+        : get(QUrl(kGateHost + QString::fromUtf8(path)), {}, false, config.cancelled);
+    gate::ensureSuccess(response);
+    QJsonParseError error;
+    const auto document = QJsonDocument::fromJson(response.body, &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject()
+        || document.object().value("name").toString() != contract)
+        throw Error("合约详情无效或合约名称不匹配");
+    QJsonObject parameters;
+    for (const QString &field : {"quanto_multiplier", "order_price_round"}) {
+        const auto value = document.object().value(field);
+        if (!value.isString()) throw Error("合约详情缺少十进制文本字段：" + field);
+        const auto number = decimal::parse(value.toString());
+        if (number.negative || number.digits == "0") throw Error("合约参数必须大于零：" + field);
+        parameters.insert(field, value);
+    }
+    return parameters;
+}
+
+// A fill confirms a real entry even if it was closed again between position polls.
+// Scan a fixed window with an overlapping start second and persist atomically.
+void syncEntryHistory(const Config &config, const ClosePositionRequester &requester) {
+    const auto owner = QString::fromLatin1(QCryptographicHash::hash(
+        config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
+    const auto previous = entryHistoryWatermark(config.dataPath, owner);
+    const qint64 throughMs = QDateTime::currentMSecsSinceEpoch();
+    const qint64 endSeconds = throughMs / 1000 + 1;
+    if (previous >= throughMs) return;
+    const qint64 startSeconds = previous < 0 ? endSeconds - 7LL * 24 * 60 * 60
+                                           : previous / 1000;
+    QJsonArray events;
+    QSet<QString> seen;
+    for (qint64 offset = 0; ; ) {
+        ensureNotCancelled(config);
+        const auto path = QByteArray("/api/v4/futures/usdt/my_trades_timerange?from=")
+            + QByteArray::number(startSeconds) + "&to=" + QByteArray::number(endSeconds)
+            + "&limit=100&offset=" + QByteArray::number(offset);
+        const auto headers = gate::signedGetHeaders(path, config.gateKey, config.gateSecret);
+        const auto response = requester ? requester("GET", path, {}, headers)
+            : get(QUrl(kGateHost + QString::fromUtf8(path)), headers, false, config.cancelled);
+        gate::ensureSuccess(response);
+        QJsonParseError error;
+        const auto document = QJsonDocument::fromJson(response.body, &error);
+        if (error.error != QJsonParseError::NoError || !document.isArray())
+            throw Error("成交历史必须返回有效数组，暂停新开仓");
+        const auto page = document.array();
+        if (page.isEmpty()) break;
+        for (const auto &value : page) {
+            if (!value.isObject()) throw Error("成交历史记录无效");
+            const auto fill = value.toObject();
+            const auto id = fill.value("trade_id").toString();
+            static const QRegularExpression idPattern(R"(^[0-9]+$)");
+            if (!idPattern.match(id).hasMatch() || seen.contains(id))
+                throw Error("成交历史 ID 无效或分页重复，暂停新开仓");
+            seen.insert(id);
+            const auto time = fill.value("create_time");
+            if (!time.isDouble() || !std::isfinite(time.toDouble()) || time.toDouble() < 0
+                || time.toDouble() > 9007199254740.0)
+                throw Error("成交历史时间无效");
+            const qint64 timeMs = qint64(std::floor(time.toDouble() * 1000));
+            bool sizeOk = false, closeOk = false;
+            const auto size = fill.value("size").toString().toLongLong(&sizeOk);
+            const auto closed = fill.value("close_size").toString().toLongLong(&closeOk);
+            const auto contract = fill.value("contract").toString();
+            static const QRegularExpression contractPattern(R"(^[A-Z0-9]+_USDT$)");
+            if (!sizeOk || !closeOk || size == 0
+                || !contractPattern.match(contract).hasMatch()
+                || (closed != 0 && ((closed > 0) != (size > 0))))
+                throw Error("成交历史合约或开平仓数量无效");
+            // Same-side fill beyond close_size opens/adds; a pure/partial close does not.
+            const bool opens = size > 0 ? size > closed : size < closed;
+            if (opens && timeMs > previous && timeMs <= throughMs)
+                events.append(QJsonObject{{"event_id", id}, {"entry_time", timeMs},
+                    {"contract", contract}, {"side", size > 0 ? 1 : -1}});
+        }
+        offset += page.size(); // Do not assume the server honors the requested page size.
+        if (offset > (std::numeric_limits<int>::max)()) throw Error("成交历史分页数量过多");
+    }
+    ensureNotCancelled(config);
+    saveEntryHistory(config.dataPath, owner, events, throughMs);
+}
+
 } // namespace
 
 void loadGateCredentials(Config &config) {
@@ -148,12 +240,24 @@ void loadGateCredentials(Config &config) {
         throw Error(problem + "；继续使用原有 Gate 配置");
 }
 
-QJsonArray fetchSources(const Config &config) {
+QJsonArray fetchSources(const Config &config, const ClosePositionRequester &requester) {
     ensureNotCancelled(config);
     if (config.supabaseUrl.isEmpty() || config.supabaseKey.isEmpty())
         throw Error("请在程序的「连接与存储配置」中填写 Supabase 地址和密钥");
 
-    const auto orders = fetchSourceRecords(config);
+    auto orders = fetchSourceRecords(config);
+    QMap<QString, QJsonObject> contracts;
+    for (qsizetype index = 0; index < orders.size(); ++index) {
+        auto order = orders[index].toObject();
+        if (parseOrderRecord(order, int(index)).isEmpty()) continue;
+        const auto contract = order.value("contract").toString();
+        if (!contracts.contains(contract))
+            contracts.insert(contract, contractParameters(contract, requester, config));
+        const auto parameters = contracts.value(contract);
+        for (auto field = parameters.begin(); field != parameters.end(); ++field)
+            order.insert(field.key(), field.value());
+        orders[index] = order;
+    }
     ensureNotCancelled(config);
     return orders;
 }
@@ -178,7 +282,6 @@ QJsonArray fetchTrailingOrders(const Config &config) {
 namespace {
 const QByteArray kCreatePath = "/api/v4/futures/usdt/autoorder/v1/trail/create";
 const QByteArray kStopPath = "/api/v4/futures/usdt/autoorder/v1/trail/stop";
-constexpr qint64 kSevenDaysMs = 7LL * 24 * 60 * 60 * 1000;
 
 QString orderAmount(const QJsonValue &value) {
     static const QRegularExpression pattern(
@@ -233,7 +336,9 @@ QJsonObject successfulResponse(const HttpResult &response) {
 }
 } // namespace
 
-QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender &sender) {
+QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender &sender,
+                                const ClosePositionRequester &requester) {
+    QMutexLocker<QRecursiveMutex> tradingLock(&tradingMutex);
     ensureNotCancelled(config);
     const auto sources = readSources(config.dataPath).orders;
     auto trailing = readTrailingOrders(config.ordersPath).orders;
@@ -250,47 +355,26 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
         const auto amount = orderAmount(source.value("amount"));
         const auto price = orderPrice(source.value("activation_price"));
         const auto timestamp = orderTimestamp(source.value("timestamp"));
-        bool duplicate = false;
-        for (const auto &previous : trailing) {
-            const auto old = previous.toObject();
-            if (old.value("contract").toString() != contract
-                || old.value("reduce_only").toBool()
-                || old.value("original_status").toInt() != 4)
-                continue;
-            const auto oldAmount = orderAmount(old.value("amount"));
-            const auto oldTime = orderTimestamp(old.value("timestamp"));
-            if (amount.startsWith('-') == oldAmount.startsWith('-')
-                && std::abs(timestamp - oldTime) < kSevenDaysMs) {
-                duplicate = true;
-                break;
-            }
-        }
         QJsonObject entry{{"contract", contract}, {"amount", amount},
                           {"activation_price", price}, {"timestamp", timestamp},
                           {"record_position", source.value("record_position")},
                           {"order_index", source.value("order_index")}};
-        if (duplicate) {
+        bool unchanged = false;
+        for (qsizetype index = 0; index < trailing.size(); ++index) {
+            const auto old = trailing[index].toObject();
+            const int status = old.value("original_status").toInt();
+            if (retained.contains(index) || old.value("reduce_only").toBool()
+                || (status != 1 && status != 2) || !sameOrderParameters(old, entry))
+                continue;
+            retained.insert(index);
+            entry.insert("id", old.value("id"));
             entry.insert("action", "skipped");
-            entry.insert("message", "同合约、同方向已完成订单的时间相差不到7天");
+            entry.insert("message", "合约、方向、数量和激活价格未变化，保留有效开仓单");
             results.append(entry);
-        } else {
-            bool unchanged = false;
-            for (qsizetype index = 0; index < trailing.size(); ++index) {
-                const auto old = trailing[index].toObject();
-                const int status = old.value("original_status").toInt();
-                if (retained.contains(index) || old.value("reduce_only").toBool()
-                    || (status != 1 && status != 2) || !sameOrderParameters(old, entry))
-                    continue;
-                retained.insert(index);
-                entry.insert("id", old.value("id"));
-                entry.insert("action", "skipped");
-                entry.insert("message", "合约、方向、数量和激活价格未变化，保留有效开仓单");
-                results.append(entry);
-                unchanged = true;
-                break;
-            }
-            if (!unchanged) candidates.append(entry);
+            unchanged = true;
+            break;
         }
+        if (!unchanged) candidates.append(entry);
     }
     const bool hasPendingOpeningOrders = std::any_of(trailing.begin(), trailing.end(),
         [](const QJsonValue &value) {
@@ -303,6 +387,7 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
         return results;
     if (config.gateKey.isEmpty() || config.gateSecret.isEmpty())
         throw Error("请在程序的「连接与存储配置」中填写 Gate API Key 和 Secret");
+    if (!candidates.isEmpty()) syncEntryHistory(config, requester);
     const auto send = [&](const QByteArray &path, const QJsonObject &payload) {
         ensureNotCancelled(config);
         const auto body = QJsonDocument(payload).toJson(QJsonDocument::Compact);
@@ -351,6 +436,14 @@ QJsonArray createTrailingOrders(const Config &config, const TrailingOrderSender 
             {"price_type", 3}, {"price_offset", "1%"}, {"pos_margin_mode", "cross"},
             {"position_mode", "dual_plus"}, {"text", "apiv4"}};
         try {
+            syncEntryHistory(config, requester);
+            if (hasRecentEntry(config.dataPath, result.value("contract").toString(),
+                               amount.startsWith('-') ? -1 : 1, QDateTime::currentMSecsSinceEpoch())) {
+                result.insert("action", "skipped");
+                result.insert("message", "最近7天已有同合约、同方向的实际入仓或加仓");
+                results.append(result);
+                continue;
+            }
             const auto response = send(kCreatePath, body);
             const auto id = response.value("data").toObject().value("id").toString();
             if (id.isEmpty())
@@ -380,6 +473,7 @@ QJsonArray createTrailingOrders() {
 }
 
 QJsonArray closePositionOrders(const Config &config, const ClosePositionRequester &requester) {
+    QMutexLocker<QRecursiveMutex> tradingLock(&tradingMutex);
     ensureNotCancelled(config);
     if (config.gateKey.isEmpty() || config.gateSecret.isEmpty())
         throw Error("请在程序的「连接与存储配置」中填写 Gate API Key 和 Secret");
@@ -392,6 +486,7 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
         return method == "GET" ? get(url, headers, false, config.cancelled)
                                : post(url, body, headers, config.cancelled);
     };
+    syncEntryHistory(config, requester);
     const auto response = request("GET", "/api/v4/futures/usdt/positions");
     gate::ensureSuccess(response);
     QJsonParseError error;
@@ -400,6 +495,7 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
         throw Error("持仓接口必须返回有效的 JSON 数组");
 
     QJsonArray positions;
+    QMap<QString, QJsonObject> contracts;
     QSet<QString> positionDirections;
     // Validate the complete snapshot before cancelling any protection orders.
     for (const auto &value : document.array()) {
@@ -433,13 +529,17 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
             decimal::parse(source.value(field).toString());
             position.insert(field, source.value(field));
         }
-        // Keep size's sign in the derived value; the exchange's value is not used.
-        position.insert("value", decimal::product(QString::number(size),
-                                                  position.value("entry_price").toString()));
+        if (!contracts.contains(contract))
+            contracts.insert(contract, contractParameters(contract, requester, config));
+        const auto parameters = contracts.value(contract);
+        for (auto field = parameters.begin(); field != parameters.end(); ++field)
+            position.insert(field.key(), field.value());
+        position.insert("value", decimal::product(decimal::product(QString::number(size),
+            position.value("quanto_multiplier").toString()), position.value("entry_price").toString()));
         position.insert("close_price", decimal::closePrice(
-            position.value("entry_price").toString(), position.value("value").toString(),
-            position.value("initial_margin").toString(), position.value("mark_price").toString(),
-            size < 0));
+            position.value("entry_price").toString(), QString::number(size),
+            position.value("initial_margin").toString(), position.value("quanto_multiplier").toString(),
+            position.value("order_price_round").toString()));
         positions.append(position);
     }
     ensureNotCancelled(config);
@@ -466,8 +566,6 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
     }
     ensureNotCancelled(config);
     saveTrailingOrders(config.ordersPath, trailing);
-    const auto owner = QString::fromLatin1(QCryptographicHash::hash(
-        config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
     QJsonArray results;
     QJsonArray candidates;
     QSet<qsizetype> retained;
@@ -545,7 +643,6 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
             bool valid = false;
             if (id.toLongLong(&valid) <= 0 || !valid)
                 throw Error("创建响应缺少有效订单 ID；请先核对 Gate 列表");
-            saveManagedCloseOrderId(config.ordersPath, owner, id);
             trailing.append(QJsonObject{{"id", id}, {"contract", body.value("contract")},
                 {"amount", amount}, {"activation_price", body.value("activation_price")},
                 {"reduce_only", true}, {"original_status", 1},

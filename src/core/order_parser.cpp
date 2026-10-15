@@ -24,13 +24,15 @@ QRegularExpression fieldPattern(const QString &label) {
     return pattern;
 }
 
-const std::array<OrderField, 5> &orderFields() {
-    static const std::array<OrderField, 5> fields{{
+const std::array<OrderField, 7> &orderFields() {
+    static const std::array<OrderField, 7> fields{{
         {"contract", fieldPattern("(?:contract|Symbol)")},
         {"activation_price", fieldPattern("(?:activation_price|Price)")},
         {"side", fieldPattern("Side")},
         {"amount", fieldPattern("(?:amount|Size)")},
         {"timestamp", fieldPattern("(?:Timestamp|Orders Times)"), true},
+        {"quanto_multiplier", fieldPattern("quanto_multiplier")},
+        {"order_price_round", fieldPattern("order_price_round")},
     }};
     return fields;
 }
@@ -90,7 +92,8 @@ QByteArray preserveOrderNumbers(const QByteArray &body) {
         const auto token = body.mid(start, index - start);
         result.append(token);
         const auto name = QJsonDocument::fromJson("[" + token + "]").array().first().toString();
-        if (name != "id" && name != "activation_price" && name != "amount" && name != "value")
+        if (name != "id" && name != "activation_price" && name != "amount" && name != "value"
+            && name != "quanto_multiplier" && name != "order_price_round")
             continue;
         qsizetype number = index;
         while (number < body.size() && QByteArray(" \t\r\n").contains(body[number])) ++number;
@@ -136,9 +139,17 @@ QJsonObject parseOrderRecord(const QJsonObject &record, int recordPosition) {
     if (!match.hasMatch() || !valid || contracts == 0) throw Error("orders 表数量必须为非零整数张数");
     const auto side = record.value("side");
     if (!side.isUndefined() && !side.isNull() && !side.isString()) throw Error("orders 表 side 必须为文本");
-    return {{"record_position", recordPosition}, {"order_index", 0}, {"contract", contract},
+    QJsonObject result{{"record_position", recordPosition}, {"order_index", 0}, {"contract", contract},
             {"activation_price", price}, {"amount", amount}, {"side", side.isUndefined() ? QJsonValue(QJsonValue::Null) : side},
             {"timestamp", timestamp}};
+    for (const QString &field : {"quanto_multiplier", "order_price_round"}) {
+        if (!record.contains(field) || record.value(field).isNull()) continue;
+        const auto text = decimalText(record.value(field), field);
+        const auto number = decimal::parse(text);
+        if (number.negative || number.digits == "0") throw Error("合约参数必须大于零：" + field);
+        result.insert(field, text);
+    }
+    return result;
 }
 
 QJsonArray parseSupabaseOrders(const QByteArray &body) {

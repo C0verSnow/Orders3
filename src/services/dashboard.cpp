@@ -23,7 +23,8 @@ QJsonValue nullable(const QString &text) {
 }
 } // namespace
 
-Dashboard::Dashboard(Config config) : config_(std::move(config)) {
+Dashboard::Dashboard(Config config, ClosePositionRequester gateRequester)
+    : config_(std::move(config)), gateRequester_(std::move(gateRequester)) {
     uptime_.start();
 }
 
@@ -164,7 +165,7 @@ RefreshResult Dashboard::refreshSources() {
             executionResults_ = {};
         }
         const auto current = config();
-        const auto items = fetchSources(current);
+        const auto items = fetchSources(current, gateRequester_);
         {
             std::lock_guard<std::mutex> lock(sourceMutex_);
             saveSources(current.dataPath, items);
@@ -177,7 +178,12 @@ RefreshResult Dashboard::refreshSources() {
         std::lock_guard<std::mutex> trading(gateMutex_);
         ordersBusy_ = true;
         BusyGuard ordersGuard(ordersBusy_);
-        const auto execution = createTrailingOrders(current);
+        TrailingOrderSender sender;
+        if (gateRequester_) sender = [this](const QByteArray &path, const QByteArray &body,
+                                           const HttpHeaders &headers) {
+            return gateRequester_("POST", path, body, headers);
+        };
+        const auto execution = createTrailingOrders(current, sender, gateRequester_);
         bool success = true;
         {
             std::lock_guard<std::mutex> lock(sourceMutex_);
@@ -225,7 +231,7 @@ RefreshResult Dashboard::refreshOrders(bool executeCloseOrders) {
         }
         // Refresh positions/list, retain unchanged closing orders, and replace only
         // unmatched orders under the same trading lock as opening orders.
-        const auto execution = closePositionOrders(current);
+        const auto execution = closePositionOrders(current, gateRequester_);
         std::lock_guard<std::mutex> lock(ordersMutex_);
         closeExecutionResults_ = execution;
         ordersError_.clear();

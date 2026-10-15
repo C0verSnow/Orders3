@@ -10,18 +10,20 @@
 namespace orders {
 // Read the single secret row on startup or live reload; keep fallbacks only in memory.
 ORDERS_CORE_EXPORT void loadGateCredentials(Config &config);
+using ClosePositionRequester = std::function<HttpResult(const QByteArray &, const QByteArray &,
+                                                       const QByteArray &, const HttpHeaders &)>;
 // One-shot fetches. Scheduling and persistence belong to their respective services.
-ORDERS_CORE_EXPORT QJsonArray fetchSources(const Config &config);
+ORDERS_CORE_EXPORT QJsonArray fetchSources(const Config &config,
+                                              const ClosePositionRequester &requester = {});
 ORDERS_CORE_EXPORT QJsonArray fetchTrailingOrders(const Config &config);
 // The optional sender allows offline verification without contacting an exchange.
 using TrailingOrderSender = std::function<HttpResult(const QByteArray &, const QByteArray &,
                                                     const HttpHeaders &)>;
 ORDERS_CORE_EXPORT QJsonArray createTrailingOrders(const Config &config,
-                                                   const TrailingOrderSender &sender = {});
-ORDERS_CORE_EXPORT QJsonArray createTrailingOrders();
-using ClosePositionRequester = std::function<HttpResult(const QByteArray &, const QByteArray &,
-                                                       const QByteArray &, const HttpHeaders &)>;
-ORDERS_CORE_EXPORT QJsonArray closePositionOrders(const Config &config,
+                                                   const TrailingOrderSender &sender = {},
                                                  const ClosePositionRequester &requester = {});
+ORDERS_CORE_EXPORT QJsonArray createTrailingOrders();
+ORDERS_CORE_EXPORT QJsonArray closePositionOrders(const Config &config,
+                                               const ClosePositionRequester &requester = {});
 ORDERS_CORE_EXPORT QJsonArray closePositionOrders();
 } // namespace orders
