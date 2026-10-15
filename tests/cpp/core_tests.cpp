@@ -929,6 +929,8 @@ private slots:
                                        const QByteArray &, const orders::HttpHeaders &) {
                 if (method != "GET") ++writes;
                 if (path.endsWith("/positions")) return orders::HttpResult{200, "[]"};
+                if (path.contains("/trail/list")) return orders::HttpResult{200,
+                    R"({"code":0,"timestamp":1,"data":{"orders":[]}})"};
                 const bool first = path.endsWith("offset=0");
                 return orders::HttpResult{200, QJsonDocument(first ? QJsonArray{fill} : QJsonArray{}).toJson()};
             };
