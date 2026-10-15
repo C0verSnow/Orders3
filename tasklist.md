@@ -16,6 +16,8 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-14：issue #14 已完成并关闭，PR #15 已转为可审阅状态：https://github.com/C0verSnow/Orders3/pull/15 。代码 301069d 的完整远端 CI 通过：https://github.com/C0verSnow/Orders3/actions/runs/38666215830 ，包含网页和脚本、Windows x64、Linux x64/ARM64、macOS x64/ARM64，以及 AMD64 和 ARM64 原生 Docker 构建、架构核对、网页接口、三种启动方式、随机端口与 docker.md 地址检查；确认仓库可运行 ubuntu-24.04-arm Docker 任务。
+- 2026-10-14：issue #14 最后只更新任务记录，使用 [skip ci]；本地仅做静态检查和差异检查，未进行本地编译验证。GitHub 连接器写入权限不足，PR 创建、更新、转可审阅和 issue 关闭改用本机已有 GitHub 登录完成，没有输出凭据。
 - 2026-10-14：issue #14 已拆分 AMD64/ARM64 原生 Docker 构建和验证，删除 QEMU，增加宿主机、Docker 引擎、镜像架构检查；两边保留网页、接口、三种启动方式、随机端口和地址记录检查，缓存分架构。发布时上传各自摘要，独立任务合并双架构清单，保留原有标签、Release 和部署输出。
 - 2026-10-14：issue #14 的 actionlint、YAML 解析、Bash 语法和 git 差异检查通过；没有运行本地构建、编译、容器或冒烟脚本。
 - 2026-10-14：PR #13 合入最新 master（6a67f94），解决 tasklist.md 三处冲突，完整保留 issue #10、issue #12 和本次任务记录；README 自动合并，保留凭据后台刷新说明和平仓收益分析入口。静态检查确认业务代码与最新 master 一致、原 PR 分析文档未变；未进行本地编译验证。
@@ -94,6 +96,7 @@
 - 将原来的 Tasklist.md 改为用户要求的 tasklist.md，继续按四个栏目记录。
 
 ## 没做：
+- 2026-10-14：issue #14 没有合并 master、发布真实镜像或部署服务器；GHCR 摘要上传、双架构清单合并和发布摘要输出只在发布分支执行，本次 PR CI 没有执行这些发布步骤。
 - 2026-10-14：issue #12 按需求交付分析说明，未修改交易策略、未合并或部署、未连接真实交易接口；逐笔成本定义和下单方式需在后续策略实现时确定。
 - 2026-10-14：issue #10 没有合并 master、部署服务器或连接真实 Gate 下单；密钥读取回归使用远端 CI 模拟 Supabase 接口。
 - 2026-10-14：issue #8 未合并 master，未连接真实 Gate 操作订单，未执行真实服务器部署；远端回归使用模拟接口和 CI Docker。未进行本地 C++ 编译验证；曾执行的 Python 字节码语法检查已在上面如实记录。
@@ -107,7 +110,6 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- 2026-10-14：issue #14 已确认是唯一未完成事项；从最新 origin/master 新建 ci-issue-14-native-arm64 分支，已完成原生镜像构建、测试和发布拆分，准备提交 PR，交给远端 CI 验证。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。
