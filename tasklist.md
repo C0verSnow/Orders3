@@ -124,7 +124,7 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- 2026-10-16：已确认只有 issue #21 未完成，从最新 origin/master 建立 feature-issue-21-fixed-margin；正在检查成交历史、保证金记录和旧数据库兼容，用户已确认旧持仓首次读取时初始化保证金。已实现历史加列、持久化固定值、新成交更新及价格补偿，补充回归和文档，准备静态检查与远端 CI。
+- 2026-10-16：已确认只有 issue #21 未完成，从最新 origin/master 建立 feature-issue-21-fixed-margin；正在检查成交历史、保证金记录和旧数据库兼容，用户已确认旧持仓首次读取时初始化保证金。已实现历史加列、持久化固定值、新成交更新及价格补偿，补充回归和文档，静态差异检查通过；已提交 PR #22：https://github.com/C0verSnow/Orders3/pull/22 ，远端 CI 已启动。GitHub 连接器创建 PR 返回 403，改用本机已有 GitHub 登录完成，未输出凭据。本地未编译或运行测试。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。

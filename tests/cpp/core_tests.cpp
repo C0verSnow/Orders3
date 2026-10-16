@@ -841,7 +841,7 @@ private slots:
         config.gateKey = config.gateSecret = "offline";
         const auto owner = QString::fromLatin1(QCryptographicHash::hash(
             config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
-        const auto baseTime = QDateTime::currentMSecsSinceEpoch() - 10000;
+        const auto baseTime = (QDateTime::currentMSecsSinceEpoch() / 1000 - 10) * 1000;
         orders::saveEntryHistory(config.dataPath, owner, {}, baseTime - 1);
         QJsonObject position{{"contract", "BTC_USDT"}, {"size", 1}, {"entry_price", "100"},
             {"leverage_max", "75"}, {"unrealised_pnl", "0"}, {"realised_pnl", "0"},
@@ -894,7 +894,7 @@ private slots:
         QCOMPARE(orders::readPositions(config.dataPath)[0].toObject().value("initial_margin").toString(), QString("20"));
         QVERIFY(resetProgress(baseTime));
         fills = QJsonArray{QJsonObject{{"trade_id", "2"}, {"contract", "BTC_USDT"},
-            {"size", -1}, {"close_size", -1}, {"create_time", double(baseTime + 1) / 1000}}};
+            {"size", -1}, {"close_size", -1}, {"create_time", double(baseTime + 1000) / 1000}}};
         orders::closePositionOrders(config, requester);
         QCOMPARE(orders::readPositions(config.dataPath)[0].toObject().value("initial_margin").toString(), QString("20"));
         positionsFail = true;
@@ -903,7 +903,7 @@ private slots:
         QCOMPARE(writes, before);
         QVERIFY(resetProgress(baseTime));
         fills = QJsonArray{QJsonObject{{"trade_id", "3"}, {"contract", "BTC_USDT"},
-            {"size", 1}, {"close_size", 0}, {"create_time", double(baseTime + 1) / 1000}}};
+            {"size", 1}, {"close_size", 0}, {"create_time", double(baseTime + 1000) / 1000}}};
         orders::saveSources(config.dataPath, QJsonArray{QJsonObject{{"data",
             "contract: BTC_USDT\nactivation_price: 100\namount: 1\nTimestamp: 1"}}});
         // Opening must also stop if the post-fill margin observation fails.
