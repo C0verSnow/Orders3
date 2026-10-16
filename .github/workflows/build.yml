@@ -325,7 +325,8 @@ jobs:
           url="$(sed -n 's/^本地看板：//p' /tmp/orders-random.log)"
           port="$(docker exec orders-ci-random printenv ORDERS_PORT)"
           test "$url" = "http://127.0.0.1:$port/"
-          test "$(cat docker.md)" = "本地看板：$url"
+          printf '本地看板：\n127.0.0.1:%s\n' "$port" > /tmp/orders-expected-docker.md
+          cmp /tmp/orders-expected-docker.md docker.md
           test "$(docker port orders-ci-random "$port/tcp")" = "127.0.0.1:$port"
           curl --fail --silent --show-error "${url}api/data" > /dev/null
           curl --fail --silent --show-error -H "Origin: ${url%/}" -H 'Content-Type: application/json' --data '{"enabled":false,"cron":"*/15 * * * *"}' "${url}api/schedule"

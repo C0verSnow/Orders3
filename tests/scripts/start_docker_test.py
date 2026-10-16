@@ -45,8 +45,9 @@ esac
         result = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
         line = next(line for line in result.stdout.splitlines() if line.startswith('本地看板：'))
-        self.assertEqual((self.base / 'docker.md').read_text(), line + '\n')
         self.assertRegex(line, r'^本地看板：http://127\.0\.0\.1:\d+/$')
+        address = line.removeprefix('本地看板：http://').removesuffix('/')
+        self.assertEqual((self.base / 'docker.md').read_text(), f'本地看板：\n{address}\n')
         self.assertEqual(list(self.base.glob('.docker.md.*')), [])
 
     def test_overwrites_old_record(self):

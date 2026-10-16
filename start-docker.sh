@@ -82,7 +82,7 @@ for attempt in {1..60}; do
             echo '无法创建看板地址临时文件，保留原有 docker.md。' >&2
             exit 1
         fi
-        if ! printf '本地看板：%s\n' "$dashboard_url" > "$address_file" \
+        if ! printf '本地看板：\n127.0.0.1:%s\n' "$dashboard_port" > "$address_file" \
             || ! mv -f "$address_file" docker.md; then
             rm -f "$address_file"
             echo '无法保存看板地址，保留原有 docker.md。' >&2

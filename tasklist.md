@@ -1,6 +1,7 @@
 # 本文档为4象限的任务清单，全文书写大白话。
 
 ## 想做：
+- 2026-10-16：完成 issue #23，把 docker.md 改成两行的本地看板地址，更新说明和远端检查，提交 PR 并交给远端 CI 验证。
 - 2026-10-16：完成 issue #21，固定入仓或加仓后的 initial_margin，多空追踪平仓价分别乘 1.01、0.99；更新文档、提交 PR、通过远端 CI 后关闭 issue。
 - 2026-10-15：完成 issue #19，修复凭证配置状态与成交历史回归，在 feature 分支提 PR，更新文档并跑远端 CI。
 - 2026-10-15：完成 issue #16，在 feature 分支移除平仓 ID 专用表，修改目标毛收益公式，抓取真实合约参数，新增实际入仓历史和所有开仓入口的 7 天限制；更新文档、提 PR、跑远端 CI 后关闭 issue。
@@ -128,6 +129,7 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
+- 2026-10-16：issue #23 已确认是当前唯一未完成的 issue；从最新 origin/master 创建 feature-issue-23-dashboard-address 分支，已完成脚本、README、已有回归断言及双架构 Docker CI 地址断言修改；Shell 语法、Python 语法解析和差异检查通过，准备推送 PR 并等待远端 CI。未进行本地编译或运行本地测试。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。
