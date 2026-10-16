@@ -7,13 +7,14 @@
 一次执行按以下顺序处理：
 
 1. 签名读取 `/api/v4/futures/usdt/positions`，校验整个持仓数组。
-2. 先同步真实成交历史（规则见 [入仓历史与开仓限制](position-entry-history.md)），校验 `size` 是有效整数张数，跳过 `size=0`。按合约读取 Gate `/api/v4/futures/usdt/contracts/{contract}`，取得真实 `quanto_multiplier` 和 `order_price_round`；同次抓取同合约只请求一次，不使用固定值或缺省值。每笔持仓独立使用自己的 `entry_price`、`size`、`initial_margin`：
+2. 先同步真实成交历史（规则见 [入仓历史与开仓限制](position-entry-history.md)），校验 `size` 是有效整数张数，跳过 `size=0`。按合约读取 Gate `/api/v4/futures/usdt/contracts/{contract}`，取得真实 `quanto_multiplier` 和 `order_price_round`；同次抓取同合约只请求一次，不使用固定值或缺省值。每笔持仓独立使用自己的 `entry_price`、`size` 和入仓历史中固定保存的 `initial_margin`（旧持仓首次读取时初始化）：
    - 多仓：`close_price = entry_price + 3.1 × initial_margin / (abs(size) × quanto_multiplier)`。
    - 空仓：`close_price = entry_price - 3.1 × initial_margin / (abs(size) × quanto_multiplier)`。
-   - `value = size × quanto_multiplier × entry_price`，保留方向符号。不再额外乘 1.01 或 0.99。
+   - `value = size × quanto_multiplier × entry_price`，保留方向符号。
    - 全部使用精确十进制运算，最后取最近的 `order_price_round` 整数倍；中点取偶数倍，步长 0.5 等非十进制幂也支持。无效参数、非正结果、重复合约方向会在撤单前中止整批。步长舍入会让毛收益略偏离目标。
-   - 例如 entry_price=100、size=2、乘数=0.1、initial_margin=1、步长=0.5 时，多仓目标=115.5；size=-2 时空仓目标=84.5。
-3. 在一个 SQLite 事务内更新 `data.db` 的 `position` 表。保存原有十个字段以及 `quanto_multiplier`、`order_price_round`；旧表通过增加两列兼容。十进制字段为文本，张数为整数。同合约的多空仓分别保留；来源表及入仓历史不受影响。
+   - 在原始目标价上，多仓乘 `1.01`，空仓乘 `0.99`，然后统一对齐真实价格步长，五成双舍入。`close_price` 保存这个调整后的激活价。
+   - 例如 entry_price=100、size=2、乘数=0.1、固定 initial_margin=1、步长=0.5 时，多仓原始目标=115.5，调整并舍入后=116.5；size=-2 时空仓原始目标=84.5，调整并舍入后=83.5。
+3. 在一个 SQLite 事务内更新 `data.db` 的 `position` 表。保存原有十个字段以及 `quanto_multiplier`、`order_price_round`；旧表通过增加两列兼容。十进制字段为文本，张数为整数。同合约的多空仓分别保留；来源表不受影响；入仓历史的固定保证金按上面的规则保存。
 4. 分页读取当前 Gate 追踪订单，直到返回空页，再更新本地 `orderslist`。从已提交的 `position` 表读取非零持仓，与当前 Gate 账户返回的所有 `reduce_only=true` 且状态为 1 或 2 的订单逐笔匹配，不依赖本地创建记录。合约、数量、激活价格相同则保留旧单，返回 `skipped`，不发停止或创建请求。价格按精确十进制数值比较（`100` 与 `100.00` 相同），每个持仓最多保留一张符合参数的有效平仓单，每个旧单最多匹配一笔持仓。平仓不增加单独的方向比较字段；`amount=-size` 的正负仍用于正确区分同合约多空持仓。
 5. 仅停止其余未匹配且 `original_status=1` 的追踪平仓单，包括重复单、旧版本遗留单、手工单以及同一账户其他 API Key 创建但本次列表可见的单。状态 2、已完成、已取消及开仓单不取消。即使当前没有持仓，也只停止列表中残留的状态 1 追踪平仓单。同一合约同时有多仓和空仓时，各方向分别保留一张。
 6. 仅为未匹配的非零持仓创建追踪平仓单。`amount=-size`，`activation_price=close_price`；负 amount 使用 `is_gte=true`，正 amount 使用 `is_gte=false`。固定参数为 `reduce_only=true`、`price_type=3`、`price_offset="1%"`、`pos_margin_mode="cross"`、`position_mode="dual_plus"`、`text="apiv4"`。
@@ -26,6 +27,8 @@
 
 接口参考：[Gate 官方期货 API](https://www.gate.com/docs/developers/apiv4/en/futures/)。
 
-公式目标是该持仓 `initial_margin` 的 3.1 倍毛收益，不扣手续费、资金费及滑点，也不使用账户总保证金。读取的是 Gate 当前这笔持仓返回的初始保证金字段，并非另建固定开仓成本账本。
+公式目标是该持仓 `initial_margin` 的 3.1 倍毛收益，不扣手续费、资金费及滑点，也不使用账户总保证金。保证金取自真实入仓或加仓确认后保存的持仓保证金观察值，首次升级的旧持仓用首次读取值初始化。普通行情、纯减仓、保证金或杠杆调整不覆盖它；只有新的真实入仓或加仓成交才更新。详细兼容及历史补抓规则见 [入仓历史](position-entry-history.md)。
 
-`activation_price=close_price` 按 Gate 定义是激活追踪的价格，`price_type=3` 使用标记价格，激活后仍按原有 1% 回撤触发；它不是成交限价，也不能保证最终成交的毛收益或净收益达到 3.1 倍。接口定义见 [Gate 官方期货文档](https://www.gate.com/docs/developers/apiv4/en/futures/)。
+`activation_price=close_price` 按 Gate 定义是激活追踪的价格，`price_type=3` 使用标记价格，激活价已按多仓 1.01、空仓 0.99 近似补偿，激活后仍按原有 1% 回撤触发；它不是成交限价，也不能保证最终成交的毛收益或净收益达到 3.1 倍。接口定义见 [Gate 官方期货文档](https://www.gate.com/docs/developers/apiv4/en/futures/)。
+
+补偿只是近似：多仓 `1.01 × 0.99 = 0.9999`，空仓 `0.99 × 1.01 = 0.9999`，再加上价格步长舍入和滑点，不保证精确抵消回撤。固定保证金只消除保证金随行情变化引起的漂移；真实持仓均价或数量变化仍可能改变目标价。

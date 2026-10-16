@@ -122,9 +122,11 @@ inline QString closePrice(const QString &entryText, const QString &sizeText,
     const auto left = scaled(base, scale), right = scaled(profit, scale);
     if (size.negative && compare(left, right) <= 0)
         throw Error("计算出的空仓目标价格不大于零");
-    const auto total = size.negative ? subtract(left, right) : add(left, right);
+    // Apply the requested approximate 1% pullback compensation before tick rounding.
+    const auto total = multiply(size.negative ? subtract(left, right) : add(left, right),
+                                size.negative ? "99" : "101");
     const auto numerator = normalized(total + QString(quantity.scale + tick.scale, '0'));
-    const auto denominator = normalized(multiply(quantity.digits, tick.digits) + QString(scale, '0'));
+    const auto denominator = normalized(multiply(quantity.digits, tick.digits) + QString(scale + 2, '0'));
     const auto ticks = divideRounded(numerator, denominator);
     if (ticks == "0") throw Error("目标价格对齐合约步长后为零");
     return format(multiply(ticks, tick.digits), tick.scale);

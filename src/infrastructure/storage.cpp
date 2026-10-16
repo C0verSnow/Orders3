@@ -1,5 +1,6 @@
 #include "infrastructure/storage.hpp"
 #include "core/error.hpp"
+#include "core/decimal.hpp"
 #include "core/order_parser.hpp"
 
 #include <QDateTime>
@@ -461,6 +462,25 @@ qint64 entryHistoryWatermark(const QString &path, const QString &owner) {
     return query.next() ? query.value(0).toLongLong() : -1;
 }
 
+namespace {
+void ensureEntryMarginSchema(QSqlDatabase &db) {
+    QSqlQuery query(db);
+    execute(query, R"(CREATE TABLE IF NOT EXISTS position_entry_history (
+        event_id TEXT PRIMARY KEY NOT NULL, entry_time INTEGER NOT NULL,
+        contract TEXT NOT NULL, side INTEGER NOT NULL CHECK (side IN (1, -1))))");
+    if (!columns(db, "position_entry_history").contains("initial_margin"))
+        execute(query, "ALTER TABLE position_entry_history ADD COLUMN initial_margin TEXT");
+    // Keep the current direction's frozen value even after its history row is pruned.
+    execute(query, R"(CREATE TABLE IF NOT EXISTS position_entry_margin (
+        owner TEXT NOT NULL, contract TEXT NOT NULL, side INTEGER NOT NULL,
+        event_id TEXT NOT NULL, entry_time INTEGER NOT NULL, initial_margin TEXT,
+        PRIMARY KEY (owner, contract, side)))");
+}
+void validateEntryMargin(const QString &margin) {
+    if (decimal::parse(margin).negative) throw Error("入仓保证金不能为负数");
+}
+}
+
 void saveEntryHistory(const QString &path, const QString &owner,
                       const QJsonArray &events, qint64 throughMs) {
     ensureDirectory(path);
@@ -468,9 +488,7 @@ void saveEntryHistory(const QString &path, const QString &owner,
     auto &db = database.connection();
     Transaction transaction(db);
     QSqlQuery query(db);
-    execute(query, R"(CREATE TABLE IF NOT EXISTS position_entry_history (
-        event_id TEXT PRIMARY KEY NOT NULL, entry_time INTEGER NOT NULL,
-        contract TEXT NOT NULL, side INTEGER NOT NULL CHECK (side IN (1, -1))))");
+    ensureEntryMarginSchema(db);
     execute(query, R"(CREATE TABLE IF NOT EXISTS position_entry_sync (
         owner TEXT PRIMARY KEY NOT NULL, through_ms INTEGER NOT NULL))");
     prepare(query, "SELECT through_ms FROM position_entry_sync WHERE owner = ?");
@@ -488,10 +506,31 @@ void saveEntryHistory(const QString &path, const QString &owner,
             || time < 0 || time > throughMs)
             throw Error("入仓历史记录无效");
         if (time <= previous) continue; // Also prevents replay of records removed by the 100-row cap.
-        prepare(query, "INSERT OR IGNORE INTO position_entry_history VALUES (?, ?, ?, ?)");
+        const auto margin = event.value("initial_margin");
+        if (!margin.isUndefined() && !margin.isNull()) {
+            if (!margin.isString()) throw Error("入仓保证金必须为十进制文本");
+            validateEntryMargin(margin.toString());
+        }
+        prepare(query, "INSERT OR IGNORE INTO position_entry_history "
+                       "(event_id, entry_time, contract, side, initial_margin) VALUES (?, ?, ?, ?, ?)");
         query.addBindValue(owner + ":" + event.value("event_id").toString());
         for (const QString &field : {"entry_time", "contract", "side"})
             query.addBindValue(sqlValue(event.value(field)));
+        query.addBindValue(sqlValue(margin));
+        prepared(query);
+        if (query.numRowsAffected() == 0) continue;
+        prepare(query, R"(INSERT INTO position_entry_margin VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(owner, contract, side) DO UPDATE SET
+            event_id=excluded.event_id, entry_time=excluded.entry_time, initial_margin=excluded.initial_margin
+            WHERE excluded.entry_time > position_entry_margin.entry_time
+               OR (excluded.entry_time = position_entry_margin.entry_time
+                   AND excluded.event_id > position_entry_margin.event_id))");
+        query.addBindValue(owner);
+        query.addBindValue(event.value("contract").toString());
+        query.addBindValue(side);
+        query.addBindValue(owner + ":" + event.value("event_id").toString());
+        query.addBindValue(time);
+        query.addBindValue(sqlValue(margin));
         prepared(query);
     }
     execute(query, R"(DELETE FROM position_entry_history WHERE event_id NOT IN (
@@ -501,6 +540,61 @@ void saveEntryHistory(const QString &path, const QString &owner,
     query.addBindValue(throughMs);
     prepared(query);
     transaction.commit();
+}
+
+QString fixedEntryMargin(const QString &path, const QString &owner,
+                         const QString &contract, int side, const QString &currentMargin) {
+    validateEntryMargin(currentMargin);
+    if (contract.isEmpty() || (side != 1 && side != -1)) throw Error("入仓保证金方向或合约无效");
+    ensureDirectory(path);
+    Database database(path);
+    auto &db = database.connection();
+    Transaction transaction(db);
+    ensureEntryMarginSchema(db);
+    QSqlQuery query(db);
+    prepare(query, "SELECT initial_margin FROM position_entry_margin WHERE owner=? AND contract=? AND side=?");
+    query.addBindValue(owner); query.addBindValue(contract); query.addBindValue(side);
+    prepared(query);
+    if (query.next() && !query.value(0).isNull()) {
+        const auto result = query.value(0).toString();
+        query.finish();
+        validateEntryMargin(result);
+        transaction.commit();
+        return result;
+    }
+    query.finish();
+    // Seed legacy state without fabricating an opening fill or restarting the seven-day restriction.
+    prepare(query, R"(INSERT OR IGNORE INTO position_entry_margin
+        SELECT ?, contract, side, event_id, entry_time, initial_margin FROM position_entry_history
+        WHERE substr(event_id, 1, ?) = ? AND contract=? AND side=?
+        ORDER BY entry_time DESC, event_id DESC LIMIT 1)");
+    query.addBindValue(owner); query.addBindValue(owner.size() + 1);
+    query.addBindValue(owner + ":"); query.addBindValue(contract); query.addBindValue(side);
+    prepared(query);
+    prepare(query, "INSERT OR IGNORE INTO position_entry_margin VALUES (?, ?, ?, '', -1, NULL)");
+    query.addBindValue(owner); query.addBindValue(contract); query.addBindValue(side);
+    prepared(query);
+    prepare(query, "UPDATE position_entry_margin SET initial_margin=? "
+                   "WHERE owner=? AND contract=? AND side=? AND initial_margin IS NULL");
+    query.addBindValue(currentMargin); query.addBindValue(owner);
+    query.addBindValue(contract); query.addBindValue(side);
+    prepared(query);
+    prepare(query, R"(UPDATE position_entry_history SET initial_margin=
+        (SELECT initial_margin FROM position_entry_margin WHERE owner=? AND contract=? AND side=?)
+        WHERE event_id=(SELECT event_id FROM position_entry_margin WHERE owner=? AND contract=? AND side=?)
+        AND initial_margin IS NULL)");
+    for (int i = 0; i < 2; ++i) {
+        query.addBindValue(owner); query.addBindValue(contract); query.addBindValue(side);
+    }
+    prepared(query);
+    prepare(query, "SELECT initial_margin FROM position_entry_margin WHERE owner=? AND contract=? AND side=?");
+    query.addBindValue(owner); query.addBindValue(contract); query.addBindValue(side);
+    prepared(query);
+    if (!query.next()) throw Error("入仓保证金记录缺失");
+    const auto result = query.value(0).toString();
+    query.finish();
+    transaction.commit();
+    return result;
 }
 
 bool hasRecentEntry(const QString &path, const QString &contract, int side, qint64 nowMs) {

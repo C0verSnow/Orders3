@@ -30,6 +30,10 @@ ORDERS_CORE_EXPORT void savePositions(const QString &path, const QJsonArray &pos
 ORDERS_CORE_EXPORT qint64 entryHistoryWatermark(const QString &path, const QString &owner);
 ORDERS_CORE_EXPORT void saveEntryHistory(const QString &path, const QString &owner,
                                          const QJsonArray &events, qint64 throughMs);
+// Freeze once per confirmed entry/addition; legacy positions initialize on their first read.
+ORDERS_CORE_EXPORT QString fixedEntryMargin(const QString &path, const QString &owner,
+                                            const QString &contract, int side,
+                                            const QString &currentMargin);
 ORDERS_CORE_EXPORT bool hasRecentEntry(const QString &path, const QString &contract,
                                        int side, qint64 nowMs);
 ORDERS_CORE_EXPORT QByteArray exportDatabase(const QString &path);
