@@ -20,6 +20,8 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 2026-10-16：issue #23 已完成：docker.md 现在第一行是“本地看板：”，第二行是实际的 127.0.0.1:端口，不带协议和末尾斜杠；同步 README、原有脚本回归断言及双架构 Docker 完整文件比对。PR #24：https://github.com/C0verSnow/Orders3/pull/24 。
+- 2026-10-16：代码 e0615b4 的完整远端 CI 通过：https://github.com/C0verSnow/Orders3/actions/runs/38880733461 ，含网页和脚本、五个平台编译回归打包、AMD64/ARM64 原生 Docker、随机端口和地址记录检查；PR 触发的运行也通过：https://github.com/C0verSnow/Orders3/actions/runs/38880779992 。本地仅做 Shell 语法、Python 语法解析和差异检查，未进行本地编译或运行本地测试。GitHub 连接器写入权限不足，使用本机已有 GitHub 登录完成 PR 操作，没有输出凭据；最后只补本记录，使用 [skip ci]。
 - 2026-10-16：issue #21 已完成并关闭，PR #22 已转为可审阅：https://github.com/C0verSnow/Orders3/pull/22 。代码 d7af9ec 的完整远端 CI 通过：https://github.com/C0verSnow/Orders3/actions/runs/38859341178 ，包含网页与脚本、Windows x64、Linux x64/ARM64、macOS x64/ARM64 编译回归打包，以及 AMD64/ARM64 原生 Docker、网页接口、三种启动方式、随机端口和地址记录检查。
 - 2026-10-16：issue #21 已固定初次读取或最新真实入仓、加仓后的保证金，重复成交、行情变化和纯减仓不覆盖；历史清理后仍保留当前固定值。多仓原目标乘 1.01、空仓乘 0.99，再按真实步长舍入。已更新 README、平仓说明、历史规则和数据库文档。GitHub 连接器写入受限，创建及更新 PR、转为可审阅和关闭 issue 使用本机已有 GitHub 登录完成，未输出凭据。最后仅补任务记录并使用 [skip ci]；静态差异检查通过，未进行本地编译或运行本地测试。
 - 2026-10-16：issue #21 首轮远端 Linux 编译成功，核心回归 121 项通过、1 项旧价格断言失败；新增保证金用例全部通过。已把多仓样例预期同步到乘 1.01 后的 89.369，继续完整远端验证；未进行本地编译或运行本地测试。
@@ -112,6 +114,7 @@
 - 将原来的 Tasklist.md 改为用户要求的 tasklist.md，继续按四个栏目记录。
 
 ## 没做：
+- 2026-10-16：issue #23 未合并 master、未发布或部署服务器；新版 docker.md 在下次使用新脚本成功启动后写入。
 - 2026-10-16：issue #21 未合并 master、未发布或部署、未连接真实交易所下单或撤单。保证金是确认成交后首次成功读取的持仓整体观察值，不能回溯历史逐笔保证金；同批只填最新事件。价格乘 1.01/0.99 仅近似补偿回撤，不保证实际成交收益。
 - 2026-10-15：issue #19 未合并 master、未发布或部署服务器、未连接真实 Gate 下单或撤单；服务器仅做只读凭证状态和成交字段类型核查。交易回归使用模拟接口，交易权限仍须由真实交易所验证。
 - 2026-10-15：issue #16 未合并 master、未发布或部署、未连接真实 Gate 操作订单；远端交易回归使用模拟接口。目标是持仓初始保证金 3.1 倍毛收益对应的追踪激活价，继续原有 1% 回撤，不保证成交毛收益或净收益。历史仅保留 100 条，旧 managed_close_orders 表保留但不访问。
@@ -129,7 +132,6 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- 2026-10-16：issue #23 已确认是当前唯一未完成的 issue；从最新 origin/master 创建 feature-issue-23-dashboard-address 分支，已完成脚本、README、已有回归断言及双架构 Docker CI 地址断言修改；Shell 语法、Python 语法解析和差异检查通过，准备推送 PR 并等待远端 CI。未进行本地编译或运行本地测试。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。
