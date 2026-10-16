@@ -145,15 +145,19 @@ QJsonObject contractParameters(const QString &contract, const ClosePositionReque
     return parameters;
 }
 
+QString entryOwner(const Config &config) {
+    return QString::fromLatin1(QCryptographicHash::hash(
+        config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+
 // A fill confirms a real entry even if it was closed again between position polls.
 // Scan a fixed window with an overlapping start second and persist atomically.
-void syncEntryHistory(const Config &config, const ClosePositionRequester &requester) {
-    const auto owner = QString::fromLatin1(QCryptographicHash::hash(
-        config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
+bool syncEntryHistory(const Config &config, const ClosePositionRequester &requester) {
+    const auto owner = entryOwner(config);
     const auto previous = entryHistoryWatermark(config.dataPath, owner);
     const qint64 throughMs = QDateTime::currentMSecsSinceEpoch();
     const qint64 endSeconds = throughMs / 1000 + 1;
-    if (previous >= throughMs) return;
+    if (previous >= throughMs) return false;
     const qint64 startSeconds = previous < 0 ? (throughMs - 7LL * 24 * 60 * 60 * 1000) / 1000
                                            : previous / 1000;
     QJsonArray events;
@@ -206,7 +210,51 @@ void syncEntryHistory(const Config &config, const ClosePositionRequester &reques
         if (offset > (std::numeric_limits<int>::max)()) throw Error("成交历史分页数量过多");
     }
     ensureNotCancelled(config);
+    if (!events.isEmpty()) {
+        const QByteArray path = "/api/v4/futures/usdt/positions";
+        const auto headers = gate::signedGetHeaders(path, config.gateKey, config.gateSecret);
+        const auto response = requester ? requester("GET", path, {}, headers)
+            : get(QUrl(kGateHost + QString::fromUtf8(path)), headers, false, config.cancelled);
+        gate::ensureSuccess(response);
+        QJsonParseError error;
+        const auto positions = QJsonDocument::fromJson(response.body, &error);
+        if (error.error != QJsonParseError::NoError || !positions.isArray())
+            throw Error("入仓保证金持仓接口必须返回有效数组");
+        QMap<QString, QString> margins;
+        for (const auto &value : positions.array()) {
+            const auto position = value.toObject();
+            const auto size = fillQuantity(position.value("size"), "size");
+            if (size.digits == "0") continue;
+            const auto margin = position.value("initial_margin");
+            if (!margin.isString() || decimal::parse(margin.toString()).negative)
+                throw Error("入仓保证金必须为非负十进制文本");
+            const auto key = position.value("contract").toString() + (size.negative ? ":short" : ":long");
+            if (margins.contains(key)) throw Error("入仓保证金持仓方向重复");
+            margins.insert(key, margin.toString());
+        }
+        // The API provides current aggregate margin, not historical per-fill margin.
+        // Only the newest confirmed entry for each direction receives this observation.
+        QMap<QString, qsizetype> latest;
+        for (qsizetype i = 0; i < events.size(); ++i) {
+            const auto event = events[i].toObject();
+            const auto key = event.value("contract").toString()
+                + (event.value("side").toInt() < 0 ? ":short" : ":long");
+            const auto old = latest.contains(key) ? events[latest.value(key)].toObject() : QJsonObject{};
+            if (old.isEmpty() || event.value("entry_time").toInteger() > old.value("entry_time").toInteger()
+                || (event.value("entry_time") == old.value("entry_time")
+                    && event.value("event_id").toString() > old.value("event_id").toString()))
+                latest.insert(key, i);
+        }
+        for (auto it = latest.cbegin(); it != latest.cend(); ++it) {
+            if (!margins.contains(it.key())) continue;
+            auto event = events[it.value()].toObject();
+            event.insert("initial_margin", margins.value(it.key()));
+            events[it.value()] = event;
+        }
+    }
+    ensureNotCancelled(config);
     saveEntryHistory(config.dataPath, owner, events, throughMs);
+    return !events.isEmpty();
 }
 
 } // namespace
@@ -505,14 +553,20 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
         return method == "GET" ? get(url, headers, false, config.cancelled)
                                : post(url, body, headers, config.cancelled);
     };
-    const auto response = request("GET", "/api/v4/futures/usdt/positions");
+    auto response = request("GET", "/api/v4/futures/usdt/positions");
     gate::ensureSuccess(response);
     QJsonParseError error;
-    const auto document = QJsonDocument::fromJson(response.body, &error);
+    auto document = QJsonDocument::fromJson(response.body, &error);
     if (error.error != QJsonParseError::NoError || !document.isArray())
         throw Error("持仓接口必须返回有效的 JSON 数组");
 
-    syncEntryHistory(config, requester);
+    if (syncEntryHistory(config, requester)) {
+        response = request("GET", "/api/v4/futures/usdt/positions");
+        gate::ensureSuccess(response);
+        document = QJsonDocument::fromJson(response.body, &error);
+        if (error.error != QJsonParseError::NoError || !document.isArray())
+            throw Error("持仓接口必须返回有效的 JSON 数组");
+    }
     QJsonArray positions;
     QMap<QString, QJsonObject> contracts;
     QSet<QString> positionDirections;
@@ -555,11 +609,19 @@ QJsonArray closePositionOrders(const Config &config, const ClosePositionRequeste
             position.insert(field.key(), field.value());
         position.insert("value", decimal::product(decimal::product(QString::number(size),
             position.value("quanto_multiplier").toString()), position.value("entry_price").toString()));
+        positions.append(position);
+    }
+    for (qsizetype index = 0; index < positions.size(); ++index) {
+        auto position = positions[index].toObject();
+        const auto size = position.value("size").toInteger();
+        position.insert("initial_margin", fixedEntryMargin(config.dataPath, entryOwner(config),
+            position.value("contract").toString(), size > 0 ? 1 : -1,
+            position.value("initial_margin").toString()));
         position.insert("close_price", decimal::closePrice(
             position.value("entry_price").toString(), QString::number(size),
             position.value("initial_margin").toString(), position.value("quanto_multiplier").toString(),
             position.value("order_price_round").toString()));
-        positions.append(position);
+        positions[index] = position;
     }
     ensureNotCancelled(config);
     savePositions(config.dataPath, positions);

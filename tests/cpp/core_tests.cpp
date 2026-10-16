@@ -489,11 +489,11 @@ private slots:
 
     void closePricesUseExactDecimalArithmetic() {
         using orders::decimal::closePrice;
-        QCOMPARE(closePrice("100", "2", "10", "0.1", "0.5"), QString("255.0"));
-        QCOMPARE(closePrice("100", "-2", "1", "0.1", "0.5"), QString("84.5"));
-        QCOMPARE(closePrice("100", "1", "10", "1", "0.001"), QString("131.000"));
-        QCOMPARE(closePrice("100", "-1", "10", "1", "0.001"), QString("69.000"));
-        QCOMPARE(closePrice("1.25", "1", "0", "1", "0.5"), QString("1.0"));
+        QCOMPARE(closePrice("100", "2", "10", "0.1", "0.5"), QString("257.5"));
+        QCOMPARE(closePrice("100", "-2", "1", "0.1", "0.5"), QString("83.5"));
+        QCOMPARE(closePrice("100", "1", "10", "1", "0.001"), QString("132.310"));
+        QCOMPARE(closePrice("100", "-1", "10", "1", "0.001"), QString("68.310"));
+        QCOMPARE(closePrice("1.25", "1", "0", "1", "0.5"), QString("1.5"));
         QCOMPARE(closePrice("1.75", "1", "0", "1", "0.5"), QString("2.0"));
         QCOMPARE(orders::decimal::product("-37", "88.077351351351"),
                  QString("-3258.861999999987"));
@@ -568,7 +568,7 @@ private slots:
         QCOMPARE(bodies[0].value("id").toInteger(), qint64(20));
         QCOMPARE(bodies[1].value("id").toInteger(), qint64(22));
         QCOMPARE(bodies[2].value("amount").toString(), QString("37"));
-        QCOMPARE(bodies[2].value("activation_price").toString(), QString("87.671"));
+        QCOMPARE(bodies[2].value("activation_price").toString(), QString("86.794"));
         QVERIFY(!bodies[2].value("is_gte").toBool());
         QCOMPARE(bodies[3].value("amount").toString(), QString("-37"));
         QVERIFY(bodies[3].value("is_gte").toBool());
@@ -587,7 +587,7 @@ private slots:
         QCOMPARE(saved[1].toObject().value("value").toString(), QString("3258.861999999987"));
         QCOMPARE(saved[0].toObject().size(), 12);
         QVERIFY(!saved[0].toObject().contains("ignored_field"));
-        QCOMPARE(saved[0].toObject().value("close_price").toString(), QString("87.671"));
+        QCOMPARE(saved[0].toObject().value("close_price").toString(), QString("86.794"));
         const auto trailing = orders::readTrailingOrders(config.ordersPath).orders;
         for (const auto &value : trailing) {
             const auto row = value.toObject();
@@ -627,7 +627,7 @@ private slots:
             const auto saved = orders::readPositions(config.dataPath);
             QCOMPARE(saved.size(), 1);
             QCOMPARE(saved[0].toObject().value("value").toString(), QString("-200"));
-            QCOMPARE(created.value("activation_price").toString(), QString("84.500"));
+            QCOMPARE(created.value("activation_price").toString(), QString("83.655"));
             QCOMPARE(created.value("amount").toString(), QString("2"));
         }
         const int before = writes;
@@ -788,6 +788,135 @@ private slots:
         QCOMPARE(saved[0].toObject().value("id").toString(), QString("100"));
     }
 
+    void frozenMarginMigrationRetentionAndAccountIsolation() {
+        QTemporaryDir directory;
+        const auto path = directory.filePath("data.db");
+        const auto connection = QUuid::createUuid().toString();
+        {
+            auto db = QSqlDatabase::addDatabase("QSQLITE", connection);
+            db.setDatabaseName(path);
+            QVERIFY(db.open());
+            QSqlQuery query(db);
+            QVERIFY(query.exec("CREATE TABLE position_entry_history (event_id TEXT PRIMARY KEY, "
+                               "entry_time INTEGER, contract TEXT, side INTEGER)"));
+            QVERIFY(query.exec("INSERT INTO position_entry_history VALUES ('owner:old', 1, 'BTC_USDT', 1)"));
+        }
+        QSqlDatabase::removeDatabase(connection);
+        QCOMPARE(orders::fixedEntryMargin(path, "owner", "BTC_USDT", 1, "10"), QString("10"));
+        QCOMPARE(orders::fixedEntryMargin(path, "owner", "BTC_USDT", 1, "20"), QString("10"));
+        QCOMPARE(orders::fixedEntryMargin(path, "other", "BTC_USDT", 1, "30"), QString("30"));
+        QCOMPARE(orders::fixedEntryMargin(path, "owner", "BTC_USDT", -1, "5"), QString("5"));
+        QJsonArray events;
+        for (int i = 2; i < 105; ++i)
+            events.append(QJsonObject{{"event_id", QString::number(i)}, {"entry_time", i},
+                {"contract", "ETH_USDT"}, {"side", 1}});
+        orders::saveEntryHistory(path, "owner", events, 105);
+        // Pruning the legacy history row cannot erase the current BTC frozen margin.
+        QCOMPARE(orders::fixedEntryMargin(path, "owner", "BTC_USDT", 1, "99"), QString("10"));
+        const QJsonObject addition{{"event_id", "new"}, {"entry_time", 106},
+            {"contract", "BTC_USDT"}, {"side", 1}, {"initial_margin", "12.34567890123456789"}};
+        orders::saveEntryHistory(path, "owner", QJsonArray{addition}, 107);
+        QCOMPARE(orders::fixedEntryMargin(path, "owner", "BTC_USDT", 1, "99"),
+                 QString("12.34567890123456789"));
+        orders::saveEntryHistory(path, "owner", QJsonArray{addition}, 108); // Replay cannot reset it.
+        QCOMPARE(orders::fixedEntryMargin(path, "owner", "BTC_USDT", 1, "99"),
+                 QString("12.34567890123456789"));
+        QVERIFY_EXCEPTION_THROWN(orders::fixedEntryMargin(path, "owner", "BTC_USDT", 1, "-1"), orders::Error);
+        {
+            auto db = QSqlDatabase::addDatabase("QSQLITE", connection);
+            db.setDatabaseName(path);
+            QVERIFY(db.open());
+            QSqlQuery query(db);
+            QVERIFY(query.exec("SELECT initial_margin FROM position_entry_history WHERE event_id='owner:new'"));
+            QVERIFY(query.next());
+            QCOMPARE(query.value(0).toString(), QString("12.34567890123456789"));
+        }
+        QSqlDatabase::removeDatabase(connection);
+    }
+
+    void confirmedAdditionRefreshesMarginButCloseAndReplayDoNot() {
+        QTemporaryDir directory;
+        orders::Config config;
+        config.dataPath = config.ordersPath = directory.filePath("data.db");
+        config.gateKey = config.gateSecret = "offline";
+        const auto owner = QString::fromLatin1(QCryptographicHash::hash(
+            config.gateKey.toUtf8(), QCryptographicHash::Sha256).toHex());
+        const auto baseTime = QDateTime::currentMSecsSinceEpoch() - 10000;
+        orders::saveEntryHistory(config.dataPath, owner, {}, baseTime - 1);
+        QJsonObject position{{"contract", "BTC_USDT"}, {"size", 1}, {"entry_price", "100"},
+            {"leverage_max", "75"}, {"unrealised_pnl", "0"}, {"realised_pnl", "0"},
+            {"initial_margin", "10"}, {"mark_price", "100"}};
+        QJsonArray fills;
+        bool positionsFail = false;
+        int writes = 0;
+        const auto requester = [&](const QByteArray &method, const QByteArray &path,
+                                   const QByteArray &, const orders::HttpHeaders &) {
+            if (path.contains("/contracts/")) return contractFixture(path);
+            if (path.endsWith("/positions")) {
+                if (positionsFail) return orders::HttpResult{503, "{}"};
+                return orders::HttpResult{200, QJsonDocument(QJsonArray{position}).toJson()};
+            }
+            if (path.contains("my_trades_timerange"))
+                return orders::HttpResult{200, QJsonDocument(path.endsWith("offset=0") ? fills : QJsonArray{}).toJson()};
+            if (method == "GET") return orders::HttpResult{200,
+                R"({"code":0,"timestamp":1,"data":{"orders":[]}})"};
+            ++writes;
+            return orders::HttpResult{200, R"({"code":0,"data":{"id":"100"}})"};
+        };
+        orders::closePositionOrders(config, requester);
+        QCOMPARE(orders::readPositions(config.dataPath)[0].toObject().value("close_price").toString(), QString("132.310"));
+        position.insert("initial_margin", "20");
+        orders::closePositionOrders(config, requester);
+        QCOMPARE(orders::readPositions(config.dataPath)[0].toObject().value("close_price").toString(), QString("132.310"));
+        // Simulate the next polling interval without sleeping or contacting an exchange.
+        const auto resetProgress = [&](qint64 through) {
+            const auto name = QUuid::createUuid().toString();
+            {
+                auto db = QSqlDatabase::addDatabase("QSQLITE", name);
+                db.setDatabaseName(config.dataPath);
+                if (!db.open()) return false;
+                QSqlQuery query(db);
+                query.prepare("UPDATE position_entry_sync SET through_ms=? WHERE owner=?");
+                query.addBindValue(through); query.addBindValue(owner);
+                if (!query.exec()) return false;
+            }
+            QSqlDatabase::removeDatabase(name);
+            return true;
+        };
+        QVERIFY(resetProgress(baseTime - 1));
+        fills = QJsonArray{QJsonObject{{"trade_id", "1"}, {"contract", "BTC_USDT"},
+            {"size", 1}, {"close_size", 0}, {"create_time", double(baseTime) / 1000}}};
+        orders::closePositionOrders(config, requester);
+        QCOMPARE(orders::readPositions(config.dataPath)[0].toObject().value("close_price").toString(), QString("163.620"));
+        position.insert("initial_margin", "90");
+        QVERIFY(resetProgress(baseTime - 1)); // Same fill replayed: INSERT OR IGNORE must protect margin.
+        orders::closePositionOrders(config, requester);
+        QCOMPARE(orders::readPositions(config.dataPath)[0].toObject().value("initial_margin").toString(), QString("20"));
+        QVERIFY(resetProgress(baseTime));
+        fills = QJsonArray{QJsonObject{{"trade_id", "2"}, {"contract", "BTC_USDT"},
+            {"size", -1}, {"close_size", -1}, {"create_time", double(baseTime + 1) / 1000}}};
+        orders::closePositionOrders(config, requester);
+        QCOMPARE(orders::readPositions(config.dataPath)[0].toObject().value("initial_margin").toString(), QString("20"));
+        positionsFail = true;
+        const int before = writes;
+        QVERIFY_EXCEPTION_THROWN(orders::closePositionOrders(config, requester), orders::Error);
+        QCOMPARE(writes, before);
+        QVERIFY(resetProgress(baseTime));
+        fills = QJsonArray{QJsonObject{{"trade_id", "3"}, {"contract", "BTC_USDT"},
+            {"size", 1}, {"close_size", 0}, {"create_time", double(baseTime + 1) / 1000}}};
+        orders::saveSources(config.dataPath, QJsonArray{QJsonObject{{"data",
+            "contract: BTC_USDT\nactivation_price: 100\namount: 1\nTimestamp: 1"}}});
+        // Opening must also stop if the post-fill margin observation fails.
+        QVERIFY_EXCEPTION_THROWN(orders::createTrailingOrders(config,
+            [&](const QByteArray &, const QByteArray &, const orders::HttpHeaders &) {
+                ++writes;
+                return orders::HttpResult{200, R"({"code":0,"data":{"id":"101"}})"};
+            }, requester), orders::Error);
+        QCOMPARE(writes, before);
+        QCOMPARE(orders::entryHistoryWatermark(config.dataPath, owner), baseTime);
+        QCOMPARE(orders::fixedEntryMargin(config.dataPath, owner, "BTC_USDT", 1, "90"), QString("20"));
+    }
+
     void entryHistoryBoundariesAndRetention() {
         QTemporaryDir directory;
         const auto path = directory.filePath("data.db");
@@ -852,6 +981,7 @@ private slots:
         const auto reader = [&](const QByteArray &, const QByteArray &path, const QByteArray &,
                                 const orders::HttpHeaders &) {
             if (unavailable) return orders::HttpResult{503, "unavailable"};
+            if (path.endsWith("/positions")) return orders::HttpResult{200, "[]"};
             // Server caps the page at one row: continue until empty, not until a short page.
             const auto offset = path.mid(path.indexOf("offset=") + 7).toInt();
             const auto page = offset < fills.size() ? QJsonArray{fills[offset]} : QJsonArray{};
@@ -1096,9 +1226,9 @@ private slots:
             return QJsonObject{{"id", id}, {"contract", "BTC_USDT"}, {"amount", amount},
                 {"activation_price", price}, {"reduce_only", true}, {"original_status", status}};
         };
-        QJsonArray exchange{old("1", "-1", "0131.0000", 2), old("2", "1", "69.000"),
-            old("3", "-1", "162.000"), old("4", "-1", "131.000"),
-            old("5", "-1", "131.000", 4), old("6", "-1", "131.000", 5)}; // Legacy duplicates and inactive orders.
+        QJsonArray exchange{old("1", "-1", "0132.3100", 2), old("2", "1", "68.310"),
+            old("3", "-1", "162.000"), old("4", "-1", "132.310"),
+            old("5", "-1", "132.310", 4), old("6", "-1", "132.310", 5)}; // Legacy duplicates and inactive orders.
         int gets = 0, stops = 0, creates = 0;
         QList<qint64> stoppedIds;
         const auto requester = [&](const QByteArray &method, const QByteArray &path,
@@ -1160,23 +1290,20 @@ private slots:
         QCOMPARE(creates, 1);
         for (const auto &value : results)
             QCOMPARE(value.toObject().value("action").toString(), QString("skipped"));
-        // A changed close price creates a new long order without stopping the ongoing one.
+        // Market-only margin changes must keep both protection orders and frozen margins.
         auto changed = position("BTC_USDT", 1);
         changed.insert("initial_margin", "20");
         positions = QJsonArray{changed, position("BTC_USDT", -2)};
         results = closeOffline(config, requester);
         QCOMPARE(stops, 3);
-        QCOMPARE(creates, 2);
+        QCOMPARE(creates, 1);
         QVERIFY(!stoppedIds.contains(1));
         QCOMPARE(results.size(), 2);
-        QCOMPARE(results[0].toObject().value("id").toString(), QString("100"));
-        QCOMPARE(results.last().toObject().value("activation_price").toString(), QString("162.000"));
-        results = closeOffline(config, requester);
-        QCOMPARE(gets, 18);
-        QCOMPARE(stops, 3);
-        QCOMPARE(creates, 2);
         for (const auto &value : results)
             QCOMPARE(value.toObject().value("action").toString(), QString("skipped"));
+        QCOMPARE(orders::readPositions(config.dataPath)[0].toObject().value("initial_margin").toString(),
+                 QString("10"));
+
     }
 
     void trailingStopFailurePreventsCreation() {
