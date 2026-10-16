@@ -23,6 +23,8 @@ SELECT * FROM orderslist ORDER BY id;
 
 `position` 增加 `quanto_multiplier`、`order_price_round` 两个文本列，已有表仅增加列。来源 `orders` 在下次成功抓取后重建并保存这两列，刷新失败时旧快照保留。
 
-`position_entry_history` 保存 `event_id`（API Key 摘要加真实成交 ID）、`entry_time`（UTC 毫秒）、`contract`、`side`（1/-1）。仅保留按入仓时间排序的最近 100 条。`position_entry_sync` 单独保存每个 API Key 摘要已同步到的毫秒时间，不存密钥原文；它防止重启后把清理掉的旧成交重新插回历史。详细规则见 [入仓历史与开仓限制](position-entry-history.md)。
+`position_entry_history` 保存 `event_id`（API Key 摘要加真实成交 ID）、`entry_time`（UTC 毫秒）、`contract`、`side`（1/-1）和 `initial_margin`（可空十进制文本，固定入仓保证金）。仅保留按入仓时间排序的最近 100 条。`position_entry_sync` 单独保存每个 API Key 摘要已同步到的毫秒时间，不存密钥原文；它防止重启后把清理掉的旧成交重新插回历史。详细规则见 [入仓历史与开仓限制](position-entry-history.md)。
 
 程序不再访问或创建 `managed_close_orders`，已有旧表不主动删除。其他业务数据保留。
+
+`position_entry_margin` 按 `owner`（API Key 摘要）、`contract`、`side` 保存当前方向最新 `event_id`、`entry_time` 和固定 `initial_margin`。新入仓或加仓时随历史事务更新，重复成交不覆盖；历史 100 条清理不删除当前固定值。旧库加列和加表，旧持仓首次读取时初始化，不制造入仓事件或重置 7 天限制。实时保证金不覆盖固定值，`position.initial_margin` 保存平仓计算实际使用的固定值。

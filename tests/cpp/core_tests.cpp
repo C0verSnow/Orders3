@@ -572,7 +572,7 @@ private slots:
         QVERIFY(!bodies[2].value("is_gte").toBool());
         QCOMPARE(bodies[3].value("amount").toString(), QString("-37"));
         QVERIFY(bodies[3].value("is_gte").toBool());
-        QCOMPARE(bodies[3].value("activation_price").toString(), QString("88.484"));
+        QCOMPARE(bodies[3].value("activation_price").toString(), QString("89.369"));
         for (int index : {2, 3}) {
             QVERIFY(bodies[index].value("reduce_only").toBool());
             QCOMPARE(bodies[index].value("price_offset").toString(), QString("1%"));
