@@ -1,0 +1,24 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { decimal, two, closePrice, executionPrice } from '../../packages/decimal/index.ts';
+test('ROUND_HALF_UP handles decimal boundaries and signed values', () => {
+  for (const [input, expected] of [['123.456','123.46'],['123.454','123.45'],['0.005','0.01'],['12','12.00'],['99.999','100.00'],['-1.235','-1.24'],['-0.0001','0.00'],['0','0.00'],['0.0000000001','0.00'],['999999999999999999999.995','1000000000000000000000.00']]) assert.equal(two(input), expected);
+});
+test('accumulation and order notional never pass through binary floats', () => {
+  let sum = decimal('0'); for (let index = 0; index < 10000; index++) sum = sum.plus('0.1');
+  assert.equal(two(sum), '1000.00'); assert.equal(two(decimal('123.45').times('6.7')), '827.12');
+});
+test('invalid and excessive decimal inputs are rejected', () => {
+  for (const value of ['NaN', 'Infinity', '1e999999', '1e-999999', '', '1.2 USDT', '0x10']) assert.throws(() => decimal(value));
+});
+test('exchange rules reject changed trigger, incompatible tick, zero price and size bounds', () => {
+  const rules = { name: 'BTC_USDT', quanto_multiplier: '0.001', order_price_round: '0.5', order_size_min: '2', order_size_max: '100' };
+  assert.equal(executionPrice('100.5', '2', rules), '100.50');
+  for (const [price, size] of [['100.005','2'],['100.51','2'],['0.004','2'],['100.5','1'],['100.5','101'],['100.5','2.5']]) assert.throws(() => executionPrice(price, size, rules));
+});
+test('legacy 3.1 margin target and pullback compensation preserve contract tick rounding', () => {
+  assert.equal(closePrice('100','2','1','0.1','0.5'), '116.50');
+  assert.equal(closePrice('100','-2','1','0.1','0.5'), '83.50');
+  assert.throws(() => closePrice('100','-2','100','0.1','0.5'));
+  assert.throws(() => closePrice('0.0001','2','0','1','0.00001'), /精度冲突/);
+});
