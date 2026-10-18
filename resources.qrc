@@ -1,6 +1,8 @@
 <RCC>
   <qresource prefix="/web">
     <file alias="index.html">web/index.html</file>
+    <file alias="overview.js">web/overview.js</file>
+    <file alias="theme.js">web/theme.js</file>
     <file alias="app.js">web/app.js</file>
     <file alias="flow.js">web/flow.js</file>
     <file alias="activity.js">web/activity.js</file>

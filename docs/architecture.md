@@ -19,7 +19,7 @@
 | 方法 | 路径 | 行为 |
 | --- | --- | --- |
 | GET | `/`、`/index.html` | 已嵌入的网页 |
-| GET | `/app.js`、`/flow.js`、`/activity.js`、`/flow.css`、`/ui.js`、`/settings.js`、`/schedule.js`、`/startup.js`、`/style.css`、`/logo.svg` | 已嵌入的白名单资源 |
+| GET | `/app.js`、`/overview.js`、`/theme.js`、`/flow.js`、`/activity.js`、`/flow.css`、`/ui.js`、`/settings.js`、`/schedule.js`、`/startup.js`、`/style.css`、`/logo.svg` | 已嵌入的白名单资源 |
 | GET | `/api/data` | 来源、解析订单和调度快照 |
 | POST | `/api/refresh` | 抓取来源，完成后返回快照 |
 | GET | `/api/activity` | 内存执行状态与最近 64 条真实请求／任务事件，不读取数据库 |
@@ -66,3 +66,5 @@ Python 包本来已位于 `src/`，本次并非重新包装它，而是新增原
 ## 验证范围
 
 本次只执行静态检查，没有本地配置 CMake、编译、执行 C++ 测试、启动程序或构建 Docker。CI 已配置原生单元测试、发布包检查和容器 API 检查；Windows 窗口的实际显示、Qt 运行库打包和跨平台运行仍需 CI 及运行环境确认。
+
+交易概览首轮增加只读投影 overview.js 和独立主题脚本 theme.js；不增加前端打包步骤。功能映射、设计基础及阶段边界见 [交易概览交付说明](ui-redesign.md)。

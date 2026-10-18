@@ -3,6 +3,44 @@ import { initSettings } from "./settings.js";
 import { initSchedule, applySchedule } from "./schedule.js";
 import { initStartup } from "./startup.js";
 import { initFlow, updateFlow } from "./flow.js";
+import { selectOverview, exactValue, pnlTone } from "./overview.js";
+
+let overviewOrders = [];
+let overviewPage = 1;
+function renderOverview() {
+  const view = selectOverview(overviewOrders, {query: $("overview-search").value,
+    status: $("overview-status").value, sort: $("overview-sort").value, page: overviewPage});
+  overviewPage = view.page;
+  $("overview-count").textContent = `${view.total} 条`;
+  $("overview-page").textContent = `${view.matched} 条匹配 · 第 ${view.page} / ${view.pages} 页`;
+  $("overview-prev").disabled = view.page === 1;
+  $("overview-next").disabled = view.page === view.pages;
+  const container = $("overview-records");
+  const scrollLeft = container.querySelector(".table-scroll")?.scrollLeft || 0;
+  container.replaceChildren();
+  if (!view.rows.length) {
+    container.append(node("div", "empty", view.total ? "没有匹配订单。请调整搜索或状态。" : "当前快照没有可显示的跟踪订单；状态 5 按原规则隐藏。"));
+    return;
+  }
+  const {wrapper, tbody} = createTable(["合约 / 订单 ID", "数量（张）", "激活价格", "原始状态", "仅减仓", "接口时间"], "跟踪订单速览，每页最多 8 条", "overview-table");
+  for (const order of view.rows) {
+    const row = node("tr");
+    const symbol = node("td", "table-symbol", exactValue(order.contract));
+    symbol.append(node("small", "order-id", exactValue(order.id)));
+    row.append(symbol, node("td", "numeric", exactValue(order.amount)), node("td", "numeric", exactValue(order.activation_price)));
+    const status = node("td");
+    status.append(node("span", "badge", `状态 ${exactValue(order.original_status)}`));
+    row.append(status, node("td", "", order.reduce_only ? "是" : "否"), node("td", "table-date", dateText(order.timestamp)));
+    tbody.append(row);
+  }
+  container.append(wrapper);
+  wrapper.scrollLeft = scrollLeft;
+}
+for (const id of ["overview-search", "overview-status", "overview-sort"]) {
+  $(id).addEventListener(id.endsWith("search") ? "input" : "change", () => { overviewPage = 1; renderOverview(); });
+}
+$("overview-prev").addEventListener("click", () => { overviewPage--; renderOverview(); });
+$("overview-next").addEventListener("click", () => { overviewPage++; renderOverview(); });
 
 const fastStartup = document.body.classList.contains("startup-enabled");
 let items = [];
@@ -209,7 +247,7 @@ $("filter").addEventListener("change", render);
 let fetchingOrders = false;
 let loadingOrders = false;
 function ordersNotice(message) {
-  for (const id of ["orders-notice", "positions-notice"]) {
+  for (const id of ["orders-notice", "positions-notice", "overview-notice"]) {
     $(id).textContent = message || "";
     $(id).hidden = !message;
   }
@@ -245,14 +283,15 @@ function renderPositions(positions = []) {
 }
 function applyOrders(data) {
   if (!Array.isArray(data.orders)) throw new Error("订单列表格式错误");
+  overviewOrders = data.orders;
+  renderOverview();
   renderPositions(Array.isArray(data.positions) ? data.positions : []);
   $("positions-updated").textContent = dateText(data.updated_at);
   for (const field of ["unrealised_pnl", "realised_pnl"]) {
     const element = $(field.replaceAll("_", "-"));
     const value = data[field];
-    element.textContent = value == null ? "—" : new Intl.NumberFormat("zh-CN", {
-      maximumFractionDigits: 4, useGrouping: false
-    }).format(Number(value));
+    element.textContent = exactValue(value);
+    element.dataset.tone = pnlTone(value);
     element.title = value == null ? "" : `${value} USDT`;
   }
   if (Number.isFinite(data.uptime_ms)) {

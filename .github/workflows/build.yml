@@ -36,6 +36,18 @@ jobs:
         run: python3 tests/scripts/start_docker_test.py
       - run: npm run check
       - run: npm test
+      - name: Check overview in Chromium with local fixtures
+        run: npm run test:browser
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      - name: Upload overview screenshots for design review
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: overview-design-review
+          path: tests/artifacts/overview-*.png
+          if-no-files-found: warn
+          retention-days: 14
 
   publication:
     name: Determine publication version
@@ -300,7 +312,7 @@ jobs:
             grep -qi '<html' /tmp/orders-page.html
             docker logs orders-ci > /tmp/orders-container.log 2>&1
             grep -Fq '本地看板：http://127.0.0.1:8090/' /tmp/orders-container.log
-            for route in style.css flow.css app.js activity.js flow.js logo.svg api/data api/orders api/activity; do
+            for route in style.css flow.css app.js overview.js theme.js activity.js flow.js logo.svg api/data api/orders api/activity; do
               curl --fail --silent --show-error "http://127.0.0.1:8090/$route" > /dev/null
             done
             curl --fail --silent --show-error -H 'Origin: http://127.0.0.1:8090' -H 'Content-Type: application/json' --data '{"enabled":false,"cron":"*/15 * * * *"}' http://127.0.0.1:8090/api/schedule

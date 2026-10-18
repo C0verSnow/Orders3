@@ -36,7 +36,7 @@ export function initStartup(fastStartup) {
       {transform: `translate(${dx}px,${dy}px) scale(${scale})`, offset: 1},
     ], options);
     // Fade the background separately so the moving logo stays solid.
-    overlay.animate([{backgroundColor: "#f6f8f5"}, {backgroundColor: "transparent"}], options);
+    overlay.animate([{backgroundColor: getComputedStyle(overlay).backgroundColor}, {backgroundColor: "transparent"}], options);
     for (const text of overlay.querySelectorAll(".startup-wordmark,.startup-caption")) {
       text.animate([{opacity: 1, transform: "translateY(0)"},
                     {opacity: 0, transform: "translateY(-8px) scale(.96)"}],

@@ -2,7 +2,9 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f6f8">
+  <script src="/theme.js"></script>
   <title>特洛伊资本</title>
   <link rel="icon" href="/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
@@ -10,6 +12,7 @@
   <script src="/app.js" type="module"></script>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">跳到工作台</a>
   <div id="startup" class="startup" role="status" aria-label="正在启动特洛伊资本">
     <div class="startup-mark"><img src="/logo.svg" alt="" width="80" height="80"></div>
     <span class="startup-wordmark">Troy Capitalize</span>
@@ -17,18 +20,41 @@
   </div>
   <header class="topbar">
     <a class="brand" href="/"><img src="/logo.svg" alt="" width="34" height="34"><span>Troy Capitalize</span></a>
-    <span class="connection"><span class="dot"></span> Troy Capitalize Service</span>
+    <label class="theme-control">外观 <select id="theme" aria-label="界面外观"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
   </header>
-  <main>
+  <div class="workspace-switch" role="tablist" aria-label="切换工作台" data-active="live">
+    <span class="workspace-indicator" aria-hidden="true"></span>
+    <button id="segment-live" class="workspace-segment" type="button" role="tab" aria-selected="true" aria-controls="workspace-live" tabindex="0" data-view="live">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V9m8 10V5m8 14v-7M3 21h18"/></svg>
+      <span>交易工作台</span>
+    </button>
+    <button id="segment-config" class="workspace-segment" type="button" role="tab" aria-selected="false" aria-controls="workspace-config" tabindex="-1" data-view="config">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 3v18m7-18v18m7-18v18M2 8h6m1 8h6m1-9h6"/></svg>
+      <span>连接与定时</span>
+    </button>
+  </div>
+  <main id="main-content" tabindex="-1">
     <div id="workspace-live" class="workspace-view" role="tabpanel" aria-labelledby="segment-live" tabindex="0">
     <div class="heading">
-      <div><p class="eyebrow">TROY CAPITALIZE / 实盘工作台</p><h1>实盘数据，一目了然<span>。</span></h1><p class="subtitle">集中查看实盘订单、自动下单结果与 Gate 跟踪订单，掌握交易执行情况。</p></div>
+      <div><p class="eyebrow">TROY CAPITALIZE / 实盘工作台</p><h1>交易概览</h1><p class="subtitle">先看执行状态，再看订单与持仓。所有数据来自本地服务快照。</p></div>
     </div>
     <section class="stats" aria-label="数据概览">
       <article><span>浮盈浮亏</span><strong id="unrealised-pnl">—</strong><small>持仓未实现盈亏 · USDT</small></article>
       <article><span>实盈实亏</span><strong id="realised-pnl">—</strong><small>持仓接口已实现盈亏合计 · USDT</small></article>
       <article><span>在线时长</span><strong id="uptime">—</strong><small>本次程序启动后的运行时间</small></article>
       <article class="updated"><span>订单最近更新</span><strong id="updated">—</strong><small id="update-date">等待数据加载</small></article>
+    </section>
+    <div class="overview-grid">
+    <section class="results overview-panel" aria-labelledby="overview-title">
+      <div class="section-heading"><div><p class="eyebrow">ORDER MONITOR / 订单监控</p><h2 id="overview-title">跟踪订单速览 <span id="overview-count">等待数据</span></h2></div><a class="download" href="#orders-title">完整订单与持仓 ↓</a></div>
+      <div class="toolbar">
+        <label class="search"><span aria-hidden="true">⌕</span><input id="overview-search" type="search" aria-label="搜索跟踪订单" placeholder="搜索合约、订单 ID、数量或价格"></label>
+        <label class="filter">状态 <select id="overview-status"><option value="all">全部状态</option><option value="1">状态 1</option><option value="2">状态 2</option></select></label>
+        <label class="filter">排序 <select id="overview-sort"><option value="recent">接口时间 · 最近优先</option><option value="contract">合约名称</option></select></label>
+      </div>
+      <p id="overview-notice" class="notice" role="status" hidden></p>
+      <div id="overview-records"><div class="empty">正在读取本地跟踪订单快照…</div></div>
+      <div class="pagination"><span id="overview-page" role="status">等待数据</span><div><button id="overview-prev" class="secondary" type="button" disabled>上一页</button><button id="overview-next" class="secondary" type="button" disabled>下一页</button></div></div>
     </section>
     <section id="flow-panel" class="results flow-panel" aria-labelledby="flow-title" data-state="connecting">
       <div class="section-heading">
@@ -41,8 +67,10 @@
       </div>
       <div class="flow-toolbar">
         <span id="flow-summary" class="hint">等待接口状态</span>
-        <button id="flow-fetch" class="primary" type="button">更新订单</button>
+        <button id="flow-fetch" class="primary" type="button" aria-describedby="flow-refresh-help">更新订单</button>
       </div>
+      <p id="flow-refresh-help" class="hint refresh-help">更新会按原规则处理自动下单及平仓单。</p>
+      <details class="flow-details"><summary>查看实时请求链路</summary>
       <figure class="flow-scene">
         <svg class="flow-map" viewBox="0 0 960 260" role="img" aria-labelledby="flow-map-title flow-map-description">
           <title id="flow-map-title">统一订单执行链</title>
@@ -83,11 +111,14 @@
         </svg>
         <figcaption id="flow-caption">连接状态每 600 毫秒同步；动画由真实接口请求驱动。</figcaption>
       </figure>
+      </details>
       <div class="flow-activity">
         <div class="flow-activity-heading"><span>最近执行</span><time id="flow-synced">尚未同步</time></div>
         <ol id="flow-events" class="flow-events" aria-label="最近接口执行记录"><li>等待真实执行记录</li></ol>
       </div>
     </section>
+    </div>
+    <nav class="section-links" aria-label="业务区域"><a href="#orders-title">跟踪订单</a><a href="#positions-title">持仓与平仓</a><a href="#results-title">来源与自动下单</a></nav>
     <div class="order-panels">
       <section class="results order-panel unified-orders" aria-labelledby="unified-orders-title">
         <div class="section-heading"><h2 id="unified-orders-title">Gate 订单与持仓</h2><span class="hint">跟踪订单、持仓与平仓执行记录</span></div>
@@ -190,16 +221,5 @@
     </div>
     <footer><span>TROY CAPITALIZE / 特洛伊资本</span><span>实盘订单与交易执行记录 · 时间按浏览器时区显示</span></footer>
   </main>
-  <div class="workspace-switch" role="tablist" aria-label="切换工作台" data-active="live">
-    <span class="workspace-indicator" aria-hidden="true"></span>
-    <button id="segment-live" class="workspace-segment" type="button" role="tab" aria-selected="true" aria-controls="workspace-live" tabindex="0" data-view="live">
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V9m8 10V5m8 14v-7M3 21h18"/></svg>
-      <span>实盘</span>
-    </button>
-    <button id="segment-config" class="workspace-segment" type="button" role="tab" aria-selected="false" aria-controls="workspace-config" tabindex="-1" data-view="config">
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 3v18m7-18v18m7-18v18M2 8h6m1 8h6m1-9h6"/></svg>
-      <span>配置</span>
-    </button>
-  </div>
 </body>
 </html>

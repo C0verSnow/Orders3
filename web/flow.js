@@ -68,18 +68,6 @@ function renderEvents() {
   if (!container.children.length) container.append(node("li", "", "等待真实执行记录"));
 }
 
-function acknowledge(events) {
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  for (const name of ["sources", "gate"]) {
-    const event = [...events].reverse().find((item) => item.node === name && item.type === "request-end");
-    if (!event) continue;
-    const success = event.status >= 200 && event.status < 300;
-    const card = $(`flow-node-${name}`).querySelector("rect");
-    card.getAnimations().forEach((animation) => animation.cancel());
-    card.animate([{stroke: success ? "#7eab51" : "#ce6956", strokeWidth: 4}, {strokeWidth: 1}], {duration: 450});
-  }
-}
-
 // Cached table data only updates counts; it cannot start motion.
 export function updateFlow(channel, data) {
   counts[channel] = data.orders?.length || 0;
@@ -87,10 +75,11 @@ export function updateFlow(channel, data) {
 }
 
 export function initFlow({refresh, onSettled}) {
-  const narrow = window.matchMedia("(max-width: 600px)");
+  const panel = $("flow-panel");
   function layout() {
-    const mobile = narrow.matches;
-    const map = $("flow-panel").querySelector("svg");
+    const mobile = panel.clientWidth < 600;
+    panel.dataset.layout = mobile ? "narrow" : "wide";
+    const map = panel.querySelector("svg");
     map.setAttribute("viewBox", mobile ? "0 0 320 550" : "0 0 960 260");
     map.querySelector(":scope > rect").setAttribute("height", mobile ? "550" : "260");
     $("flow-node-sources").setAttribute("transform", mobile ? "translate(55 20)" : "translate(44 66)");
@@ -102,7 +91,7 @@ export function initFlow({refresh, onSettled}) {
       $(`flow-link-${name}`).querySelectorAll("path").forEach((link) => link.setAttribute("d", path));
     }
   }
-  narrow.addEventListener("change", layout);
+  new ResizeObserver(layout).observe(panel);
   layout();
   async function sync() {
     if (stopped) return;
@@ -125,7 +114,6 @@ export function initFlow({refresh, onSettled}) {
       readError = "";
       render(true);
       if (changed) renderEvents();
-      acknowledge(events);
       $("flow-synced").textContent = `同步于 ${new Date().toLocaleTimeString("zh-CN", {hour12: false})}`;
       if (recovered || events.some((event) => event.type === "job-end")) onSettled();
     } catch (error) {

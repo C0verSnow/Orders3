@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "export:orders": "node scripts/export-orders.mjs",
+    "test:browser": "node tests/browser/overview.mjs",
     "check": "node scripts/check-web.mjs",
     "test": "node --test tests/web/*.test.mjs tests/scripts/*.test.mjs"
   },
