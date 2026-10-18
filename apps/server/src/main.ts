@@ -32,7 +32,7 @@ async function main() {
   }
   const directory = dirname(config.databasePath); mkdirSync(directory, { recursive: true, mode: 0o700 });
   // One service per data directory protects quota, logs, and trading across processes.
-  const release = await lockfile.lock(directory, { stale: 30000, update: 5000, retries: 0 });
+  const release = await lockfile.lock(directory, { lockfilePath: resolve(directory, '.orders-process.lock'), stale: 300000, update: 5000, retries: 0 });
   let storage: Storage | undefined;
   let stopped = false;
   try {

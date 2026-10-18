@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { fixture, response } from './helpers.ts';
 import { Sessions } from '../../apps/server/src/security/session.ts';
 import { Scheduler } from '../../apps/server/src/scheduler/index.ts';
@@ -42,4 +42,14 @@ test('Infisical fields resolve independently and failures retain the last memory
   f.config.fallback.API_SECRET='old-fallback';const credentials=new Credentials(f.config,f.http);await credentials.refresh(false);credentials.stop();
   assert.equal(f.config.fallback.API_KEY,'new-fallback');assert.equal(f.config.fallback.API_SECRET,'old-fallback');assert.equal(f.config.connection().gateKey,'test-key');
   const logs=readFileSync(f.log.path,'utf8');assert.doesNotMatch(logs,/private-token|machine-secret|new-fallback|private-upstream-error/);
+});
+test('rotation enforces the 50 MB aggregate even with a legacy oversized current file', t => {
+  const f = fixture(t);
+  writeFileSync(f.log.path, Buffer.alloc(20_000_000));
+  for (let index = 1; index <= 3; index++) writeFileSync(`${f.log.path}.${index}`, Buffer.alloc(10_000_000));
+  f.log.write('outbound','GET',new URL('https://api.gateio.ws/api/v4/futures/usdt/positions?private=query'),200);
+  let bytes = 0;
+  for (let index = 0; index <= 4; index++) { const path = f.log.path + (index ? `.${index}` : ''); if (existsSync(path)) bytes += statSync(path).size; }
+  assert.ok(bytes <= 50_000_000);
+  assert.doesNotMatch(readFileSync(f.log.path,'utf8'),/private=query/);
 });

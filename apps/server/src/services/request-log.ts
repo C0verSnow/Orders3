@@ -1,5 +1,5 @@
 import { mkdirSync, existsSync, statSync, renameSync, appendFileSync, readdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 export class RequestLog {
   path: string;
@@ -27,6 +27,9 @@ export class RequestLog {
         }
       }
       appendFileSync(this.path, line, { mode: 0o600 });
+      // Legacy oversized files may survive startup within the total allowance;
+      // rotation must enforce the aggregate allowance again after appending.
+      this.clean(dirname(this.path));
     } catch { console.error('请求日志写入失败，请检查磁盘空间和文件权限'); }
   }
 }
