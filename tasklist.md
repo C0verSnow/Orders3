@@ -20,7 +20,19 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
-- [1792303832] issue #27：独立部署公钥已添加到服务器，原 authorized_keys 已备份；新密钥 SSH 验证返回 orders-ssh-ok，确认 /home/deploy 可写且可访问 Docker。浏览器已打开 Orders3 新增 Repository secret 页面并填好 DEPLOY_SSH_KEY 名称；采用仓库级同名值，避免改动其他仓库共用的组织密钥。README 已补充部署与机器人分开使用密钥的说明。
+- [1792304510] issue #27 已完成：独立部署密钥验证通过，用户已更新组织级 Secret；原部署重跑成功，看板 HTTP 200。PR #28 的完整远端 CI 39103390413 全部通过，issue #27 已关闭；PR 保留待审阅，未合并 master。最后只补任务记录并标记 skip ci，不重复编译；整个过程没有本地编译验证。
+- [1792304098] 当时进度：issue #27：用户已保存新私钥；浏览器确认组织级 DEPLOY_SSH_KEY 已更新，仓库级仍为空，已告知组织共享范围的影响。开始重跑原 Actions 39100677303 的失败作业，验证真实部署。
+- [1792303832] 当时进度：issue #27：浏览器工具要求认证凭据的填写和提交由用户亲自完成，等待用户粘贴新私钥并点击 Add secret；随后重跑原失败部署，再提交 PR 和关闭 issue。尚未更新 GitHub 私钥值，未本地编译。
+- [1792303807] 当时进度：issue #27：按用户授权生成独立 Ed25519 部署密钥，保存在仓库外 ~/.ssh/orders3_actions_deploy_ed25519；备份服务器 authorized_keys 并追加部署公钥，保留机器人公钥和强制命令限制。
+- [1792303728] 当时进度：issue #27：需要单独的部署密钥及 GitHub DEPLOY_SSH_KEY 更新方式；保留机器人公钥的原有限制。本次只查看服务器配置并重现命令拒绝，未改服务器配置、重启容器或本地编译。
+- [1792303703] 当时进度：issue #27：用户授权直接 SSH 登录 root@192.168.1.245 并查看 /home/deploy，开始检查部署账号、SSH 限制和服务日志。
+- [1792302674] 当时进度：issue #27：用户在服务器本机运行 bash 成功，确认 Bash 可用；这还没有经过 SSH，继续询问从其他电脑通过同一部署账号执行 SSH 命令的结果。
+- [1792302650] 当时进度：issue #27：SSH 只返回 {"result":"failed"}，没有脚本上传提示，原因尚未确认；已向用户询问远端 bash 命令结果或可用登录方式，收到后继续定位。没有执行本地构建、编译或测试。
+- [1792302617] 当时进度：开始处理 issue #27：查看失败的 Actions 日志，修复后更新文档、提交 PR；不做本地编译验证。
+
+- [1792304255] issue #27：原 Actions 的部署作业重跑成功，服务器容器 running / healthy，看板 HTTP 200，docker.md 已更新为两行地址，端口 55680。文档 PR #28 已提交；网页检查与回归测试通过，等待其余远端 CI。检查本地 TGBot 工作流使用的是 SSH_PRIVATE_KEY，与这次更新的 DEPLOY_SSH_KEY 名称不同。
+
+- [1792303832] issue #27：独立部署公钥已添加到服务器，原 authorized_keys 已备份；新密钥 SSH 验证返回 orders-ssh-ok，确认 /home/deploy 可写且可访问 Docker。浏览器已打开 Orders3 新增 Repository secret 页面并填好 DEPLOY_SSH_KEY 名称；当时准备使用仓库级同名值；用户随后实际更新了组织级密钥，已另行记录。README 已补充部署与机器人分开使用密钥的说明。
 
 - [1792303728] issue #27：通过 root SSH 查看 /home/deploy，确认 authorized_keys 将现有公钥强制交给 /usr/local/lib/tgbot-control.py；该脚本只接受 start/stop 加数字。把部署用的 bash 命令交给同一脚本后，重现退出码 1 和 {"result":"failed"}。服务器 Bash 正常，失败原因是部署密钥碰到了机器人的命令限制。
 
@@ -147,22 +159,13 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- [1792304098] issue #27：用户已保存新私钥；浏览器确认组织级 DEPLOY_SSH_KEY 已更新，仓库级仍为空，已告知组织共享范围的影响。开始重跑原 Actions 39100677303 的失败作业，验证真实部署。
 
-- [1792303832] issue #27：浏览器工具要求认证凭据的填写和提交由用户亲自完成，等待用户粘贴新私钥并点击 Add secret；随后重跑原失败部署，再提交 PR 和关闭 issue。尚未更新 GitHub 私钥值，未本地编译。
 
-- [1792303807] issue #27：按用户授权生成独立 Ed25519 部署密钥，保存在仓库外 ~/.ssh/orders3_actions_deploy_ed25519；备份服务器 authorized_keys 并追加部署公钥，保留机器人公钥和强制命令限制。
 
-- [1792303728] issue #27：需要单独的部署密钥及 GitHub DEPLOY_SSH_KEY 更新方式；保留机器人公钥的原有限制。本次只查看服务器配置并重现命令拒绝，未改服务器配置、重启容器或本地编译。
 
-- [1792303703] issue #27：用户授权直接 SSH 登录 root@192.168.1.245 并查看 /home/deploy，开始检查部署账号、SSH 限制和服务日志。
 
-- [1792302674] issue #27：用户在服务器本机运行 bash 成功，确认 Bash 可用；这还没有经过 SSH，继续询问从其他电脑通过同一部署账号执行 SSH 命令的结果。
 
-- [1792302650] issue #27：SSH 只返回 {"result":"failed"}，没有脚本上传提示，原因尚未确认；已向用户询问远端 bash 命令结果或可用登录方式，收到后继续定位。没有执行本地构建、编译或测试。
 
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。
-
-- [1792302617] 开始处理 issue #27：查看失败的 Actions 日志，修复后更新文档、提交 PR；不做本地编译验证。
