@@ -16,7 +16,7 @@ export function initSettings() {
     for (const [name, id] of secretFields) {
       $("settings-" + id).value = "";
       const source = values[name + "_SOURCE"];
-      const label = source === "supabase" ? "Supabase 备用凭证" : "本地配置";
+      const label = source === "infisical" ? "Infisical 备用凭证" : "本地配置";
       $("settings-" + id).placeholder = values[name + "_SET"]
         ? `已配置（${label}）；留空保留，输入可替换` : "未配置，请填写";
       $("settings-clear-" + id).checked = false;

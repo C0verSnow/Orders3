@@ -40,7 +40,7 @@ void requireGateCredentials(const Config &config) {
     if (normalizeGateCredential(config.gateSecret).isEmpty()) missing.append("API_SECRET");
     if (!missing.isEmpty())
         throw Error("Gate 配置缺少 " + missing.join("、")
-            + "：请填写连接配置或 Supabase secret 表对应字段");
+            + "：请填写连接配置或 Infisical 对应密钥");
 }
 
 // Legacy Gate responses use JSON integers; newer responses use decimal strings.
@@ -260,43 +260,65 @@ bool syncEntryHistory(const Config &config, const ClosePositionRequester &reques
 } // namespace
 
 void loadGateCredentials(Config &config) {
-    config.supabaseGateKey.clear();
-    config.supabaseGateSecret.clear();
+    config.infisicalGateKey.clear();
+    config.infisicalGateSecret.clear();
     QString problem;
-    if (!config.supabaseUrl.isEmpty() && !config.supabaseKey.isEmpty()) {
-        try {
-            QString base = config.supabaseUrl;
-            while (base.endsWith('/')) base.chop(1);
-            const QByteArray key = config.supabaseKey.toUtf8();
-            HttpHeaders headers{{"apikey", key}, {"Accept", "application/json"}};
-            if (key.split('.').size() == 3)
-                headers.append({"Authorization", "Bearer " + key});
-            // The actual column names include '='. No filtering, sorting or pagination.
-            const auto response = get(QUrl(base + "/rest/v1/secret?select=*"),
-                                      headers, false, config.cancelled);
-            if (response.status < 200 || response.status >= 300) {
-                problem = QString("Supabase secret 表读取失败（HTTP %1）").arg(response.status);
-            } else {
-                QJsonParseError error;
-                const auto document = QJsonDocument::fromJson(response.body, &error);
-                if (error.error != QJsonParseError::NoError || !document.isArray()
-                    || document.array().size() != 1 || !document.array().at(0).isObject()) {
-                    problem = "Supabase secret 表必须返回唯一一条对象记录";
-                } else {
-                    const auto row = document.array().at(0).toObject();
-                    const auto credential = [&](const QString &name) {
-                        const auto value = row.value(name);
-                        if (!value.isString()) return QString();
-                        return normalizeGateCredential(value.toString());
-                    };
-                    config.supabaseGateKey = credential("API_KEY=");
-                    config.supabaseGateSecret = credential("API_SECRET=");
-                }
-            }
-        } catch (const std::exception &) {
-            // Network and parsing details may include remote-controlled sensitive text.
-            problem = "Supabase secret 表读取失败，请检查连接、读取权限和网络";
-        }
+    try {
+        ensureNotCancelled(config);
+        const QUrl base(config.infisicalUrl);
+        // Plain HTTP is only allowed for loopback regression servers/local instances.
+        const bool loopback = base.host() == "127.0.0.1" || base.host() == "::1"
+            || base.host() == "localhost";
+        if (!base.isValid() || base.host().isEmpty() || !base.userInfo().isEmpty()
+            || base.hasQuery() || base.hasFragment()
+            || (!base.path().isEmpty() && base.path() != "/")
+            || (base.scheme() != "https" && !(base.scheme() == "http" && loopback)))
+            throw Error("Infisical 服务地址必须为 HTTPS，且不带路径、查询参数或用户信息");
+        if (config.infisicalClientId.trimmed().isEmpty()
+            || config.infisicalClientSecret.trimmed().isEmpty()
+            || config.infisicalProjectId.trimmed().isEmpty()
+            || config.infisicalEnvironment.trimmed().isEmpty()
+            || !config.infisicalSecretPath.startsWith('/'))
+            throw Error("Infisical 配置不完整");
+        const auto object = [](const HttpResult &response) {
+            ensureHttpSuccess(response);
+            QJsonParseError error;
+            const auto document = QJsonDocument::fromJson(response.body, &error);
+            if (error.error != QJsonParseError::NoError || !document.isObject())
+                throw Error("Infisical 响应格式无效");
+            return document.object();
+        };
+        const QByteArray body = QJsonDocument(QJsonObject{
+            {"clientId", config.infisicalClientId},
+            {"clientSecret", config.infisicalClientSecret}}).toJson(QJsonDocument::Compact);
+        const auto login = object(post(base.resolved(QUrl("/api/v1/auth/universal-auth/login")),
+            body, {{"Content-Type", "application/json"}, {"Accept", "application/json"}}, config.cancelled));
+        const auto token = normalizeGateCredential(login.value("accessToken").toString());
+        if (token.isEmpty()) throw Error("Infisical 认证响应缺少令牌");
+        const auto credential = [&](const QString &name) {
+            ensureNotCancelled(config);
+            QUrl url = base.resolved(QUrl("/api/v4/secrets/" + name));
+            QUrlQuery query;
+            query.addQueryItem("projectId", config.infisicalProjectId);
+            query.addQueryItem("environment", config.infisicalEnvironment);
+            query.addQueryItem("secretPath", config.infisicalSecretPath);
+            query.addQueryItem("type", "shared");
+            url.setQuery(query);
+            const auto result = object(get(url, {{"Authorization", "Bearer " + token.toUtf8()},
+                {"Accept", "application/json"}}, false, config.cancelled));
+            const auto secret = result.value("secret").toObject();
+            if (secret.value("secretKey").toString() != name
+                || secret.value("secretValueHidden").toBool())
+                throw Error("Infisical 密钥响应无效");
+            return normalizeGateCredential(secret.value("secretValue").toString());
+        };
+        config.infisicalGateKey = credential("GATE_API_KEY");
+        config.infisicalGateSecret = credential("GATE_API_SECRET");
+        if (config.infisicalGateKey.isEmpty() || config.infisicalGateSecret.isEmpty())
+            throw Error("Infisical 缺少有效 Gate 备用凭证");
+    } catch (const std::exception &) {
+        // Never reflect remote text, tokens, authentication input or secret values.
+        problem = "Infisical 备用凭证获取失败，请检查机器认证、项目、环境、路径和读取权限";
     }
     config.applyConnectionSettings();
     QStringList missing;
@@ -304,7 +326,7 @@ void loadGateCredentials(Config &config) {
     if (config.gateSecret.isEmpty()) missing.append("API_SECRET");
     if (!missing.isEmpty())
         throw Error("Gate 配置缺少 " + missing.join("、")
-            + "：请填写原有配置或 Supabase secret 表对应字段"
+            + "：请填写原有配置或 Infisical 对应密钥"
             + (problem.isEmpty() ? QString() : "；" + problem));
     if (!problem.isEmpty())
         throw Error(problem + "；继续使用原有 Gate 配置");

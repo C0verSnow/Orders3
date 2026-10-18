@@ -21,6 +21,7 @@
 #include <QTemporaryDir>
 #include <QUuid>
 #include <QScopeGuard>
+#include <QUrlQuery>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QtTest>
@@ -51,6 +52,73 @@ QJsonArray fetchOffline(const orders::Config &config) {
             return contractFixture(path);
         });
 }
+// Only simulated credentials; captures complete requests including POST bodies.
+class InfisicalFixture {
+public:
+    QTcpServer server;
+    QList<QByteArray> requests;
+    orders::HttpResult login{200, R"({"accessToken":"fixture-token"})"};
+    orders::HttpResult key{200, secret("GATE_API_KEY", "backup-key")};
+    orders::HttpResult secretValue{200, secret("GATE_API_SECRET", "backup-secret")};
+    int failures = 0;
+    int delay = 0;
+    QElapsedTimer sinceFailure;
+    qint64 retryDelay = 0;
+    static QByteArray secret(const QString &name, const QJsonValue &value) {
+        return QJsonDocument(QJsonObject{{"secret", QJsonObject{
+            {"secretKey", name}, {"secretValue", value}}}}).toJson(QJsonDocument::Compact);
+    }
+    InfisicalFixture() {
+        server.listen(QHostAddress::LocalHost, 0);
+        QObject::connect(&server, &QTcpServer::newConnection, &server, [this] {
+            while (server.hasPendingConnections()) {
+                auto *socket = server.nextPendingConnection();
+                auto buffer = std::make_shared<QByteArray>();
+                QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                QObject::connect(socket, &QTcpSocket::readyRead, socket, [this, socket, buffer] {
+                    buffer->append(socket->readAll());
+                    const auto split = buffer->indexOf("\r\n\r\n");
+                    if (split < 0) return;
+                    int length = 0;
+                    for (auto line : buffer->left(split).split('\n')) {
+                        if (line.toLower().startsWith("content-length:"))
+                            length = line.mid(line.indexOf(':') + 1).trimmed().toInt();
+                    }
+                    if (buffer->size() < split + 4 + length) return;
+                    requests.append(*buffer);
+                    orders::HttpResult result;
+                    if (buffer->startsWith("POST /api/v1/auth/universal-auth/login ")) {
+                        if (failures > 0) {
+                            --failures;
+                            sinceFailure.start();
+                            result = {503, "private-error-body"};
+                        } else {
+                            if (sinceFailure.isValid()) retryDelay = sinceFailure.elapsed();
+                            result = login;
+                        }
+                    } else if (buffer->startsWith("GET /api/v4/secrets/GATE_API_KEY?")) result = key;
+                    else if (buffer->startsWith("GET /api/v4/secrets/GATE_API_SECRET?")) result = secretValue;
+                    else result = {404, "unexpected-endpoint"};
+                    QObject::disconnect(socket, &QTcpSocket::readyRead, socket, nullptr);
+                    QTimer::singleShot(delay, socket, [socket, result] {
+                        socket->write("HTTP/1.1 " + QByteArray::number(result.status)
+                            + " Test\r\nConnection: close\r\nContent-Length: "
+                            + QByteArray::number(result.body.size()) + "\r\n\r\n" + result.body);
+                        socket->disconnectFromHost();
+                    });
+                });
+            }
+        });
+    }
+    void configure(orders::Config &config) const {
+        config.infisicalUrl = QString("http://127.0.0.1:%1/").arg(server.serverPort());
+        config.infisicalClientId = "fixture-client";
+        config.infisicalClientSecret = "fixture-client-secret";
+        config.infisicalProjectId = "project-fixture";
+        config.infisicalEnvironment = "prod";
+        config.infisicalSecretPath = "/gate keys/a&b";
+    }
+};
 } // namespace
 
 class CoreTests : public QObject {
@@ -224,8 +292,8 @@ private slots:
         config.dataPath = config.ordersPath = directory.filePath("data.db");
         config.schedulePath = directory.filePath("config");
         config.environment = {{"API_KEY", "  \"\"  "}, {"API_SECRET", " ' ' "}};
-        config.supabaseGateKey = "已配置；留空保留，输入可替换";
-        config.supabaseGateSecret = "secret\ninvalid";
+        config.infisicalGateKey = "已配置；留空保留，输入可替换";
+        config.infisicalGateSecret = "secret\ninvalid";
         config.applyConnectionSettings();
         QVERIFY(config.gateKey.isEmpty());
         QVERIFY(config.gateSecret.isEmpty());
@@ -236,77 +304,150 @@ private slots:
         QVERIFY(persisted.value("API_SECRET").toString().isEmpty());
     }
 
-    void supabaseGateCredentials_data() {
-        QTest::addColumn<QByteArray>("body");
-        QTest::addColumn<int>("status");
+    void infisicalStartupConfigurationStaysOutOfSavedSettings() {
+        QTemporaryDir directory;
+        const QList<QByteArray> names{"ORDERS_CONFIG_PATH", "INFISICAL_URL", "INFISICAL_CLIENT_ID",
+            "INFISICAL_CLIENT_SECRET", "CLIENT_ID", "CLIENT_SECRET", "INFISICAL_PROJECT_ID",
+            "INFISICAL_ENVIRONMENT", "INFISICAL_SECRET_PATH"};
+        QList<QByteArray> previous;
+        QList<bool> wasSet;
+        for (const auto &name : names) {
+            previous.append(qgetenv(name.constData()));
+            wasSet.append(qEnvironmentVariableIsSet(name.constData()));
+        }
+        const auto restore = qScopeGuard([&] {
+            for (qsizetype i = 0; i < names.size(); ++i) {
+                if (wasSet.at(i)) qputenv(names.at(i).constData(), previous.at(i));
+                else qunsetenv(names.at(i).constData());
+            }
+        });
+        qputenv("ORDERS_CONFIG_PATH", directory.filePath("config").toUtf8());
+        qputenv("INFISICAL_URL", "https://app.infisical.com");
+        qputenv("CLIENT_ID", "alias-id");
+        qputenv("CLIENT_SECRET", "alias-secret");
+        qunsetenv("INFISICAL_CLIENT_ID");
+        qunsetenv("INFISICAL_CLIENT_SECRET");
+        qputenv("INFISICAL_PROJECT_ID", "project-fixture");
+        qputenv("INFISICAL_ENVIRONMENT", "prod");
+        qputenv("INFISICAL_SECRET_PATH", "/");
+        auto config = orders::Config::load();
+        QCOMPARE(config.infisicalClientId, QString("alias-id"));
+        QCOMPARE(config.infisicalClientSecret, QString("alias-secret"));
+        QCOMPARE(config.infisicalProjectId, QString("project-fixture"));
+        qputenv("INFISICAL_CLIENT_ID", "dedicated-id");
+        qputenv("INFISICAL_CLIENT_SECRET", "dedicated-secret");
+        config = orders::Config::load();
+        QCOMPARE(config.infisicalClientId, QString("dedicated-id"));
+        QCOMPARE(config.infisicalClientSecret, QString("dedicated-secret"));
+        config.infisicalUrl = "invalid-url";
+        orders::Dashboard dashboard(config);
+        dashboard.configureEnvironment({{"ORDERS_ALLOWED_ORIGIN", "http://localhost"}});
+        const auto saved = QJsonDocument(orders::loadEnvironmentSettings(config.schedulePath)).toJson();
+        const auto exposed = QJsonDocument(dashboard.environmentSnapshot()).toJson();
+        for (const auto &credential : {"dedicated-id", "dedicated-secret", "alias-id", "alias-secret"}) {
+            QVERIFY(!saved.contains(credential));
+            QVERIFY(!exposed.contains(credential));
+        }
+        qputenv("INFISICAL_CLIENT_SECRET", "");
+        QVERIFY(orders::Config::load().infisicalClientSecret.isEmpty());
+    }
+
+    void infisicalGateCredentials_data() {
         QTest::addColumn<QString>("configuredKey");
         QTest::addColumn<QString>("configuredSecret");
         QTest::addColumn<QString>("expectedKey");
         QTest::addColumn<QString>("expectedSecret");
-        QTest::addColumn<bool>("failure");
-        const QByteArray valid = "[{\"API_KEY=\":\"backup-key\",\"API_SECRET=\":\"backup-secret\"}]";
-        QTest::newRow("quoted-backup")
-            << QByteArray("[{\"API_KEY=\":\" 'backup-key' \",\"API_SECRET=\":\" \\\"backup-secret\\\" \"}]")
-            << 200 << QString() << QString()
-            << QString("backup-key") << QString("backup-secret") << false;
-        QTest::newRow("both-backup") << valid << 200 << QString() << QString()
-            << QString("backup-key") << QString("backup-secret") << false;
-        QTest::newRow("both-configured") << valid << 200 << QString("env-key") << QString("env-secret")
-            << QString("env-key") << QString("env-secret") << false;
-        QTest::newRow("key-configured") << valid << 200 << QString("env-key") << QString()
-            << QString("env-key") << QString("backup-secret") << false;
-        QTest::newRow("secret-configured") << valid << 200 << QString() << QString("env-secret")
-            << QString("backup-key") << QString("env-secret") << false;
-        QTest::newRow("blank-env") << valid << 200 << QString("  ") << QString(" '' ")
-            << QString("backup-key") << QString("backup-secret") << false;
-        for (const QByteArray &body : {QByteArray("[]"), QByteArray("[{},{}]"),
-                 QByteArray("{}"), QByteArray("[null]"), QByteArray("do-not-expose-secret")}) {
-            QTest::newRow(body.constData()) << body << 200 << QString("env-key") << QString("env-secret")
-                << QString("env-key") << QString("env-secret") << true;
-        }
-        QTest::newRow("http-error") << QByteArray("do-not-expose-secret") << 403
-            << QString("env-key") << QString("env-secret")
-            << QString("env-key") << QString("env-secret") << true;
-        QTest::newRow("missing-secret") << QByteArray("[{\"API_KEY=\":\"backup-key\",\"API_SECRET=\":null}]")
-            << 200 << QString() << QString() << QString("backup-key") << QString() << true;
-        QTest::newRow("invalid-type") << QByteArray("[{\"API_KEY=\":123,\"API_SECRET=\":\"backup-secret\"}]")
-            << 200 << QString() << QString() << QString() << QString("backup-secret") << true;
+        QTest::newRow("both-backup") << QString() << QString()
+            << QString("backup-key") << QString("backup-secret");
+        QTest::newRow("both-local") << QString("local-key") << QString("local-secret")
+            << QString("local-key") << QString("local-secret");
+        QTest::newRow("mixed-key") << QString("local-key") << QString()
+            << QString("local-key") << QString("backup-secret");
+        QTest::newRow("mixed-secret") << QString() << QString("local-secret")
+            << QString("backup-key") << QString("local-secret");
+        QTest::newRow("blank-local") << QString("  ") << QString(" '' ")
+            << QString("backup-key") << QString("backup-secret");
     }
 
-    void supabaseGateCredentials() {
-        QFETCH(QByteArray, body);
-        QFETCH(int, status);
+    void infisicalGateCredentials() {
         QFETCH(QString, configuredKey);
         QFETCH(QString, configuredSecret);
         QFETCH(QString, expectedKey);
         QFETCH(QString, expectedSecret);
-        QFETCH(bool, failure);
-        QTcpServer server;
-        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
-        QList<QByteArray> requests;
-        connect(&server, &QTcpServer::newConnection, &server, [&] {
-            while (server.hasPendingConnections()) {
-                auto *socket = server.nextPendingConnection();
-                auto buffer = std::make_shared<QByteArray>();
-                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-                connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
-                    buffer->append(socket->readAll());
-                    if (!buffer->contains("\r\n\r\n")) return;
-                    requests.append(*buffer);
-                    socket->write("HTTP/1.1 " + QByteArray::number(status)
-                        + " Test\r\nConnection: close\r\nContent-Length: "
-                        + QByteArray::number(body.size()) + "\r\n\r\n" + body);
-                    socket->disconnectFromHost();
-                });
-            }
-        });
+        InfisicalFixture fixture;
+        QVERIFY(fixture.server.isListening());
+        fixture.key.body = InfisicalFixture::secret("GATE_API_KEY", " 'backup-key' ");
+        fixture.secretValue.body = InfisicalFixture::secret("GATE_API_SECRET", " \"backup-secret\" ");
         orders::Config config;
-        config.supabaseUrl = QString("http://127.0.0.1:%1/").arg(server.serverPort());
-        const bool legacy = configuredKey == "env-key";
-        config.supabaseKey = legacy ? "eyJ.fixture.jwt" : "sb_publishable_fixture";
-        config.environment = {{"SUPABASE_URL", config.supabaseUrl},
-            {"SUPABASE_ANON_KEY", config.supabaseKey},
-            {"API_KEY", configuredKey}, {"API_SECRET", configuredSecret}};
+        fixture.configure(config);
+        config.environment = {{"API_KEY", configuredKey}, {"API_SECRET", configuredSecret}};
+        auto future = QtConcurrent::run([config]() mutable {
+            orders::loadGateCredentials(config);
+            return config;
+        });
+        QTRY_VERIFY_WITH_TIMEOUT(future.isFinished(), 5000);
+        auto resolved = future.result();
+        QCOMPARE(resolved.gateKey, expectedKey);
+        QCOMPARE(resolved.gateSecret, expectedSecret);
+        QCOMPARE(fixture.requests.size(), 3);
+        const auto login = fixture.requests.first();
+        QVERIFY(!login.left(login.indexOf("\r\n\r\n")).contains("fixture-client-secret"));
+        const auto auth = QJsonDocument::fromJson(login.mid(login.indexOf("\r\n\r\n") + 4)).object();
+        QCOMPARE(auth.value("clientId").toString(), QString("fixture-client"));
+        QCOMPARE(auth.value("clientSecret").toString(), QString("fixture-client-secret"));
+        for (int i = 1; i < fixture.requests.size(); ++i) {
+            const auto request = fixture.requests.at(i);
+            const QUrl url("http://localhost" + QString::fromUtf8(request.split(' ').at(1)));
+            const QUrlQuery query(url);
+            QCOMPARE(query.queryItemValue("projectId", QUrl::FullyDecoded), config.infisicalProjectId);
+            QCOMPARE(query.queryItemValue("environment", QUrl::FullyDecoded), QString("prod"));
+            QCOMPARE(query.queryItemValue("secretPath", QUrl::FullyDecoded), config.infisicalSecretPath);
+            QVERIFY(request.toLower().contains("authorization: bearer fixture-token"));
+            QVERIFY(!request.contains("fixture-client-secret"));
+            QVERIFY(!request.contains("/rest/v1/secret"));
+        }
+        QTemporaryDir directory;
+        resolved.schedulePath = directory.filePath("config");
+        orders::Dashboard dashboard(resolved);
+        const auto snapshot = QJsonDocument(dashboard.environmentSnapshot()).toJson();
+        for (const auto &value : {"backup-key", "backup-secret", "fixture-client-secret", "fixture-token"})
+            QVERIFY(!snapshot.contains(value));
+        const auto values = dashboard.environmentSnapshot().value("values").toObject();
+        QCOMPARE(values.value("API_KEY_SOURCE").toString(),
+            configuredKey.trimmed().isEmpty() ? QString("infisical") : QString("configuration"));
+        dashboard.configureEnvironment({{"ORDERS_ALLOWED_ORIGIN", "http://localhost"}});
+        const auto persisted = QJsonDocument(orders::loadEnvironmentSettings(resolved.schedulePath)).toJson();
+        QVERIFY(!persisted.contains("backup-secret"));
+        QVERIFY(!persisted.contains("fixture-client-secret"));
+    }
+
+    void infisicalFailures_data() {
+        QTest::addColumn<int>("failure");
+        for (int i = 0; i < 13; ++i)
+            QTest::newRow(qPrintable(QString::number(i))) << i;
+    }
+
+    void infisicalFailures() {
+        QFETCH(int, failure);
+        InfisicalFixture fixture;
+        orders::Config config;
+        fixture.configure(config);
+        config.environment = {{"API_KEY", "local-key"}, {"API_SECRET", "local-secret"}};
+        switch (failure) {
+        case 0: fixture.login = {401, "do-not-expose-secret"}; break;
+        case 1: fixture.login.body = "not-json-private-token"; break;
+        case 2: fixture.login.body = R"({"accessToken":123})"; break;
+        case 3: fixture.login.body = R"({"accessToken":"bad\nheader"})"; break;
+        case 4: fixture.key = {403, "private-secret-body"}; break;
+        case 5: fixture.key.body = "[]"; break;
+        case 6: fixture.key.body = InfisicalFixture::secret("GATE_API_KEY", 123); break;
+        case 7: fixture.secretValue.body = InfisicalFixture::secret("GATE_API_SECRET", ""); break;
+        case 8: fixture.secretValue.body = InfisicalFixture::secret("OTHER", "private-secret"); break;
+        case 9: fixture.secretValue.body = InfisicalFixture::secret("GATE_API_SECRET", "bad secret"); break;
+        case 10: config.infisicalClientSecret.clear(); break;
+        case 11: config.infisicalUrl = "http://example.com"; break;
+        case 12: fixture.login = {302, "private-redirect-body"}; break;
+        }
         auto future = QtConcurrent::run([config]() mutable {
             QString error;
             try { orders::loadGateCredentials(config); }
@@ -315,143 +456,59 @@ private slots:
         });
         QTRY_VERIFY_WITH_TIMEOUT(future.isFinished(), 5000);
         const auto result = future.result();
-        QCOMPARE(!result.second.isEmpty(), failure);
-        QCOMPARE(result.first.gateKey, expectedKey);
-        QCOMPARE(result.first.gateSecret, expectedSecret);
-        QVERIFY(!result.second.contains("do-not-expose-secret"));
-        QVERIFY(!result.second.contains("backup-secret"));
-        QVERIFY(!result.second.contains("env-secret"));
-        QCOMPARE(requests.size(), 1);
-        QVERIFY(requests.first().startsWith("GET /rest/v1/secret?select=* HTTP/1.1"));
-        const auto request = requests.first().toLower();
-        QCOMPARE(request.contains("authorization: bearer "), legacy);
-        QVERIFY(request.contains("apikey: " + config.supabaseKey.toUtf8().toLower()));
-        QTemporaryDir directory;
-        auto resolved = result.first;
-        resolved.schedulePath = directory.filePath("config");
-        orders::Dashboard dashboard(resolved);
-        const auto snapshot = dashboard.environmentSnapshot();
-        QVERIFY(!QJsonDocument(snapshot).toJson().contains("backup-secret"));
-        QCOMPARE(snapshot.value("values").toObject().value("API_KEY_SET").toBool(), !expectedKey.isEmpty());
-        QCOMPARE(snapshot.value("values").toObject().value("API_SECRET_SET").toBool(), !expectedSecret.isEmpty());
-        const auto values = snapshot.value("values").toObject();
-        QCOMPARE(values.value("API_KEY_SOURCE").toString(), expectedKey.isEmpty() ? QString("missing")
-            : (!orders::normalizeGateCredential(configuredKey).isEmpty() ? QString("configuration") : QString("supabase")));
-        dashboard.configureEnvironment({{"ORDERS_ALLOWED_ORIGIN", "http://localhost"}});
-        QCOMPARE(dashboard.config().gateKey, expectedKey);
-        QCOMPARE(dashboard.config().gateSecret, expectedSecret);
-        const auto persisted = orders::loadEnvironmentSettings(resolved.schedulePath);
-        QVERIFY(!QJsonDocument(persisted).toJson().contains("backup-secret"));
-        dashboard.configureEnvironment({{"API_KEY", "replacement-key"}, {"API_SECRET", "replacement-secret"}});
-        QCOMPARE(dashboard.config().gateKey, QString("replacement-key"));
-        dashboard.configureEnvironment({{"API_KEY", ""}, {"API_SECRET", ""}});
-        QCOMPARE(dashboard.config().gateKey, resolved.supabaseGateKey);
-        QCOMPARE(dashboard.config().gateSecret, resolved.supabaseGateSecret);
+        QVERIFY(!result.second.isEmpty());
+        QCOMPARE(result.first.gateKey, QString("local-key"));
+        QCOMPARE(result.first.gateSecret, QString("local-secret"));
+        QVERIFY(!result.second.contains("private"));
+        QVERIFY(!result.second.contains("local-secret"));
+        if (failure == 10 || failure == 11) QVERIFY(fixture.requests.isEmpty());
+        if (failure == 12) QCOMPARE(fixture.requests.size(), 1);
     }
 
-    void savedSupabaseSettingsReloadAndRetryWithoutRestart() {
+    void savedSettingsReloadInfisicalAndRetryWithoutRestart() {
         QTemporaryDir directory;
-        QTcpServer server;
-        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
-        int requests = 0;
-        QElapsedTimer sinceFailure;
-        qint64 retryDelay = 0;
-        connect(&server, &QTcpServer::newConnection, &server, [&] {
-            while (server.hasPendingConnections()) {
-                auto *socket = server.nextPendingConnection();
-                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-                auto buffer = std::make_shared<QByteArray>();
-                connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
-                    buffer->append(socket->readAll());
-                    if (!buffer->contains("\r\n\r\n")) return;
-                    ++requests;
-                    const bool fail = requests == 1;
-                    if (fail) sinceFailure.start();
-                    else retryDelay = sinceFailure.elapsed();
-                    const QByteArray body = fail ? QByteArray("private-error-body")
-                        : QByteArray(R"([{"API_KEY=":"reloaded-key","API_SECRET=":"reloaded-secret"}])");
-                    socket->write(QByteArray("HTTP/1.1 ") + (fail ? "503 Failed" : "200 OK")
-                        + "\r\nConnection: close\r\nContent-Length: "
-                        + QByteArray::number(body.size()) + "\r\n\r\n" + body);
-                    socket->disconnectFromHost();
-                });
-            }
-        });
+        InfisicalFixture fixture;
+        fixture.failures = 1;
         orders::Config config;
+        fixture.configure(config);
         config.schedulePath = directory.filePath("config");
         orders::Dashboard dashboard(config);
         QElapsedTimer saveTime;
         saveTime.start();
-        dashboard.configureEnvironment({
-            {"SUPABASE_URL", QString("http://127.0.0.1:%1").arg(server.serverPort())},
-            {"SUPABASE_ANON_KEY", "sb_publishable_fixture"}});
-        QVERIFY(saveTime.elapsed() < 1000); // The save does not wait for network/retries.
-        QTRY_COMPARE_WITH_TIMEOUT(requests, 1, 2000);
+        dashboard.configureEnvironment({{"SUPABASE_URL", "https://orders.example.com"}});
+        QVERIFY(saveTime.elapsed() < 1000);
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.requests.size(), 1, 2000);
         QVERIFY(dashboard.config().gateKey.isEmpty());
-        QTRY_COMPARE_WITH_TIMEOUT(dashboard.config().gateSecret, QString("reloaded-secret"), 8000);
-        QCOMPARE(dashboard.config().gateKey, QString("reloaded-key"));
-        QCOMPARE(requests, 2);
-        QVERIFY(retryDelay >= 4900);
-        const auto snapshot = QJsonDocument(dashboard.environmentSnapshot()).toJson();
-        QVERIFY(!snapshot.contains("reloaded-secret"));
-        QVERIFY(!snapshot.contains("private-error-body"));
-        QVERIFY(!QJsonDocument(orders::loadEnvironmentSettings(config.schedulePath)).toJson()
-            .contains("reloaded-secret"));
+        QTRY_COMPARE_WITH_TIMEOUT(dashboard.config().gateSecret, QString("backup-secret"), 8000);
+        QCOMPARE(fixture.requests.size(), 4);
+        QVERIFY(fixture.retryDelay >= 4900);
         QTest::qWait(5500);
-        QCOMPARE(requests, 2); // Success stops retries.
-        // Saving again (even the same URL) must request the latest remote values.
-        dashboard.configureEnvironment({{"SUPABASE_URL", dashboard.config().supabaseUrl}});
-        QTRY_COMPARE_WITH_TIMEOUT(requests, 3, 2000);
+        QCOMPARE(fixture.requests.size(), 4);
+        fixture.secretValue.body = InfisicalFixture::secret("GATE_API_SECRET", "latest-secret");
+        dashboard.configureEnvironment({{"ORDERS_ALLOWED_ORIGIN", "http://localhost"}});
+        QTRY_COMPARE_WITH_TIMEOUT(dashboard.config().gateSecret, QString("latest-secret"), 3000);
+        QCOMPARE(fixture.requests.size(), 7);
+        QVERIFY(!QJsonDocument(dashboard.environmentSnapshot()).toJson().contains("latest-secret"));
+        QVERIFY(!QJsonDocument(orders::loadEnvironmentSettings(config.schedulePath)).toJson().contains("latest-secret"));
     }
 
-    void changedSupabaseSettingsDiscardOldRequestAndFallback() {
+    void changedSettingsDiscardOldInfisicalRequest() {
         QTemporaryDir directory;
-        QTcpServer oldServer, newServer;
-        QVERIFY(oldServer.listen(QHostAddress::LocalHost, 0));
-        QVERIFY(newServer.listen(QHostAddress::LocalHost, 0));
-        int oldRequests = 0, newRequests = 0;
-        const auto serve = [&](QTcpServer &server, int &count, const QByteArray &body, bool delay) {
-            connect(&server, &QTcpServer::newConnection, &server, [&, body, delay, serverPtr = &server, countPtr = &count] {
-                while (serverPtr->hasPendingConnections()) {
-                    auto *socket = serverPtr->nextPendingConnection();
-                    auto buffer = std::make_shared<QByteArray>();
-                    connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-                    connect(socket, &QTcpSocket::readyRead, socket, [socket, buffer, body, delay, countPtr] {
-                        buffer->append(socket->readAll());
-                        if (!buffer->contains("\r\n\r\n")) return;
-                        ++*countPtr;
-                        const auto respond = [socket, body] {
-                            socket->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: "
-                                + QByteArray::number(body.size()) + "\r\n\r\n" + body);
-                            socket->disconnectFromHost();
-                        };
-                        QTimer::singleShot(delay ? 1000 : 0, socket, respond);
-                    });
-                }
-            });
-        };
-        serve(oldServer, oldRequests, R"([{"API_KEY=":"stale-key","API_SECRET=":"stale-secret"}])", true);
-        serve(newServer, newRequests, R"([{"API_KEY=":"latest-key","API_SECRET=":"latest-secret"}])", false);
+        InfisicalFixture fixture;
+        fixture.delay = 1000;
         orders::Config config;
+        fixture.configure(config);
         config.schedulePath = directory.filePath("config");
-        config.supabaseGateKey = "previous-key";
-        config.supabaseGateSecret = "previous-secret";
-        config.applyConnectionSettings();
         orders::Dashboard dashboard(config);
-        dashboard.configureEnvironment({
-            {"SUPABASE_URL", QString("http://127.0.0.1:%1").arg(oldServer.serverPort())},
-            {"SUPABASE_ANON_KEY", "sb_publishable_old"}});
-        QVERIFY(dashboard.config().supabaseGateKey.isEmpty());
-        QTRY_COMPARE_WITH_TIMEOUT(oldRequests, 1, 2000);
-        dashboard.configureEnvironment({
-            {"SUPABASE_URL", QString("http://127.0.0.1:%1").arg(newServer.serverPort())},
-            {"SUPABASE_ANON_KEY", "sb_publishable_new"}, {"API_KEY", "manual-key"}});
-        QTRY_COMPARE_WITH_TIMEOUT(dashboard.config().gateSecret, QString("latest-secret"), 3000);
+        dashboard.reloadGateCredentials();
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.requests.size(), 1, 2000);
+        fixture.delay = 0;
+        dashboard.configureEnvironment({{"API_KEY", "manual-key"}});
+        QTRY_COMPARE_WITH_TIMEOUT(dashboard.config().gateSecret, QString("backup-secret"), 3000);
         QCOMPARE(dashboard.config().gateKey, QString("manual-key"));
-        QCOMPARE(newRequests, 1);
         QTest::qWait(1200);
-        QCOMPARE(dashboard.config().supabaseGateKey, QString("latest-key"));
-        QCOMPARE(dashboard.config().gateSecret, QString("latest-secret"));
+        QCOMPARE(dashboard.config().gateKey, QString("manual-key"));
+        QCOMPARE(dashboard.config().gateSecret, QString("backup-secret"));
     }
 
     void credentialRetryStopsOnDestruction() {

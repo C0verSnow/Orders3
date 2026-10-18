@@ -38,11 +38,26 @@ C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 和 macOS �
 
 ### Gate 备用密钥
 
-启动时读取 Supabase 的 `/rest/v1/secret?select=*` 。表中必须只有 1 条记录，当前实际列名为 `API_KEY=`、`API_SECRET=`（列名末尾含等号），字段值为非空文本，兼容与 `.env` 相同的外层单引号或双引号；不排序、筛选或分页。使用已有 `SUPABASE_URL`、`SUPABASE_ANON_KEY` 连接和读取权限。
+启动时由程序内的 C++ / Qt HTTP 客户端自动获取，无需安装 Node、Python 或 Infisical CLI。先通过 [Universal Auth](https://infisical.com/docs/api-reference/endpoints/universal-auth/login) 交换临时访问令牌，再使用 [读取密钥接口](https://infisical.com/docs/api-reference/endpoints/secrets/read) 读取指定项目、环境及路径中的 `GATE_API_KEY`、`GATE_API_SECRET`。不再请求 Supabase `secret` 表；原有 Supabase `orders` 表读取和交易规则保持不变。
 
-`API_KEY`、`API_SECRET` 各自使用原有配置中的非空值，缺少的字段才使用 Supabase 备用值，允许混合来源。原有页面配置入口及 `[environment]` > 进程环境变量 > `.env` 的配置顺序保持不变；这套配置解析后的值优先于 Supabase。备用密钥只留在内存，不写入配置文件，不在设置接口或日志里返回。页面修改仍立即生效，保存 Supabase 或 Gate 配置后立即在后台重新读取备用密钥，无需重启容器；失败后每隔 5 秒重试，成功后停止。修改 Supabase 表后再次保存程序配置即可重新读取。修改 Supabase 地址或密钥会清除旧连接的备用值，旧请求结果不会覆盖新配置。保存接口不等待网络；备用值只在内存更新。
+启动环境或程序原有 `.env` 中配置：
 
-读取失败时，完整的原有 Gate 配置仍可使用。缺少任一必需字段时，启动日志会指出缺少的配置名，Gate 操作会在发送请求前停止；看板继续启动，方便补充配置；启动读取失败也会在后台重试。`--cached` 也会读取备用密钥，但不会因此抓取来源或操作 Gate。读取日志和错误信息不包含密钥或响应正文。
+```dotenv
+INFISICAL_URL=https://app.infisical.com
+INFISICAL_CLIENT_ID=your-machine-client-id
+INFISICAL_CLIENT_SECRET=your-machine-client-secret
+INFISICAL_PROJECT_ID=your-project-uuid
+INFISICAL_ENVIRONMENT=prod
+INFISICAL_SECRET_PATH=/
+```
+
+地址默认 `https://app.infisical.com`，环境默认 `prod`，路径默认 `/`，项目 ID 必填。兼容本地已有的 `CLIENT_ID`、`CLIENT_SECRET` 名称；设置了 `INFISICAL_CLIENT_ID`、`INFISICAL_CLIENT_SECRET` 时优先使用专用名称（显式空值也不回退）。这些是启动配置，网页不展示或保存机器认证凭证；修改后需重启。`.env` 位置沿用原规则：源码仓库根目录、Windows 程序旁、Linux 的 `bin/orders` 旁。Docker 可使用 `docker run --env-file /安全目录/infisical.env ...` 注入，或把文件只读挂载到 `/opt/orders/bin/.env`。只允许 HTTPS 服务地址（本机回环地址可用 HTTP），不跟随认证或密钥接口的重定向。
+
+`API_KEY`、`API_SECRET` 分别优先使用本地非空有效配置，缺少哪个字段就由 Infisical 对应字段补充，支持混合来源。本地 Gate 配置仍按 `[environment]` > 进程环境变量 > `.env` 的顺序处理。令牌和 Gate 备用凭证只在内存中使用，不写文件，不出现在网页、日志或错误正文中。机器身份需对指定环境和路径的这两项密钥具有读取明文权限。
+
+网页每次成功保存程序配置都会在后台重新认证并读取备用密钥，无需重启；失败后在本次请求结束 5 秒后重试，成功后停止。更新 Infisical 中的 Gate 密钥后，再保存一次网页配置即可刷新。保存接口不等待网络；过期请求的结果不会覆盖新配置。修改 Supabase 订单连接不会清除 Infisical 备用值。后台刷新失败保留上次成功的内存备用值，完整的本地 Gate 配置始终保留。
+
+认证失败、响应无效、密钥缺失或格式无效都会触发重试。最终缺少 `API_KEY` 或 `API_SECRET` 时，Gate 操作在发送请求前停止；看板继续运行，方便补充配置。`--cached` 仍获取备用凭证，但不会因此抓取订单或操作 Gate。单次 `--list` / `--fetch-only` 模式只尝试一次，不启动常驻重试线程。
 
 ### 来源订单读取流程
 
@@ -81,7 +96,7 @@ npm run export:orders
 
 ### 请求日志与数据库上限
 
-程序启动后自动在实际数据库所在目录的 `logs/requests.jsonl` 保存请求日志，单次抓取模式也记录。每行是一条 JSON，包含 UTC 时间、请求方向、HTTP 方法、主机、路径、状态码及是否成功；外部请求还包含耗时（毫秒）。`outbound` 是 Supabase / Gate 请求，`inbound` 是网页和其他客户端访问本程序的请求，包含静态资源、失败请求和 404。状态码 0 表示没有收到 HTTP 响应（例如取消、网络错误）。日志不保存用户名、密码、查询参数、请求头、请求体或响应体。
+程序启动后自动在实际数据库所在目录的 `logs/requests.jsonl` 保存请求日志，单次抓取模式也记录。每行是一条 JSON，包含 UTC 时间、请求方向、HTTP 方法、主机、路径、状态码及是否成功；外部请求还包含耗时（毫秒）。`outbound` 是 Supabase / Infisical / Gate 请求，`inbound` 是网页和其他客户端访问本程序的请求，包含静态资源、失败请求和 404。状态码 0 表示没有收到 HTTP 响应（例如取消、网络错误）。日志不保存用户名、密码、查询参数、请求头、请求体或响应体。
 
 数据库主文件与请求日志合计最多 **500 MB（500,000,000 字节）**，固定分配如下：
 
@@ -105,15 +120,15 @@ cron = */15 * * * *
 
 ### Gate 凭证状态与成交历史兼容
 
-Gate 输入框会区分“本地配置”和“Supabase 备用凭证”。本地 `API_KEY = ""`、`API_SECRET = ""` 时，如果 Supabase `secret` 表提供了备用凭证，页面仍显示已配置，并标明来源；两处都没有有效的非空值时显示未配置。已配置仅表示凭证内容格式有效，不代表交易所验证成功或拥有下单权限。
+Gate 输入框会区分“本地配置”和“Infisical 备用凭证”。本地 `API_KEY = ""`、`API_SECRET = ""` 时，如果 Infisical 提供了备用凭证，页面仍显示已配置，并标明来源；两处都没有有效的非空值时显示未配置。已配置仅表示凭证内容格式有效，不代表交易所验证成功或拥有下单权限。
 
-读取环境变量、配置文件、网页输入和 Supabase 备用值使用统一的 Gate 凭证检查：去掉首尾空白及一层成对引号，拒绝界面提示文字、残缺引号、内部空白、控制字符和过长内容。网页不会回填密钥或把提示文字作为表单值；留空时不提交该字段，保留原值；勾选清除会保存本地空值，但仍可使用 Supabase 备用值。后端拒绝提交无效提示文字并保留原配置。缺少凭证时，在交易请求和成交历史处理之前明确指出 `API_KEY` 或 `API_SECRET`。
+读取环境变量、配置文件、网页输入和 Infisical 备用值使用统一的 Gate 凭证检查：去掉首尾空白及一层成对引号，拒绝界面提示文字、残缺引号、内部空白、控制字符和过长内容。网页不会回填密钥或把提示文字作为表单值；留空时不提交该字段，保留原值；勾选清除会保存本地空值，但仍可使用 Infisical 备用值。后端拒绝提交无效提示文字并保留原配置。缺少凭证时，在交易请求和成交历史处理之前明确指出 `API_KEY` 或 `API_SECRET`。
 
 issue #19 的现场运行版本为 `5938e99`：本地 Gate 凭证为空，但 Supabase 备用凭证成功查询了真实成交；成交的 `size`、`close_size` 为 JSON 数字。PR #18 新增历史同步只读取字符串整数，导致自动下单和持仓管理均报“成交历史合约或开平仓数量无效”。修复兼容旧数字整数及新十进制字符串，精确判断开仓、加仓、反手和纯平仓；拒绝不安全的数字、缺失字段、零成交量及方向冲突，不推进失败批次的同步进度。现场核查仅执行只读查询，没有试下单或修改服务器配置。
 
 ### Gate 在 Linux / Docker 返回 401
 
-Windows、Linux 和 Docker 共用配置加载、页面保存及 Gate 签名代码，字段均为 `API_KEY`、`API_SECRET`。启动读取与页面保存统一去除 Gate 密钥首尾空白及成对的单／双引号，兼容 Docker `--env-file` 保留引号的行为。页面保存的密钥优先于容器环境变量；留空保留，勾选清除后保存会删除本地密钥，并且不会回退使用环境变量中的旧值；如果 Supabase 仍有备用凭证，将继续使用备用值。容器配置默认保存到 `/data/config`，应挂载 `/data` 保留设置。
+Windows、Linux 和 Docker 共用配置加载、页面保存及 Gate 签名代码，字段均为 `API_KEY`、`API_SECRET`。启动读取与页面保存统一去除 Gate 密钥首尾空白及成对的单／双引号，兼容 Docker `--env-file` 保留引号的行为。页面保存的密钥优先于容器环境变量；留空保留，勾选清除后保存会删除本地密钥，并且不会回退使用环境变量中的旧值；如果 Infisical 仍有备用凭证，将继续使用备用值。容器配置默认保存到 `/data/config`，应挂载 `/data` 保留设置。
 
 Gate 读取持仓、获取追踪单、创建和停止订单失败时，页面会显示已识别的认证错误类别及处理提示，不再仅显示 HTTP 401。按 [Gate APIv4 官方说明](https://www.gate.com/docs/developers/apiv4/en/#label-list) 检查：
 

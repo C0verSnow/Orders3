@@ -90,6 +90,15 @@ Config Config::load() {
     result.schedulePath = expandPath(qEnvironmentVariable(
         "ORDERS_CONFIG_PATH", checkout ? root + "/config" : QDir::homePath() + "/.orders-dashboard/config"));
     result.environment = loadEnvironmentSettings(result.schedulePath);
+    // Never copy machine credentials into the settings object saved by the webpage.
+    result.infisicalUrl = qEnvironmentVariable("INFISICAL_URL", result.infisicalUrl);
+    result.infisicalClientId = qEnvironmentVariable("INFISICAL_CLIENT_ID",
+                                                  qEnvironmentVariable("CLIENT_ID"));
+    result.infisicalClientSecret = qEnvironmentVariable("INFISICAL_CLIENT_SECRET",
+                                                      qEnvironmentVariable("CLIENT_SECRET"));
+    result.infisicalProjectId = qEnvironmentVariable("INFISICAL_PROJECT_ID");
+    result.infisicalEnvironment = qEnvironmentVariable("INFISICAL_ENVIRONMENT", result.infisicalEnvironment);
+    result.infisicalSecretPath = qEnvironmentVariable("INFISICAL_SECRET_PATH", result.infisicalSecretPath);
     const auto value = [&](const char *name) {
         if (!result.environment.contains(name))
             result.environment.insert(name, qEnvironmentVariable(name));
@@ -129,8 +138,8 @@ void Config::applyConnectionSettings() {
     supabaseKey = environment.value("SUPABASE_ANON_KEY").toString();
     gateKey = environment.value("API_KEY").toString();
     gateSecret = environment.value("API_SECRET").toString();
-    if (gateKey.isEmpty()) gateKey = normalizeGateCredential(supabaseGateKey);
-    if (gateSecret.isEmpty()) gateSecret = normalizeGateCredential(supabaseGateSecret);
+    if (gateKey.isEmpty()) gateKey = normalizeGateCredential(infisicalGateKey);
+    if (gateSecret.isEmpty()) gateSecret = normalizeGateCredential(infisicalGateSecret);
     allowedOrigin = environment.value("ORDERS_ALLOWED_ORIGIN").toString();
 }
 

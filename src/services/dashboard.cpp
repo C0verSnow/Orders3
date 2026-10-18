@@ -76,8 +76,8 @@ void Dashboard::credentialLoop() {
         if (credentialsStopping_ || config_.cancelled->load()) return;
         if (generation != credentialsGeneration_) continue;
         if (success) {
-            config_.supabaseGateKey = next.supabaseGateKey;
-            config_.supabaseGateSecret = next.supabaseGateSecret;
+            config_.infisicalGateKey = next.infisicalGateKey;
+            config_.infisicalGateSecret = next.infisicalGateSecret;
             config_.applyConnectionSettings();
             completed = generation;
         } else {
@@ -109,7 +109,7 @@ QJsonObject Dashboard::environmentSnapshot() const {
         const bool configured = !effective.isEmpty();
         values.insert(name + "_SET", configured);
         const bool manual = !normalizeGateCredential(current.environment.value(name).toString()).isEmpty();
-        values.insert(name + "_SOURCE", configured ? (manual ? "configuration" : "supabase") : "missing");
+        values.insert(name + "_SOURCE", configured ? (manual ? "configuration" : "infisical") : "missing");
     }
     return {{"values", values}, {"config_path", current.schedulePath},
             {"data_path", current.dataPath}};
@@ -142,18 +142,10 @@ QJsonObject Dashboard::configureEnvironment(const QJsonObject &payload) {
                 throw Error(it.key() + " 内容无效：请填写凭证，不要填写界面提示文字");
             next.environment.insert(it.key(), value);
         }
-        const bool supabaseChanged = next.environment.value("SUPABASE_URL") != config_.environment.value("SUPABASE_URL")
-            || next.environment.value("SUPABASE_ANON_KEY") != config_.environment.value("SUPABASE_ANON_KEY");
-        if (supabaseChanged) {
-            next.supabaseGateKey.clear();
-            next.supabaseGateSecret.clear();
-        }
         next.applyConnectionSettings();
         saveEnvironmentSettings(next.schedulePath, next.environment);
         config_ = std::move(next);
-        if (payload.contains("SUPABASE_URL") || payload.contains("SUPABASE_ANON_KEY")
-            || payload.contains("API_KEY") || payload.contains("API_SECRET"))
-            requestCredentialsLocked();
+        requestCredentialsLocked(); // Every successful settings save refreshes the fallback.
     }
     return environmentSnapshot();
 }
