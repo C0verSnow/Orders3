@@ -27,7 +27,7 @@ export class Sessions {
     if (this.sessions.size >= 128) throw new AppError('会话过多，请稍后再试', 429);
     const key = randomBytes(32).toString('base64url');
     this.sessions.set(key, Date.now() + 8 * 3600000);
-    reply.header('Set-Cookie', `orders_session=${key}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${this.origin.startsWith('https:') ? '; Secure' : ''}`);
+    reply.header('Set-Cookie', `orders_session=${key}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${request.headers.origin?.startsWith('https:') ? '; Secure' : ''}`);
     return { authenticated: true };
   }
   clear(request: FastifyRequest, reply: FastifyReply) {

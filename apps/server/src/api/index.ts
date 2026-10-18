@@ -5,7 +5,6 @@ import type { Scheduler } from '../scheduler/index.ts';
 import type { Credentials } from '../services/credentials.ts';
 import type { RequestLog } from '../services/request-log.ts';
 import { Sessions } from '../security/session.ts';
-import { Gate } from '../exchange/gate.ts';
 import { AppError, safeError } from '../utils/errors.ts';
 import { webAssets } from './web-assets.ts';
 

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 html{-webkit-text-size-adjust:100%;overscroll-behavior:none}button{-webkit-user-select:none;-webkit-touch-callout:none}
+html,body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif}
 
 :root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;color:var(--text);background:var(--bg);font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;color-scheme:light;--bg:#f5f5f7;--surface:#fff;--sidebar:rgba(235,235,239,.9);--text:#242429;--muted:#65656e;--line:#e3e3e9;--hover:#ededf2;--accent:#0668dd;--accent-soft:#e3edfd;--green:#17854d;--danger:#b5282d;--danger-bg:#fff2f1;--shadow:0 2px 5px #20203004,0 14px 32px #20203006;--radius:14px}
 :root[data-theme=dark]{color-scheme:dark;--bg:#19191c;--surface:#232327;--sidebar:rgba(32,32,36,.94);--text:#eeeef2;--muted:#a4a4ae;--line:#3b3b43;--hover:#303037;--accent:#73b1ff;--accent-soft:#243c59;--green:#6ad597;--danger:#ffb1ad;--danger-bg:#3c2729;--shadow:0 10px 32px #0002}

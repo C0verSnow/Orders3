@@ -19,7 +19,9 @@ export class Storage {
   constructor(path: string, limit = DATABASE_LIMIT) {
     this.path = path; this.limit = limit;
     this.db = new DatabaseSync(path, { timeout: 5000 });
-    this.db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=DELETE');
+    // Preserve legacy WAL mode: forcing a checkpoint here could grow an oversized
+    // main file before quota enforcement and prevent read-only recovery.
+    this.db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000');
     try { this.transaction(() => this.schema()); }
     catch (error) { this.schemaError = error instanceof AppError ? error.message : '数据库升级失败，已保留旧数据，请检查数据库结构和空间'; }
   }

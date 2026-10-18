@@ -49,3 +49,15 @@ test('quota rollback includes another SQLite file and leaves old snapshot readab
     assert.throws(() => limited.saveSources([])); assert.equal(limited.sources().orders.length,1);
   } finally { limited.close(); }
 });
+test('a legacy WAL database downloads committed rows as an independent snapshot', t => {
+  const { storage, root } = fixture(t);
+  storage.db.exec('PRAGMA journal_mode=WAL'); storage.saveSources([source]);
+  const path = join(root, 'wal-download.db'); writeFileSync(path, storage.download());
+  const copy = new Storage(path); try { assert.equal(copy.sources().orders[0].activation_price, '100.50'); } finally { copy.close(); }
+});
+test('PNL aggregation uses original precision before the final two-decimal boundary', t => {
+  const { storage, dashboard } = fixture(t);
+  const row = { contract:'BTC_USDT',size:'2',entry_price:'100',value:'20.00',leverage_max:'20',unrealised_pnl:'0.01',realised_pnl:'0.00',initial_margin:'1',mark_price:'100',close_price:'116.50',quanto_multiplier:'0.1',order_price_round:'0.5' };
+  storage.savePositions([row,{...row,contract:'ETH_USDT'}],[{...row,unrealised_pnl:'0.005'},{...row,contract:'ETH_USDT',unrealised_pnl:'0.005'}]);
+  assert.equal(dashboard.orders().unrealised_pnl,'0.01');
+});

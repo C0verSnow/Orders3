@@ -50,7 +50,7 @@ async function main() {
     const portText = values.port ?? process.env.ORDERS_PORT ?? (container ? '8090' : '0');
     if (!/^\d+$/.test(portText) || Number(portText) > 65535) throw new AppError('端口必须为 0 至 65535');
     if (host !== 'localhost' && !isIP(host)) throw new AppError('监听地址须为 IP 或 localhost');
-    const sessions = new Sessions(process.env.ORDERS_ACCESS_TOKEN), app = createServer(dashboard, scheduler, credentials, log, sessions);
+    const sessions = new Sessions(config.startup.ORDERS_ACCESS_TOKEN), app = createServer(dashboard, scheduler, credentials, log, sessions);
     await app.listen({ host, port: Number(portText) });
     const address = app.server.address();
     if (!address || typeof address === 'string') throw new AppError('无法读取监听地址');
@@ -58,7 +58,7 @@ async function main() {
     const url = `http://${displayHost}:${address.port}`;
     sessions.origin = url;
     console.log(`本地看板：${url}/`);
-    if (!process.env.ORDERS_ACCESS_TOKEN) console.log(`登录令牌：${sessions.token}`);
+    if (!config.startup.ORDERS_ACCESS_TOKEN) console.log(`登录令牌：${sessions.token}`);
     const shutdown = async () => {
       if (stopped) return; stopped = true;
       scheduler.stop(); credentials.stop(); http.controller.abort();

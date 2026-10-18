@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Activity, ArrowDownToLine, ArrowUpRight, CircleHelp, Clock3, Database, History, LayoutDashboard, ListOrdered, LogOut, Menu, Monitor, Moon, RefreshCw, Settings2, ShieldCheck, Sun, Wallet, X } from 'lucide-react';
@@ -34,6 +34,7 @@ const positionColumns = columns([['contract', '合约'], ['size', '持仓 / 张'
 const historyColumns = columns([['contract', '合约'], ['side', '方向（1 多 / -1 空）'], ['initial_margin', '固定保证金'], ['entry_time', '真实成交时间'], ['event_id', '成交编号']]);
 
 export function App() {
+  const themeState = useTheme();
   const [token, setToken] = useState(''), [initialToken] = useState(() => new URLSearchParams(location.hash.slice(1)).get('token'));
   const session = useQuery({ queryKey: ['session'], queryFn: () => api<{ authenticated: boolean }>('/api/session'), retry: false });
   const client = useQueryClient();
@@ -48,12 +49,33 @@ export function App() {
   }, []);
   if (session.isPending) return <main className="login"><p role="status">正在连接工作台…</p></main>;
   if (!session.data?.authenticated) return <main className="login"><div className="panel"><div className="brand-mark">O<span>3</span></div><h1>连接你的交易工作台</h1><p className="muted">输入服务启动时显示的登录令牌。凭证与交易调度由你的服务端管理。</p><form onSubmit={(event: FormEvent) => { event.preventDefault(); login.mutate(token); }}><label>工作台登录令牌<input type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="off" required autoFocus/></label><button className="primary" disabled={login.isPending}>{login.isPending ? '连接中…' : '连接工作台'}<ArrowUpRight size={16}/></button><p role="alert">{login.error?.message || session.error?.message}</p></form><p className="caption">在服务器运行日志中查找“登录令牌”，或使用管理员设置的 ORDERS_ACCESS_TOKEN。</p></div></main>;
-  return <Workspace onLogout={() => { client.clear(); }}/>;
+  return <Workspace onLogout={() => { client.clear(); }} themeState={themeState}/>;
 }
 
-function Workspace({ onLogout }: { onLogout: () => void }) {
+function Workspace({ onLogout, themeState }: { onLogout: () => void; themeState: ReturnType<typeof useTheme> }) {
   const client = useQueryClient(), [page, setPage] = useState<Page>('overview'), [menu, setMenu] = useState(false), [showStopped, setShowStopped] = useState(false);
-  const [theme, setTheme] = useTheme(), [notice, setNotice] = useState('');
+  const [theme, setTheme] = themeState, [notice, setNotice] = useState('');
+  const [compact, setCompact] = useState(() => matchMedia('(max-width:768px)').matches), navigation = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const media = matchMedia('(max-width:768px)'), update = () => setCompact(media.matches);
+    media.addEventListener('change', update); return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (!compact || !menu) return;
+    const previous = document.activeElement as HTMLElement, overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const controls = () => Array.from(navigation.current?.querySelectorAll<HTMLElement>('button:not(:disabled),select,a[href]') ?? []).filter(element => element.getClientRects().length > 0);
+    controls()[0]?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setMenu(false); return; }
+      if (event.key !== 'Tab') return;
+      const elements = controls(), first = elements[0], last = elements.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', keydown); previous?.focus(); };
+  }, [compact, menu]);
   const source = useQuery({ queryKey: ['sources'], queryFn: () => api<SourceSnapshot>('/api/data'), refetchInterval: query => query.state.data?.refreshing ? 5000 : 60000 });
   const orders = useQuery({ queryKey: ['orders'], queryFn: () => api<OrdersSnapshot>('/api/orders'), refetchInterval: 60000 });
   const activity = useQuery({ queryKey: ['activity'], queryFn: () => api<ActivitySnapshot>('/api/activity', { signal: AbortSignal.timeout(3000) }), refetchInterval: 600, retry: false });
@@ -90,8 +112,8 @@ function Workspace({ onLogout }: { onLogout: () => void }) {
     if (confirm(message)) { setNotice('正在同步，请等待服务端确认结果…'); refresh.mutate(which); }
   };
   return <div className="workspace"><a href="#main" className="skip-link">跳到主要内容</a>{menu && <button className="nav-backdrop" aria-label="关闭导航" onClick={() => setMenu(false)}/>}
-    <aside className={`sidebar ${menu ? 'open' : ''}`}><div className="brand"><div className="brand-mark">O<span>3</span></div><div><strong>Orders3</strong><span>特洛伊资本 · 交易工作台</span></div><button className="mobile-only" aria-label="关闭导航" onClick={() => setMenu(false)}><X size={18}/></button></div><p className="nav-label">工作空间</p><nav aria-label="主要导航">{pages.map(item => <button key={item.id} className={page === item.id ? 'selected' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => { setPage(item.id); setMenu(false); }}><item.icon size={17} strokeWidth={1.7}/>{item.label}{item.id === 'activity' && !!pending.data?.pending.length && <span className="count">{pending.data.pending.length}</span>}</button>)}</nav><div className="sidebar-bottom"><div className="connection"><span className={`status-dot ${activity.error ? 'offline' : ''}`}/><span>{activity.error ? '连接中断，正在重连' : '服务端已连接'}</span></div><p className="caption">交易状态以 Gate 实际记录为准</p><label className="theme-picker"><span className="sr-only">外观主题</span>{theme === 'dark' ? <Moon size={16}/> : theme === 'light' ? <Sun size={16}/> : <Monitor size={16}/>}<select value={theme} onChange={event => setTheme(event.target.value as typeof theme)}><option value="system">跟随系统</option><option value="light">浅色外观</option><option value="dark">深色外观</option></select></label><button className="text-button" onClick={() => logout.mutate()} disabled={logout.isPending}><LogOut size={14}/>退出工作台</button></div></aside>
-    <div className="main-column"><header className="topbar"><div className="breadcrumb"><button className="mobile-only" onClick={() => setMenu(true)} aria-label="打开导航"><Menu size={20}/></button><span>工作空间</span><span className="separator">/</span><strong>{heading.label}</strong></div><div className="topbar-actions"><button className="quiet" onClick={download}><ArrowDownToLine size={16}/><span>下载数据库</span></button><span className="avatar" aria-label="本地受信任会话">T</span></div></header>
+    <aside ref={navigation} inert={compact && !menu} className={`sidebar ${menu ? 'open' : ''}`}><div className="brand"><div className="brand-mark">O<span>3</span></div><div><strong>Orders3</strong><span>特洛伊资本 · 交易工作台</span></div><button className="mobile-only" aria-label="关闭导航" onClick={() => setMenu(false)}><X size={18}/></button></div><p className="nav-label">工作空间</p><nav aria-label="主要导航">{pages.map(item => <button key={item.id} className={page === item.id ? 'selected' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => { setPage(item.id); setMenu(false); }}><item.icon size={17} strokeWidth={1.7}/>{item.label}{item.id === 'activity' && !!pending.data?.pending.length && <span className="count">{pending.data.pending.length}</span>}</button>)}</nav><div className="sidebar-bottom"><div className="connection"><span className={`status-dot ${activity.error ? 'offline' : ''}`}/><span>{activity.error ? '连接中断，正在重连' : '服务端已连接'}</span></div><p className="caption">交易状态以 Gate 实际记录为准</p><label className="theme-picker"><span className="sr-only">外观主题</span>{theme === 'dark' ? <Moon size={16}/> : theme === 'light' ? <Sun size={16}/> : <Monitor size={16}/>}<select value={theme} onChange={event => setTheme(event.target.value as typeof theme)}><option value="system">跟随系统</option><option value="light">浅色外观</option><option value="dark">深色外观</option></select></label><button className="text-button" onClick={() => logout.mutate()} disabled={logout.isPending}><LogOut size={14}/>退出工作台</button></div></aside>
+    <div className="main-column" inert={compact && menu}><header className="topbar"><div className="breadcrumb"><button className="mobile-only" onClick={() => setMenu(true)} aria-label="打开导航"><Menu size={20}/></button><span>工作空间</span><span className="separator">/</span><strong>{heading.label}</strong></div><div className="topbar-actions"><button className="quiet" onClick={download}><ArrowDownToLine size={16}/><span>下载数据库</span></button><span className="avatar" aria-label="本地受信任会话">T</span></div></header>
     <main id="main" tabIndex={-1}><div className="page-heading"><div><p className="eyebrow">ORDERS WORKSPACE</p><h1>{heading.label}</h1><p className="muted">{page === 'overview' ? '看清每一笔订单，掌握每一次执行。' : page === 'settings' ? '管理连接、存储与自动追踪。' : '真实数据同步，保留完整业务记录。'}</p></div>{page !== 'settings' && <button className="primary" disabled={busy} onClick={() => requestRefresh('all')}><RefreshCw size={16} className={busy ? 'spin' : ''}/>{busy ? '正在同步…' : '统一刷新'}</button>}</div>
     {notice && <div className="notice" role="status">{notice}<button aria-label="关闭提示" onClick={() => setNotice('')}><X size={14}/></button></div>}
     {(source.error || orders.error || source.data?.error || orders.data?.error || activity.error) && <div className="error-banner" role="alert"><CircleHelp size={18}/><div><strong>{activity.error ? '连接暂时中断，当前列表可能不是最新数据' : '有任务需要检查'}</strong><p>{source.error?.message || orders.error?.message || source.data?.error || orders.data?.error || activity.error?.message}</p><button className="text-button" onClick={() => { void client.invalidateQueries(); }}>重新读取状态</button></div></div>}

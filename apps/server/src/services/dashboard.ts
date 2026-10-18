@@ -76,7 +76,7 @@ export class Dashboard {
           this.closeExecution = await closeOrders(gate, this.storage);
           const failure = this.closeExecution.find(row => row.action === 'failed');
           if (failure) throw new AppError(failure.error || '平仓保护处理失败', 502);
-        } else this.storage.saveTrailing(await gate.trailing(false));
+        } else this.storage.saveTrailing(await gate.trailing());
         this.activity.finish('orders', true);
       } catch (error) {
         this.ordersError = safeError(error); this.activity.finish('orders', false); throw new AppError(this.ordersError, 502);
