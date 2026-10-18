@@ -123,10 +123,10 @@ try {
   assert.equal(await evaluate('getComputedStyle(document.getElementById("overview-next")).transitionDuration'), "0s");
   mode = "empty";
   await send("Page.reload");
-  await until('document.getElementById("overview-count").textContent === "0 条"');
+  await until('document.getElementById("overview-count")?.textContent === "0 条"');
   mode = "error";
   await send("Page.reload");
-  await until('document.getElementById("overview-notice").textContent.includes("fixture network unavailable")');
+  await until('document.getElementById("overview-notice")?.textContent.includes("fixture network unavailable")');
   assert.equal(writes, 0, "Read-only overview or navigation issued a POST");
   assert.deepEqual(errors, [], "Browser JavaScript exceptions");
   console.log("Browser fixture checks passed: 5 widths × 2 themes, precision, paging/search, keyboard tabs, expanded flow, reduced motion, empty/error states; zero writes.");
