@@ -8,7 +8,7 @@
 #include <functional>
 
 namespace orders {
-// Read the single secret row on startup or live reload; keep fallbacks only in memory.
+// Authenticate with Infisical and read the two Gate secrets on startup or live reload; keep fallbacks only in memory.
 ORDERS_CORE_EXPORT void loadGateCredentials(Config &config);
 using ClosePositionRequester = std::function<HttpResult(const QByteArray &, const QByteArray &,
                                                        const QByteArray &, const HttpHeaders &)>;

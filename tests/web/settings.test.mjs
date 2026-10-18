@@ -13,7 +13,7 @@ test("settings distinguish credential sources and never save placeholders", asyn
   const originalFetch = globalThis.fetch;
   globalThis.document = {getElementById: element};
   let values = {SUPABASE_URL: "https://example.supabase.co", SUPABASE_ANON_KEY_SET: true,
-    API_KEY_SET: true, API_SECRET_SET: true, API_KEY_SOURCE: "supabase", API_SECRET_SOURCE: "configuration"};
+    API_KEY_SET: true, API_SECRET_SET: true, API_KEY_SOURCE: "infisical", API_SECRET_SOURCE: "configuration"};
   const sent = [];
   globalThis.fetch = async (url, options) => {
     if (options.method === "POST") sent.push(JSON.parse(options.body));
@@ -22,7 +22,7 @@ test("settings distinguish credential sources and never save placeholders", asyn
   try {
     initSettings();
     await new Promise(setImmediate);
-    assert.match(element("settings-gate-key").placeholder, /Supabase 备用凭证/);
+    assert.match(element("settings-gate-key").placeholder, /Infisical 备用凭证/);
     assert.match(element("settings-gate-secret").placeholder, /本地配置/);
     assert.equal(element("settings-gate-key").value, "");
     await element("settings-form").submit({preventDefault() {}});

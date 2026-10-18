@@ -21,8 +21,15 @@ struct ORDERS_CORE_EXPORT Config {
     QString gateKey;
     QString gateSecret;
     // In-memory fallback; never persisted in environment or exposed by settings.
-    QString supabaseGateKey;
-    QString supabaseGateSecret;
+    QString infisicalGateKey;
+    QString infisicalGateSecret;
+    // Startup-only machine authentication; excluded from persisted/web settings.
+    QString infisicalUrl = QStringLiteral("https://app.infisical.com");
+    QString infisicalClientId;
+    QString infisicalClientSecret;
+    QString infisicalProjectId;
+    QString infisicalEnvironment = QStringLiteral("prod");
+    QString infisicalSecretPath = QStringLiteral("/");
     QString allowedOrigin;
     QJsonObject environment;
     // Shared by startup and live settings updates on every platform.
