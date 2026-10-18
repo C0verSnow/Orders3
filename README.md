@@ -51,7 +51,7 @@ INFISICAL_ENVIRONMENT=prod
 INFISICAL_SECRET_PATH=/
 ```
 
-地址默认 `https://app.infisical.com`，环境默认 `prod`，路径默认 `/`，项目 ID 必填。兼容本地已有的 `CLIENT_ID`、`CLIENT_SECRET` 名称；设置了 `INFISICAL_CLIENT_ID`、`INFISICAL_CLIENT_SECRET` 时优先使用专用名称（显式空值也不回退）。这些是启动配置，网页不展示或保存机器认证凭证；修改后需重启。`.env` 位置沿用原规则：源码仓库根目录、Windows 程序旁、Linux 的 `bin/orders` 旁。Docker 可使用 `docker run --env-file /安全目录/infisical.env ...` 注入，或把文件只读挂载到 `/opt/orders/bin/.env`。只允许 HTTPS 服务地址（本机回环地址可用 HTTP），不跟随认证或密钥接口的重定向。
+地址默认 `https://app.infisical.com`，环境默认 `prod`，路径默认 `/`，项目 ID 必填。兼容本地已有的 `CLIENT_ID`、`CLIENT_SECRET` 名称；设置了 `INFISICAL_CLIENT_ID`、`INFISICAL_CLIENT_SECRET` 时优先使用专用名称。这些是启动配置，网页不展示或保存机器认证凭证；修改后需重启。`.env` 位置沿用原规则：源码仓库根目录、Windows 程序旁、Linux 的 `bin/orders` 旁。Docker 可使用 `docker run --env-file /安全目录/infisical.env ...` 注入，或把文件只读挂载到 `/opt/orders/bin/.env`。只允许 HTTPS 服务地址（本机回环地址可用 HTTP），不跟随认证或密钥接口的重定向。
 
 `API_KEY`、`API_SECRET` 分别优先使用本地非空有效配置，缺少哪个字段就由 Infisical 对应字段补充，支持混合来源。本地 Gate 配置仍按 `[environment]` > 进程环境变量 > `.env` 的顺序处理。令牌和 Gate 备用凭证只在内存中使用，不写文件，不出现在网页、日志或错误正文中。机器身份需对指定环境和路径的这两项密钥具有读取明文权限。
 

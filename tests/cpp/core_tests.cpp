@@ -349,7 +349,14 @@ private slots:
             QVERIFY(!exposed.contains(credential));
         }
         qputenv("INFISICAL_CLIENT_SECRET", "");
+#ifdef Q_OS_WIN
+        // Qt/Windows removes empty environment variables, so the alias is used.
+        QVERIFY(!qEnvironmentVariableIsSet("INFISICAL_CLIENT_SECRET"));
+        QCOMPARE(orders::Config::load().infisicalClientSecret, QString("alias-secret"));
+#else
+        QVERIFY(qEnvironmentVariableIsSet("INFISICAL_CLIENT_SECRET"));
         QVERIFY(orders::Config::load().infisicalClientSecret.isEmpty());
+#endif
     }
 
     void infisicalGateCredentials_data() {
