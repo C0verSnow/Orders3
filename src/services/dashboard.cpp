@@ -75,10 +75,12 @@ void Dashboard::credentialLoop() {
         lock.lock();
         if (credentialsStopping_ || config_.cancelled->load()) return;
         if (generation != credentialsGeneration_) continue;
+        // Publish each valid field independently even if the other read failed.
+        // Failed/empty fields retain their last successful in-memory fallback.
+        if (!next.infisicalGateKey.isEmpty()) config_.infisicalGateKey = next.infisicalGateKey;
+        if (!next.infisicalGateSecret.isEmpty()) config_.infisicalGateSecret = next.infisicalGateSecret;
+        config_.applyConnectionSettings();
         if (success) {
-            config_.infisicalGateKey = next.infisicalGateKey;
-            config_.infisicalGateSecret = next.infisicalGateSecret;
-            config_.applyConnectionSettings();
             completed = generation;
         } else {
             // Wait after completion, so slow requests never overlap or queue retries.

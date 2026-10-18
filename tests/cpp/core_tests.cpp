@@ -492,6 +492,28 @@ private slots:
         QVERIFY(!QJsonDocument(orders::loadEnvironmentSettings(config.schedulePath)).toJson().contains("latest-secret"));
     }
 
+    void infisicalPartialFailureStillFillsMissingLocalField() {
+        QTemporaryDir directory;
+        InfisicalFixture fixture;
+        fixture.key = {404, "private-missing-key"};
+        orders::Config config;
+        fixture.configure(config);
+        config.environment = {{"API_KEY", "local-key"}};
+        config.applyConnectionSettings();
+        config.schedulePath = directory.filePath("config");
+        orders::Dashboard dashboard(config);
+        dashboard.reloadGateCredentials();
+        QTRY_COMPARE_WITH_TIMEOUT(dashboard.config().gateSecret, QString("backup-secret"), 3000);
+        QCOMPARE(dashboard.config().gateKey, QString("local-key"));
+        QCOMPARE(fixture.requests.size(), 3);
+        // A subsequent failed refresh retains both the valid local field and fallback.
+        fixture.secretValue = {403, "private-revoked-read"};
+        dashboard.configureEnvironment({{"API_KEY", "local-key"}});
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.requests.size(), 6, 3000);
+        QCOMPARE(dashboard.config().gateSecret, QString("backup-secret"));
+        QCOMPARE(dashboard.config().gateKey, QString("local-key"));
+    }
+
     void changedSettingsDiscardOldInfisicalRequest() {
         QTemporaryDir directory;
         InfisicalFixture fixture;

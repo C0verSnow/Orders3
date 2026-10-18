@@ -312,10 +312,20 @@ void loadGateCredentials(Config &config) {
                 throw Error("Infisical 密钥响应无效");
             return normalizeGateCredential(secret.value("secretValue").toString());
         };
-        config.infisicalGateKey = credential("GATE_API_KEY");
-        config.infisicalGateSecret = credential("GATE_API_SECRET");
-        if (config.infisicalGateKey.isEmpty() || config.infisicalGateSecret.isEmpty())
-            throw Error("Infisical 缺少有效 Gate 备用凭证");
+        // A failed Key read must not prevent Secret from filling a local-only Key,
+        // and vice versa. Still report failure so the background worker retries.
+        bool failed = false;
+        const auto read = [&](const QString &name, QString &target) {
+            try {
+                target = credential(name);
+                if (target.isEmpty()) failed = true;
+            } catch (const std::exception &) {
+                failed = true;
+            }
+        };
+        read("GATE_API_KEY", config.infisicalGateKey);
+        read("GATE_API_SECRET", config.infisicalGateSecret);
+        if (failed) throw Error("Infisical 缺少有效 Gate 备用凭证");
     } catch (const std::exception &) {
         // Never reflect remote text, tokens, authentication input or secret values.
         problem = "Infisical 备用凭证获取失败，请检查机器认证、项目、环境、路径和读取权限";
