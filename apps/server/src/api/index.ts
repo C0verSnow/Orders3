@@ -13,6 +13,9 @@ export function createServer(dashboard: Dashboard, scheduler: Scheduler, credent
   app.addHook('onRequest', async (request, reply) => {
     reply.header('Cache-Control', 'no-store').header('X-Content-Type-Options', 'nosniff').header('Referrer-Policy', 'no-referrer')
       .header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    const path = request.url.split('?')[0];
+    // A public health probe exposes no data and must also work behind a proxy.
+    if (path === '/health') return;
     // Block Host/DNS rebinding, including same-origin cookie and token bootstrap requests.
     const host = request.headers.host;
     const allowed = dashboard.config.environment.ORDERS_ALLOWED_ORIGIN || sessions.origin;
@@ -22,7 +25,6 @@ export function createServer(dashboard: Dashboard, scheduler: Scheduler, credent
         if (!host || actual.origin !== expected.origin || actual.username || actual.password || actual.pathname !== '/' || actual.search || actual.hash) throw new Error('invalid host');
       } catch { throw new AppError('访问地址与受信任工作台地址不一致', 403); }
     }
-    const path = request.url.split('?')[0];
     if (!path.startsWith('/api/')) return;
     const origin = request.headers.origin;
     if (origin && origin !== allowed) throw new AppError('来源地址未获授权', 403);

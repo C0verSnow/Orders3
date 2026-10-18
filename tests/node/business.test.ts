@@ -94,8 +94,9 @@ test('acknowledged creation persists once and a repeated unchanged source does n
       posts++; const payload = JSON.parse(String(init.body));
       assert.equal(payload.amount, '2'); assert.equal(payload.activation_price, '100.50'); assert.equal(payload.is_gte, false); assert.equal(payload.price_type, 3);
       assert.equal(payload.price_offset, '1%'); assert.equal(payload.position_mode, 'dual_plus'); assert.equal(payload.reduce_only, false);
-      created = { ...payload, id: '999999999999999999', original_status: 1 };
-      return response({ code: 0, data: { id: created.id } });
+      const saved = { ...payload, id: '999999999999999999', original_status: 1 };
+      created = saved;
+      return response({ code: 0, data: { id: saved.id } });
     }
     if (url.pathname.includes('/contracts/')) return response({ name: 'BTC_USDT', quanto_multiplier: '0.1', order_price_round: '0.5' });
     if (url.pathname.endsWith('/list')) return response(list(url.searchParams.get('page_num') === '1' && created ? [created] : []));
