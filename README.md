@@ -294,6 +294,8 @@ master 收到 push 后，现有各平台检查和 Docker 验证全部通过、GH
 | `DEPLOY_SSH_KEY` | 完整多行 SSH 私钥，CI 使用无密码私钥 |
 | `DEPLOY_KNOWN_HOSTS` | 可选：事先核对的服务器 SSH 主机公钥行；非 22 端口使用 `[主机]:端口` 格式 |
 
+部署请使用独立 SSH 密钥，不要与 TGBot 等受限控制密钥共用。部署公钥对应的 `authorized_keys` 行需要允许运行远端 Bash 命令；如果该行带有机器人 `command="...tgbot-control.py"` 强制命令，部署会被机器人拒绝，并可能只返回 `{"result":"failed"}`。保留机器人的原有限制，另加部署公钥即可；部署公钥可以使用 `restrict` 禁止端口转发和终端分配。若组织级 `DEPLOY_SSH_KEY` 被其他仓库共用，在本仓库新增同名 Repository secret，填入部署专用私钥，只覆盖本仓库使用的值。
+
 `DEPLOY_SSH_KEY_PUB` 是用户公钥，应放进远端用户的 `~/.ssh/authorized_keys`，无需传入 CI；它不是服务器主机公钥。不设置 `DEPLOY_KNOWN_HOSTS` 时，作业在经过认证的 Tailscale 网络中首次接受 SSH 主机公钥；设置后必须严格匹配。Tailscale 配置依据 [官方 GitHub Action](https://github.com/tailscale/github-action)。
 
 远端需要已启动 Tailscale、允许 CI 到 SSH 端口的 Tailnet 访问规则、Bash、curl、Docker，以及与私钥匹配的 authorized_keys。`ghcr.io/c0versnow/orders3` 镜像包设为 Public，允许匿名下载，无需在服务器登录 GitHub；代码仓库公开不等于镜像包自动公开。如果以后改用私有 GHCR 镜像，需要事先在远端以该 SSH 用户执行 `docker login ghcr.io`，使用具备镜像读取权限的凭据。部署不会自动安装这些工具或覆盖应用密钥。
