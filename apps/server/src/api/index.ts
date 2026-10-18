@@ -32,7 +32,8 @@ export function createServer(dashboard: Dashboard, scheduler: Scheduler, credent
     log.write('inbound', request.method, new URL(route, 'http://localhost'), reply.statusCode);
   });
   app.setErrorHandler((error, _request, reply) => {
-    const status = error instanceof AppError ? error.statusCode : error.statusCode && error.statusCode < 500 ? error.statusCode : 500;
+    const candidate = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : undefined;
+    const status = error instanceof AppError ? error.statusCode : typeof candidate === 'number' && candidate >= 400 && candidate < 500 ? candidate : 500;
     reply.code(status).send({ error: error instanceof AppError ? error.message : status < 500 ? '请求格式或参数无效' : safeError(error) });
   });
   app.get('/health', () => ({ ok: true }));

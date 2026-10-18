@@ -67,7 +67,7 @@ async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trail
         }
       }
       let exchangeId = '';
-      const payload = { ...entry, is_gte: decimal(entry.amount).isNegative(), reduce_only: reduceOnly, price_type: 3, price_offset: '1%', pos_margin_mode: 'cross', position_mode: 'dual_plus', text: 'apiv4' };
+      const payload = { ...entry, amount: integer(entry.amount), is_gte: decimal(entry.amount).isNegative(), reduce_only: reduceOnly, price_type: 3, price_offset: '1%', pos_margin_mode: 'cross', position_mode: 'dual_plus', text: 'apiv4' };
       await writeExchange(gate, storage, 'create', JSON.stringify(payload), data => {
         const id = text(data.id);
         if (!/^[1-9]\d*$/.test(id)) throw new AppError('创建响应缺少有效订单 ID；请核对 Gate', 502);
