@@ -1,7 +1,6 @@
 # 本文档为4象限的任务清单，全文书写大白话。
 
 ## 想做：
-- 1792299853：完成 issue #25，把 Gate 备用凭证来源换成 Infisical，保留逐字段补充、内存保存、5 秒重试和网页保存后刷新，更新说明、提 PR 并跑远端检查。
 - 2026-10-16：完成 issue #23，把 docker.md 改成两行的本地看板地址，更新说明和远端检查，提交 PR 并交给远端 CI 验证。
 - 2026-10-16：完成 issue #21，固定入仓或加仓后的 initial_margin，多空追踪平仓价分别乘 1.01、0.99；更新文档、提交 PR、通过远端 CI 后关闭 issue。
 - 2026-10-15：完成 issue #19，修复凭证配置状态与成交历史回归，在 feature 分支提 PR，更新文档并跑远端 CI。
@@ -21,6 +20,14 @@
 - 完成 issue #1：写脚本读取 Supabase 的 orders 表，保存到 orderstable.json，再推送新分支。
 
 ## 做完：
+- 1792301157：issue #25 已完成并关闭，PR #26 已转为可审阅：https://github.com/C0verSnow/Orders3/pull/26 。按用户确认用程序内 C++ 获取 Infisical Production、根目录的 Gate 备用密钥，保留本地逐字段优先、内存保存、5 秒失败重试和网页保存后刷新；更新 README 和配置示例。
+- 1792301157：代码 a416dc4 的完整远端检查通过：https://github.com/C0verSnow/Orders3/actions/runs/39100073550 ，包含网页与脚本、Windows x64、Linux x64/ARM64、macOS x64/ARM64 编译回归及打包，以及 AMD64/ARM64 原生 Docker 启动、接口、随机端口和地址记录检查。真实 Infisical 仅只读确认认证与两项密钥均 HTTP 200，提交泄密静态检查通过；本地未编译、未运行测试。最后只补过程记录，使用 [skip ci]。
+- 1792300670：fa885c2 远端 Windows 报告确认核心回归 127 项通过、1 项失败，仅新增空环境变量断言不符合 Windows 的 Qt 行为；Infisical 认证、混合来源、重试和刷新全部通过。按 Qt 官方规则分别验证 Windows 删除变量后使用别名、Unix 保留显式空值，修正说明，继续完整远端验证。
+- 1792300411：47934af 的远端 Linux x64/ARM64、macOS ARM64 和网页脚本检查通过；Windows 编译通过但核心回归失败，Qt 默认输出未进日志。补上文本报告和失败时打印，继续由远端 CI 定位，不在本地编译。
+- 1792300099：已提交 d22723c，创建草稿 PR #26，远端 CI 已启动。静态复查补上两项密钥分别读取：单项失败仍可补另一项，失败字段保留内存旧值并继续重试；不改变本地优先规则。
+- 1792300034：用户确认沿用程序内取密钥，不引入独立脚本。浏览器只读确认 Example Project、根目录，用户选择 Production；真实 Universal Auth 和两项密钥读取均 HTTP 200，只输出状态和是否存在，不显示或落盘密钥。正在补模拟接口回归及文档，随后提交 PR 并交远端 CI。
+- 1792299853：已从最新 origin/master 建立 feature-issue-25-infisical 分支，正在核对现有取密钥流程和官方 API；本地只检查 .env 字段名，没有输出凭据。已询问 Infisical 服务地址、项目、环境和路径。
+
 - 2026-10-16：issue #23 已完成：docker.md 现在第一行是“本地看板：”，第二行是实际的 127.0.0.1:端口，不带协议和末尾斜杠；同步 README、原有脚本回归断言及双架构 Docker 完整文件比对。PR #24：https://github.com/C0verSnow/Orders3/pull/24 。
 - 2026-10-16：代码 e0615b4 的完整远端 CI 通过：https://github.com/C0verSnow/Orders3/actions/runs/38880733461 ，含网页和脚本、五个平台编译回归打包、AMD64/ARM64 原生 Docker、随机端口和地址记录检查；PR 触发的运行也通过：https://github.com/C0verSnow/Orders3/actions/runs/38880779992 。本地仅做 Shell 语法、Python 语法解析和差异检查，未进行本地编译或运行本地测试。GitHub 连接器写入权限不足，使用本机已有 GitHub 登录完成 PR 操作，没有输出凭据；最后只补本记录，使用 [skip ci]。
 - 2026-10-16：issue #21 已完成并关闭，PR #22 已转为可审阅：https://github.com/C0verSnow/Orders3/pull/22 。代码 d7af9ec 的完整远端 CI 通过：https://github.com/C0verSnow/Orders3/actions/runs/38859341178 ，包含网页与脚本、Windows x64、Linux x64/ARM64、macOS x64/ARM64 编译回归打包，以及 AMD64/ARM64 原生 Docker、网页接口、三种启动方式、随机端口和地址记录检查。
@@ -115,6 +122,7 @@
 - 将原来的 Tasklist.md 改为用户要求的 tasklist.md，继续按四个栏目记录。
 
 ## 没做：
+- 1792301157：issue #25 未合并或部署服务器，未访问真实 Gate 下单或撤单；启用备用来源时需在运行环境配置 Infisical 机器身份和项目 ID，修改机器认证参数需重启。
 - 2026-10-16：issue #23 未合并 master、未发布或部署服务器；新版 docker.md 在下次使用新脚本成功启动后写入。
 - 2026-10-16：issue #21 未合并 master、未发布或部署、未连接真实交易所下单或撤单。保证金是确认成交后首次成功读取的持仓整体观察值，不能回溯历史逐笔保证金；同批只填最新事件。价格乘 1.01/0.99 仅近似补偿回撤，不保证实际成交收益。
 - 2026-10-15：issue #19 未合并 master、未发布或部署服务器、未连接真实 Gate 下单或撤单；服务器仅做只读凭证状态和成交字段类型核查。交易回归使用模拟接口，交易权限仍须由真实交易所验证。
@@ -133,11 +141,6 @@
 - issue #2 的新流程没有连接真实 Supabase 或 Gate，远端回归使用模拟接口。
 
 ## 在做：
-- 1792300670：fa885c2 远端 Windows 报告确认核心回归 127 项通过、1 项失败，仅新增空环境变量断言不符合 Windows 的 Qt 行为；Infisical 认证、混合来源、重试和刷新全部通过。按 Qt 官方规则分别验证 Windows 删除变量后使用别名、Unix 保留显式空值，修正说明，继续完整远端验证。
-- 1792300411：47934af 的远端 Linux x64/ARM64、macOS ARM64 和网页脚本检查通过；Windows 编译通过但核心回归失败，Qt 默认输出未进日志。补上文本报告和失败时打印，继续由远端 CI 定位，不在本地编译。
-- 1792300099：已提交 d22723c，创建草稿 PR #26，远端 CI 已启动。静态复查补上两项密钥分别读取：单项失败仍可补另一项，失败字段保留内存旧值并继续重试；不改变本地优先规则。
-- 1792300034：用户确认沿用程序内取密钥，不引入独立脚本。浏览器只读确认 Example Project、根目录，用户选择 Production；真实 Universal Auth 和两项密钥读取均 HTTP 200，只输出状态和是否存在，不显示或落盘密钥。正在补模拟接口回归及文档，随后提交 PR 并交远端 CI。
-- 1792299853：已从最新 origin/master 建立 feature-issue-25-infisical 分支，正在核对现有取密钥流程和官方 API；本地只检查 .env 字段名，没有输出凭据。已询问 Infisical 服务地址、项目、环境和路径。
 - 2026-10-12：等待可用于 home@192.168.1.245 的 SSH 登录方式；登录成功后继续检查 Docker、orders-dashboard 容器和 orders3 的进程、日志及服务响应。
 - 2026-10-11：latest 下载和公开镜像设置已完成；提交 a238428 已推送 master，远端 Actions 已触发，当前排队，尚未确认本次自动部署结果：https://github.com/C0verSnow/Orders3/actions/runs/38116671757 。
 - 本次 #1/#2 的代码和验证已完成，PR #3 等待审阅，未合并 master。
