@@ -17,7 +17,12 @@ export function createServer(dashboard: Dashboard, scheduler: Scheduler, credent
     // Block Host/DNS rebinding, including same-origin cookie and token bootstrap requests.
     const host = request.headers.host;
     const allowed = dashboard.config.environment.ORDERS_ALLOWED_ORIGIN || sessions.origin;
-    if (sessions.origin && host !== new URL(allowed).host) throw new AppError('访问地址与受信任工作台地址不一致', 403);
+    if (sessions.origin) {
+      try {
+        const expected = new URL(allowed), actual = new URL(`${expected.protocol}//${host}`);
+        if (!host || actual.origin !== expected.origin || actual.username || actual.password || actual.pathname !== '/' || actual.search || actual.hash) throw new Error('invalid host');
+      } catch { throw new AppError('访问地址与受信任工作台地址不一致', 403); }
+    }
     const path = request.url.split('?')[0];
     if (!path.startsWith('/api/')) return;
     const origin = request.headers.origin;

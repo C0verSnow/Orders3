@@ -21,7 +21,7 @@ export interface ContractRules { name: string; quanto_multiplier: string; order_
 export function executionPrice(raw: string, amount: string, rules: ContractRules): string {
   const price = decimal(raw), size = decimal(integer(amount));
   const rounded = two(price), tick = decimal(rules.order_price_round);
-  if (price.lte(0) || tick.lte(0) || decimal(rounded).lte(0)) throw new Error('价格和步长必须大于零');
+  if (price.lte(0) || tick.lte(0)) throw new Error('价格和步长必须大于零');
   if (!price.eq(rounded)) throw new Error('精度冲突：两位小数会改变激活价格，已禁止交易；请核对原始值');
   if (!price.mod(tick).isZero()) throw new Error('精度冲突：激活价格不符合 Gate 合约步长，已禁止交易');
   if (rules.order_size_min && size.abs().lt(decimal(rules.order_size_min))) throw new Error('数量小于 Gate 最小张数');

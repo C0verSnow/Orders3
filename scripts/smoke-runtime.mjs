@@ -27,7 +27,7 @@ try {
   for (const path of [...html.matchAll(/(?:src|href)="(\/assets\/[^\"]+)"/g)].map(match => match[1])) assert.equal((await fetch(base + path)).status, 200);
   assert.equal((await fetch(base + '/api/data')).status, 401);
   const headers = { Authorization: `Bearer ${token}`, Origin: base, 'Content-Type': 'application/json' };
-  assert.equal((await fetch(base + '/api/session', { method: 'POST', headers })).status, 200);
+  assert.equal((await fetch(base + '/api/session', { method: 'POST', headers, body: '{}' })).status, 200);
   assert.equal((await fetch(base + '/api/data', { headers })).status, 200);
   assert.equal((await fetch(base + '/api/orders', { headers })).status, 200);
   const schedule = await fetch(base + '/api/schedule', { method: 'POST', headers, body: JSON.stringify({ enabled: false, cron: '*/15 * * * *' }) }); assert.equal(schedule.status, 200);
