@@ -1,13 +1,12 @@
-import { $, dateText } from "./ui.js";
+import { $, dateText, setNotice } from "./ui.js";
 
 let scheduleDirty = false;
 let savingSchedule = false;
 let currentSchedule = null;
 let onScheduleChange = () => {};
 
-function scheduleNotice(message) {
-  $("schedule-notice").textContent = message || "";
-  $("schedule-notice").hidden = !message;
+function scheduleNotice(message, tone = "info") {
+  setNotice("schedule-notice", message, tone);
 }
 function updateCountdown() {
   const next = currentSchedule?.enabled && currentSchedule.next_run ? new Date(currentSchedule.next_run).getTime() : NaN;
@@ -44,6 +43,7 @@ export function initSchedule(onChange = () => {}) {
   for (const id of ["schedule-cron", "schedule-enabled"]) {
     $(id).addEventListener("input", () => {
       scheduleDirty = true;
+      $("schedule-cron").removeAttribute("aria-invalid");
       syncPreset();
       scheduleNotice("配置尚未保存。");
     });
@@ -53,7 +53,9 @@ export function initSchedule(onChange = () => {}) {
     if (savingSchedule) return;
     const expression = $("schedule-cron").value.trim();
     if (expression.split(/\s+/).length !== 5) {
-      scheduleNotice("Cron 必须包含五段：分 时 日 月 星期。");
+      scheduleNotice("Cron 必须包含五段：分 时 日 月 星期。", "error");
+      $("schedule-cron").setAttribute("aria-invalid", "true");
+      $("schedule-cron").focus();
       return;
     }
     savingSchedule = true;
@@ -71,8 +73,9 @@ export function initSchedule(onChange = () => {}) {
       scheduleDirty = false;
       savingSchedule = false;
       applySchedule(schedule);
-      scheduleNotice("配置已保存到 config，并立即生效。正在执行的订单更新会正常完成。");
-    } catch (error) { scheduleNotice(error.message); }
+      $("schedule-cron").removeAttribute("aria-invalid");
+      scheduleNotice("配置已保存到 config，并立即生效。正在执行的订单更新会正常完成。", "success");
+    } catch (error) { scheduleNotice(error.message, "error"); }
     finally {
       savingSchedule = false;
       controls.forEach((control) => { control.disabled = false; });

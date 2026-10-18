@@ -5,7 +5,7 @@ import {initSettings} from "../../web/settings.js";
 test("settings distinguish credential sources and never save placeholders", async () => {
   const elements = new Map();
   const element = (id) => {
-    if (!elements.has(id)) elements.set(id, {value: "", checked: false, disabled: false,
+    if (!elements.has(id)) elements.set(id, {value: "", checked: false, disabled: false, dataset: {},
       addEventListener(event, handler) { this[event] = handler; }, elements: []});
     return elements.get(id);
   };

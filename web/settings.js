@@ -1,12 +1,11 @@
-import { $ } from "./ui.js";
+import { $, setNotice } from "./ui.js";
 
 export function initSettings() {
   const secretFields = [
     ["SUPABASE_ANON_KEY", "supabase-key"], ["API_KEY", "gate-key"], ["API_SECRET", "gate-secret"]
   ];
-  function settingsNotice(message) {
-    $("settings-notice").textContent = message || "";
-    $("settings-notice").hidden = !message;
+  function settingsNotice(message, tone = "info") {
+    setNotice("settings-notice", message, tone);
   }
   function applySettings(settings) {
     const values = settings.values;
@@ -31,7 +30,7 @@ export function initSettings() {
       if (!response.ok) throw new Error(settings.error || "读取配置失败");
       applySettings(settings);
       $("settings-save").disabled = false;
-    } catch (error) { settingsNotice(error.message + "，刷新页面后重试。"); }
+    } catch (error) { settingsNotice(error.message + "，刷新页面后重试。", "error"); }
   }
   $("settings-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -55,8 +54,8 @@ export function initSettings() {
       const settings = await response.json();
       if (!response.ok) throw new Error(settings.error || "保存失败");
       applySettings(settings);
-      settingsNotice("配置已保存。连接设置立即生效，数据目录重启后生效。");
-    } catch (error) { settingsNotice(error.message); }
+      settingsNotice("配置已保存。连接设置立即生效，数据目录重启后生效。", "success");
+    } catch (error) { settingsNotice(error.message, "error"); }
     finally {
       controls.forEach((control) => { control.disabled = false; });
       $("settings-save").textContent = "保存程序配置";

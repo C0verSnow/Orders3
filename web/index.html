@@ -1,52 +1,25 @@
 <!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f5f6f8">
-  <script src="/theme.js"></script>
-  <title>特洛伊资本</title>
-  <link rel="icon" href="/logo.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css">
-  <link rel="stylesheet" href="/flow.css">
-  <script src="/app.js" type="module"></script>
-</head>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f5f6f8"><script src="/theme.js"></script><title>特洛伊资本 · 交易工作台</title><link rel="icon" href="/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/flow.css"><script src="/app.js" type="module"></script></head>
 <body>
-  <a class="skip-link" href="#main-content">跳到工作台</a>
-  <div id="startup" class="startup" role="status" aria-label="正在启动特洛伊资本">
-    <div class="startup-mark"><img src="/logo.svg" alt="" width="80" height="80"></div>
-    <span class="startup-wordmark">Troy Capitalize</span>
-    <span class="startup-caption">特洛伊资本 · 实盘工作台</span>
-  </div>
-  <header class="topbar">
-    <a class="brand" href="/"><img src="/logo.svg" alt="" width="34" height="34"><span>Troy Capitalize</span></a>
-    <label class="theme-control">外观 <select id="theme" aria-label="界面外观"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
-  </header>
-  <div class="workspace-switch" role="tablist" aria-label="切换工作台" data-active="live">
-    <span class="workspace-indicator" aria-hidden="true"></span>
-    <button id="segment-live" class="workspace-segment" type="button" role="tab" aria-selected="true" aria-controls="workspace-live" tabindex="0" data-view="live">
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V9m8 10V5m8 14v-7M3 21h18"/></svg>
-      <span>交易工作台</span>
-    </button>
-    <button id="segment-config" class="workspace-segment" type="button" role="tab" aria-selected="false" aria-controls="workspace-config" tabindex="-1" data-view="config">
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 3v18m7-18v18m7-18v18M2 8h6m1 8h6m1-9h6"/></svg>
-      <span>连接与定时</span>
-    </button>
-  </div>
-  <main id="main-content" tabindex="-1">
-    <div id="workspace-live" class="workspace-view" role="tabpanel" aria-labelledby="segment-live" tabindex="0">
-    <div class="heading">
-      <div><p class="eyebrow">TROY CAPITALIZE / 实盘工作台</p><h1>交易概览</h1><p class="subtitle">先看执行状态，再看订单与持仓。所有数据来自本地服务快照。</p></div>
-    </div>
-    <section class="stats" aria-label="数据概览">
+<a class="skip-link" href="#main-content">跳到工作台</a>
+<div id="startup" class="startup" role="status" aria-label="正在启动特洛伊资本"><div class="startup-mark"><img src="/logo.svg" alt="" width="80" height="80"></div><span class="startup-wordmark">Troy Capitalize</span><span class="startup-caption">特洛伊资本 · 实盘工作台</span></div>
+<div class="app-shell"><aside class="sidebar"><a class="brand" href="/"><img src="/logo.svg" alt="" width="28" height="28"><span>Troy Capitalize<small>特洛伊资本</small></span></a><p class="sidebar-label">工作区</p>
+<div class="workspace-switch" role="tablist" aria-label="切换工作区" aria-orientation="vertical" data-active="live"><button id="segment-live" class="workspace-segment" type="button" role="tab" aria-selected="true" aria-controls="workspace-live" tabindex="0" data-view="live"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 10l9-7 9 7v10H3z M9 20v-7h6v7"/></svg><span>交易概览</span></button>
+<button id="segment-orders" class="workspace-segment" type="button" role="tab" aria-selected="false" aria-controls="workspace-orders" tabindex="-1" data-view="orders"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h4"/></svg><span>订单追踪</span></button>
+<button id="segment-positions" class="workspace-segment" type="button" role="tab" aria-selected="false" aria-controls="workspace-positions" tabindex="-1" data-view="positions"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20V10 M12 20V4 M20 20v-8"/></svg><span>持仓与平仓</span></button>
+<button id="segment-sources" class="workspace-segment" type="button" role="tab" aria-selected="false" aria-controls="workspace-sources" tabindex="-1" data-view="sources"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 6h14 M5 12h14 M5 18h9"/></svg><span>来源与执行</span></button>
+<button id="segment-config" class="workspace-segment" type="button" role="tab" aria-selected="false" aria-controls="workspace-config" tabindex="-1" data-view="config"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16 M4 17h16 M8 4v6 M16 14v6"/></svg><span>连接与存储</span></button>
+<button id="segment-schedule" class="workspace-segment" type="button" role="tab" aria-selected="false" aria-controls="workspace-schedule" tabindex="-1" data-view="schedule"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v5l3 2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0"/></svg><span>定时任务</span></button></div>
+<div class="sidebar-foot"><span class="local-mark" aria-hidden="true"></span><div>本地交易工作台<small>交易状态以服务快照为准</small></div></div></aside>
+<div class="app-stage"><header class="topbar"><div class="breadcrumbs"><span>工作台</span><span aria-hidden="true">/</span><strong id="page-context">交易概览</strong></div><label class="theme-control">外观 <select id="theme" aria-label="界面外观"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label></header>
+<main id="main-content" tabindex="-1"><p id="workspace-alert" class="notice" role="status" hidden></p>
+<div id="workspace-live" class="workspace-view" role="tabpanel" aria-labelledby="segment-live" tabindex="0"><div class="heading"><div><p class="eyebrow">WORKSPACE / OVERVIEW</p><h1>交易概览</h1><p class="subtitle">掌握当前持仓与执行状态，把注意力留给需要处理的交易。</p></div></div><section class="stats" aria-label="数据概览">
       <article><span>浮盈浮亏</span><strong id="unrealised-pnl">—</strong><small>持仓未实现盈亏 · USDT</small></article>
       <article><span>实盈实亏</span><strong id="realised-pnl">—</strong><small>持仓接口已实现盈亏合计 · USDT</small></article>
       <article><span>在线时长</span><strong id="uptime">—</strong><small>本次程序启动后的运行时间</small></article>
       <article class="updated"><span>订单最近更新</span><strong id="updated">—</strong><small id="update-date">等待数据加载</small></article>
-    </section>
-    <div class="overview-grid">
-    <section class="results overview-panel" aria-labelledby="overview-title">
-      <div class="section-heading"><div><p class="eyebrow">ORDER MONITOR / 订单监控</p><h2 id="overview-title">跟踪订单速览 <span id="overview-count">等待数据</span></h2></div><a class="download" href="#orders-title">完整订单与持仓 ↓</a></div>
+    </section><div class="overview-grid"><section class="results overview-panel" aria-labelledby="overview-title">
+      <div class="section-heading"><div><p class="eyebrow">ORDER MONITOR / 订单监控</p><h2 id="overview-title">跟踪订单速览 <span id="overview-count">等待数据</span></h2></div><a class="download" href="#orders" data-workspace="orders">查看全部订单 →</a></div>
       <div class="toolbar">
         <label class="search"><span aria-hidden="true">⌕</span><input id="overview-search" type="search" aria-label="搜索跟踪订单" placeholder="搜索合约、订单 ID、数量或价格"></label>
         <label class="filter">状态 <select id="overview-status"><option value="all">全部状态</option><option value="1">状态 1</option><option value="2">状态 2</option></select></label>
@@ -55,8 +28,7 @@
       <p id="overview-notice" class="notice" role="status" hidden></p>
       <div id="overview-records"><div class="empty">正在读取本地跟踪订单快照…</div></div>
       <div class="pagination"><span id="overview-page" role="status">等待数据</span><div><button id="overview-prev" class="secondary" type="button" disabled>上一页</button><button id="overview-next" class="secondary" type="button" disabled>下一页</button></div></div>
-    </section>
-    <section id="flow-panel" class="results flow-panel" aria-labelledby="flow-title" data-state="connecting">
+    </section><section id="flow-panel" class="results flow-panel" aria-labelledby="flow-title" data-state="connecting">
       <div class="section-heading">
         <div class="section-title">
           <p class="eyebrow">LIVE EXECUTION / 实时执行</p>
@@ -116,43 +88,10 @@
         <div class="flow-activity-heading"><span>最近执行</span><time id="flow-synced">尚未同步</time></div>
         <ol id="flow-events" class="flow-events" aria-label="最近接口执行记录"><li>等待真实执行记录</li></ol>
       </div>
-    </section>
-    </div>
-    <nav class="section-links" aria-label="业务区域"><a href="#orders-title">跟踪订单</a><a href="#positions-title">持仓与平仓</a><a href="#results-title">来源与自动下单</a></nav>
-    <div class="order-panels">
-      <section class="results order-panel unified-orders" aria-labelledby="unified-orders-title">
-        <div class="section-heading"><h2 id="unified-orders-title">Gate 订单与持仓</h2><span class="hint">跟踪订单、持仓与平仓执行记录</span></div>
-      <div class="order-group" aria-labelledby="orders-title">
-        <div class="section-heading">
-          <div class="section-title">
-            <h3 id="orders-title">Gate 跟踪订单 <span id="orders-count">0 条</span></h3>
-          </div>
-        </div>
-        <div class="panel-meta">
-          <span>订单最近更新：<time id="orders-updated">—</time></span>
-        </div>
-        <p id="orders-notice" class="notice" role="status" aria-live="polite" hidden></p>
-        <div id="orders-records" class="panel-content" aria-live="polite">
-          <div class="empty">正在加载跟踪订单…</div>
-        </div>
-      </div>
-      <div class="order-group" aria-labelledby="positions-title">
-        <div class="section-heading">
-          <div class="section-title">
-            <h3 id="positions-title">Gate 持仓与平仓 <span id="positions-count">0 条</span></h3>
-          </div>
-        </div>
-        <div class="panel-meta">
-          <span>订单最近更新：<time id="positions-updated">—</time></span>
-        </div>
-        <p id="positions-notice" class="notice" role="status" aria-live="polite" hidden></p>
-        <div id="positions-records" class="panel-content" aria-live="polite">
-          <div class="empty">正在加载持仓…</div>
-        </div>
-        <div id="close-execution-results" aria-live="polite" hidden></div>
-      </div>
-      </section>
-      <section class="results order-panel" aria-labelledby="results-title">
+    </section></div><nav class="section-links" aria-label="常用工作区"><a href="#orders" data-workspace="orders">订单追踪 →</a><a href="#positions" data-workspace="positions">持仓与平仓 →</a><a href="#sources" data-workspace="sources">来源与执行 →</a></nav></div>
+<div id="workspace-orders" class="workspace-view" role="tabpanel" aria-labelledby="segment-orders" tabindex="0" hidden><div class="heading"><div><p class="eyebrow">TRADING / TRAILING ORDERS</p><h1>订单追踪</h1><p class="subtitle">查看 Gate 跟踪订单的激活价格、数量及原始状态。状态 5 按原有规则隐藏。</p></div></div><section class="results order-panel" aria-labelledby="orders-title"><div class="section-heading"><h2 id="orders-title">跟踪订单 <span id="orders-count">等待数据</span></h2><a href="#live" class="download" data-workspace="live">前往统一更新 →</a></div><div class="panel-meta">最近同步 <time id="orders-updated">—</time></div><div class="toolbar"><label class="search"><span aria-hidden="true">⌕</span><input id="tracking-search" type="search" placeholder="搜索合约、订单 ID、数量或价格" aria-label="搜索合约、订单 ID、数量或价格"></label><label class="filter">筛选 <select id="tracking-filter"><option value="all">全部状态</option><option value="1">状态 1</option><option value="2">状态 2</option></select></label><label class="filter">排序 <select id="tracking-sort"><option value="recent">接口时间 · 最近优先</option><option value="contract">合约名称</option><option value="amount">数量 · 从大到小</option></select></label></div><p id="orders-notice" class="notice" role="status" hidden></p><div id="orders-records" class="panel-content"><div class="empty">正在读取订单快照…</div></div><div class="pagination"><span id="tracking-page" role="status">等待数据</span><div><button id="tracking-prev" class="secondary" type="button" disabled>上一页</button><button id="tracking-next" class="secondary" type="button" disabled>下一页</button></div></div></section></div>
+<div id="workspace-positions" class="workspace-view" role="tabpanel" aria-labelledby="segment-positions" tabindex="0" hidden><div class="heading"><div><p class="eyebrow">TRADING / POSITIONS</p><h1>持仓与平仓</h1><p class="subtitle">保留完整持仓字段与计算平仓价格，追踪自动平仓执行结果。</p></div></div><section class="results order-panel" aria-labelledby="positions-title"><div class="section-heading"><h2 id="positions-title">当前持仓 <span id="positions-count">等待数据</span></h2><a href="#live" class="download" data-workspace="live">前往统一更新 →</a></div><div class="panel-meta">最近同步 <time id="positions-updated">—</time></div><div class="toolbar"><label class="search"><span aria-hidden="true">⌕</span><input id="holdings-search" type="search" placeholder="搜索持仓合约或方向" aria-label="搜索持仓合约或方向"></label><label class="filter">筛选 <select id="holdings-filter"><option value="all">全部方向</option><option value="long">多头</option><option value="short">空头</option><option value="flat">空仓</option></select></label><label class="filter">排序 <select id="holdings-sort"><option value="contract">合约名称</option><option value="pnl">未实现盈亏 · 从高到低</option><option value="value">持仓价值 · 从大到小</option></select></label></div><p id="positions-notice" class="notice" role="status" hidden></p><div id="positions-records" class="panel-content"><div class="empty">正在读取持仓快照…</div></div><div class="pagination"><span id="holdings-page" role="status">等待数据</span><div><button id="holdings-prev" class="secondary" type="button" disabled>上一页</button><button id="holdings-next" class="secondary" type="button" disabled>下一页</button></div></div></section><section class="results execution-panel" aria-labelledby="close-results-title"><div class="section-heading"><h2 id="close-results-title">自动平仓执行</h2><span class="hint">最近 10 条结果</span></div><p id="close-execution-empty" class="empty">暂无自动平仓执行记录。</p><div id="close-execution-results" hidden></div></section></div>
+<div id="workspace-sources" class="workspace-view" role="tabpanel" aria-labelledby="segment-sources" tabindex="0" hidden><div class="heading"><div><p class="eyebrow">DATA / SOURCES</p><h1>来源与执行</h1><p class="subtitle">核对来源订单、查看原始记录和自动下单结果。</p></div></div><section class="results order-panel" aria-labelledby="results-title">
         <div class="section-heading">
           <div class="section-title">
             <h2 id="results-title">来源订单 <span id="count">0</span></h2>
@@ -176,50 +115,40 @@
               <option value="failed">仅失败</option>
             </select>
           </label>
-        </div>
+        <label class="filter">排序 <select id="source-sort"><option value="original">来源顺序</option><option value="recent">创建时间 · 最近优先</option><option value="contract">合约名称</option></select></label></div>
         <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
         <div id="execution-results" aria-live="polite" hidden></div>
         <div id="records" class="panel-content" aria-live="polite">
           <div class="empty">正在加载来源订单…</div>
         </div>
-      </section>
-    </div>
-    </div>
-    <div id="workspace-config" class="workspace-view" role="tabpanel" aria-labelledby="segment-config" tabindex="0" hidden>
-      <div class="heading">
-        <div><p class="eyebrow">WORKSPACE SETTINGS / 工作台配置</p><h1>按交易节奏管理实盘<span>。</span></h1><p class="subtitle">设置订单更新周期、交易接口与数据保存位置。</p></div>
-      </div>
-    <section class="results settings-panel" aria-labelledby="settings-title">
+      <div class="pagination"><span id="source-page" role="status">等待数据</span><div><button id="source-prev" class="secondary" type="button" disabled>上一页</button><button id="source-next" class="secondary" type="button" disabled>下一页</button></div></div></section></div>
+<div id="workspace-config" class="workspace-view" role="tabpanel" aria-labelledby="segment-config" tabindex="0" hidden><div class="heading"><div><p class="eyebrow">PREFERENCES / CONNECTIONS</p><h1>连接与存储</h1><p class="subtitle">管理来源连接、交易凭证与本地数据位置。</p></div></div><section class="results settings-panel" aria-labelledby="settings-title">
       <div class="section-heading"><h2 id="settings-title">连接与存储配置</h2><span id="settings-status" class="hint" role="status">等待配置加载</span></div>
       <form id="settings-form" class="settings-form">
-        <label>Supabase 地址 <input id="settings-url" type="url" placeholder="https://your-project.supabase.co" maxlength="4096"></label>
-        <label>Supabase 密钥 <input id="settings-supabase-key" type="password" autocomplete="new-password" maxlength="4096"><span><input id="settings-clear-supabase-key" type="checkbox"> 清除已保存密钥</span></label>
-        <label>Gate API Key <input id="settings-gate-key" type="password" autocomplete="new-password" maxlength="4096"><span><input id="settings-clear-gate-key" type="checkbox"> 清除已保存密钥</span></label>
-        <label>Gate API Secret <input id="settings-gate-secret" type="password" autocomplete="new-password" maxlength="4096"><span><input id="settings-clear-gate-secret" type="checkbox"> 清除已保存密钥</span></label>
-        <label>数据保存目录（可选） <input id="settings-data-dir" type="text" placeholder="留空使用默认目录" maxlength="4096"></label>
+        <fieldset><legend>订单数据源</legend><p class="field-help">读取 Supabase 来源订单。密钥不会回显，留空保留原配置。</p><label>Supabase 地址 <input id="settings-url" type="url" placeholder="https://your-project.supabase.co" maxlength="4096"></label>
+        <div class="credential-field"><label>Supabase 密钥 <input id="settings-supabase-key" type="password" autocomplete="new-password" maxlength="4096"></label><label class="clear-secret"><input id="settings-clear-supabase-key" type="checkbox"> 清除已保存密钥</label></div>
+        </fieldset><fieldset><legend>交易连接</legend><p class="field-help">Gate 凭证状态只表示配置有效，不代表交易权限验证通过。</p><div class="credential-field"><label>Gate API Key <input id="settings-gate-key" type="password" autocomplete="new-password" maxlength="4096"></label><label class="clear-secret"><input id="settings-clear-gate-key" type="checkbox"> 清除已保存密钥</label></div>
+        <div class="credential-field"><label>Gate API Secret <input id="settings-gate-secret" type="password" autocomplete="new-password" maxlength="4096"></label><label class="clear-secret"><input id="settings-clear-gate-secret" type="checkbox"> 清除已保存密钥</label></div>
+        </fieldset><fieldset><legend>本地存储与访问</legend><p class="field-help">更改数据目录后需重启；原有数据库不会自动搬移。</p><label>数据保存目录（可选） <input id="settings-data-dir" type="text" placeholder="留空使用默认目录" maxlength="4096"></label>
         <label>允许的网页来源（可选） <input id="settings-origin" type="url" placeholder="留空使用本地页面地址" maxlength="4096"></label>
-        <button id="settings-save" class="primary" type="submit" disabled>保存程序配置</button>
+        </fieldset><div class="form-actions"><button id="settings-save" class="primary" type="submit" disabled>保存程序配置</button><span class="hint">保存后连接配置立即生效</span></div>
       </form>
       <p>首次使用请填写连接信息。密钥留空保留原值，勾选清除可删除本地配置。Gate 本地配置为空时可使用 Infisical 备用凭证；输入框会标明来源。“已配置”只表示存在格式有效的非空凭证，不代表已经通过交易所验证。保存后连接配置立即生效，可点击获取订单按钮更新数据；正在执行的任务使用原配置。</p>
       <p>数据目录在重启后生效，不会搬移已有数据库。网页来源只在使用代理时填写，保存后请用对应地址访问。</p>
       <p>配置保存位置：<span id="settings-path">—</span></p>
       <p id="settings-notice" class="notice" role="status" aria-live="polite" hidden></p>
-    </section>
-    <section class="results schedule-panel" aria-labelledby="schedule-title">
+    </section></div>
+<div id="workspace-schedule" class="workspace-view" role="tabpanel" aria-labelledby="segment-schedule" tabindex="0" hidden><div class="heading"><div><p class="eyebrow">PREFERENCES / AUTOMATION</p><h1>定时任务</h1><p class="subtitle">按交易节奏设置来源抓取周期，查看下次执行与最近结果。</p></div></div><section class="results schedule-panel" aria-labelledby="schedule-title">
       <div class="section-heading"><h2 id="schedule-title">定时任务</h2><span id="schedule-status" class="hint" role="status">等待配置加载</span></div>
-      <form id="schedule-form" class="schedule-form">
-        <label class="schedule-toggle"><input id="schedule-enabled" type="checkbox"> 启用定时任务</label>
+      <form id="schedule-form" class="schedule-form"><div class="schedule-enable-row">
+        <label class="schedule-toggle"><input id="schedule-enabled" type="checkbox"> 启用定时任务</label><span class="hint">按服务器本地时间更新来源订单；停用不打断正在执行的任务。</span></div>
         <label>常用周期 <select id="schedule-preset"><option value="">自定义</option><option value="* * * * *">每分钟</option><option value="*/5 * * * *">每 5 分钟</option><option value="*/15 * * * *">每 15 分钟</option><option value="0 * * * *">每小时</option><option value="0 9 * * *">每天 09:00</option></select></label>
-        <label class="schedule-expression">Cron 表达式 <input id="schedule-cron" type="text" required maxlength="256" placeholder="*/15 * * * *" aria-describedby="schedule-help"></label>
+        <label class="schedule-expression">Cron 表达式 <input id="schedule-cron" type="text" required maxlength="256" placeholder="*/15 * * * *" aria-describedby="schedule-help schedule-notice"></label>
         <button id="schedule-save" class="primary" type="submit">保存定时配置</button>
       </form>
       <p id="schedule-help" class="hint">五段：分 时 日 月 星期；按电脑本地时间执行。保存后立即生效，自动写入程序配置文件。</p>
       <p>下次执行：<span id="schedule-next">—</span> · <span id="schedule-countdown">—</span></p>
       <p>最近定时执行：<span id="schedule-last">—</span></p>
       <p id="schedule-notice" class="notice" role="status" aria-live="polite" hidden></p>
-    </section>
-    </div>
-    <footer><span>TROY CAPITALIZE / 特洛伊资本</span><span>实盘订单与交易执行记录 · 时间按浏览器时区显示</span></footer>
-  </main>
-</body>
-</html>
+    </section></div>
+<footer><span>TROY CAPITALIZE / 特洛伊资本</span><span>时间按浏览器时区显示 · 保留接口原始数值精度</span></footer></main></div></div></body></html>
