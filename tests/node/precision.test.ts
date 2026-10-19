@@ -86,7 +86,7 @@ test('full source refresh preserves JSON numeric Supabase step alongside indepen
   let posted: Record<string, unknown> | undefined;
   const f = fixture(t, async (url, init) => {
     if (url.hostname === 'supabase.invalid') return url.searchParams.get('offset') === '0'
-      ? new Response('[{"id":1,"contract":"BTC_USDT","activation_price":100.005,"amount":2,"price_round":0.001,"side":null,"timestamp":1700000000000}]') : response([]);
+      ? new Response('[{"id":1,"contract":"BTC_USDT","activation_price":100.005,"amount":2,"order_price_round":0.001,"side":null,"timestamp":1700000000000}]') : response([]);
     if (init.method === 'POST') { posted = JSON.parse(String(init.body)); return response({ code: 0, data: { id: '456' } }); }
     if (url.pathname.includes('/contracts/')) return response(rule);
     if (url.pathname.endsWith('/list')) return response(list([]));
@@ -105,7 +105,7 @@ test('full source refresh accepts sub-cent prices and clears a previous precisio
       const posts: Record<string, unknown>[] = [];
       const f = fixture(t, async (url, init) => {
         if (url.hostname === 'supabase.invalid') return url.searchParams.get('offset') === '0'
-          ? response([{ ...source, activation_price: raw, price_round: '0.001' }]) : response([]);
+          ? response([{ ...source, activation_price: raw, price_round: undefined, order_price_round: '0.001' }]) : response([]);
         if (init.method === 'POST') { posts.push(JSON.parse(String(init.body))); return response({ code: 0, data: { id: '789' } }); }
         if (url.pathname.includes('/contracts/')) return response({ ...rule, order_price_round: tick });
         if (url.pathname.endsWith('/list')) return response(list([]));
@@ -127,5 +127,48 @@ test('full source refresh accepts sub-cent prices and clears a previous precisio
       assert.equal(f.storage.rows('orderslist', 'id')[0].raw_activation_price, raw);
       assert.equal(f.storage.intents().length, 0);
     });
+  }
+});
+
+
+test('Supabase orders.order_price_round survives Gate enrichment and drives ETH opening and protection', async t => {
+  const posts: Record<string, unknown>[] = [];
+  const f = fixture(t, async (url, init) => {
+    if (url.hostname === 'supabase.invalid') {
+      assert.equal(url.pathname, '/rest/v1/orders');
+      return url.searchParams.get('offset') === '0'
+        ? response([{ ...source, contract: 'ETH_USDT', activation_price: '100.1234', price_round: '0.5', order_price_round: '0.005' }]) : response([]);
+    }
+    if (init.method === 'POST') { posts.push(JSON.parse(String(init.body))); return response({ code: 0, data: { id: String(900 + posts.length) } }); }
+    if (url.pathname.includes('/contracts/')) return response({ ...rule, name: 'ETH_USDT' });
+    if (url.pathname.endsWith('/positions')) return response([{ ...position, contract: 'ETH_USDT', entry_price: '100.1234' }]);
+    if (url.pathname.endsWith('/list')) return response(list([]));
+    return response([]);
+  });
+  await f.dashboard.refreshSources();
+  const saved = f.storage.sources().orders[0];
+  assert.equal(saved.price_round, '0.005'); assert.equal(saved.order_price_round, '0.0001');
+  assert.equal(posts[0].activation_price, '100.125'); assert.equal(posts[0].amount, '2');
+  assert.equal(f.dashboard.sources().error, null);
+  await f.dashboard.refreshOrders();
+  assert.equal(posts[1].activation_price, '101.125'); assert.equal(posts[1].amount, '-2');
+  assert.equal(posts[1].reduce_only, true);
+  assert.equal(f.storage.sources().orders[0].price_round, '0.005');
+});
+
+test('invalid or missing Supabase order_price_round never falls back to price_round or Gate', async t => {
+  for (const step of [undefined, null, '', '0', '-0.001', 'bad']) {
+    let posts = 0;
+    const f = fixture(t, async (url, init) => {
+      if (url.hostname === 'supabase.invalid') return url.searchParams.get('offset') === '0'
+        ? response([{ ...source, order_price_round: step }]) : response([]);
+      if (init.method === 'POST') posts++;
+      if (url.pathname.includes('/contracts/')) return response(rule);
+      if (url.pathname.endsWith('/list')) return response(list([]));
+      return response([]);
+    });
+    await assert.rejects(f.dashboard.refreshSources());
+    assert.equal(f.dashboard.sources().phase, 'failed');
+    assert.equal(posts, 0); assert.equal(f.storage.intents().length, 0);
   }
 });
