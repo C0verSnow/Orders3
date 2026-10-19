@@ -67,12 +67,13 @@ export class Storage {
     this.db.exec(`CREATE TABLE IF NOT EXISTS orderslist (id TEXT PRIMARY KEY NOT NULL,contract TEXT NOT NULL,amount TEXT NOT NULL,activation_price TEXT NOT NULL,reduce_only INTEGER NOT NULL,original_status INTEGER NOT NULL,timestamp INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS position (contract TEXT NOT NULL,entry_price TEXT NOT NULL,value TEXT NOT NULL,leverage_max TEXT NOT NULL,unrealised_pnl TEXT NOT NULL,realised_pnl TEXT NOT NULL,size INTEGER NOT NULL,initial_margin TEXT NOT NULL,mark_price TEXT NOT NULL,close_price TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS position_entry_history (event_id TEXT PRIMARY KEY NOT NULL,entry_time INTEGER NOT NULL,contract TEXT NOT NULL,side INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS position_entry_seen (event_id TEXT PRIMARY KEY NOT NULL,entry_time INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS position_entry_sync (owner TEXT PRIMARY KEY NOT NULL,through_ms INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS position_entry_margin (owner TEXT NOT NULL,contract TEXT NOT NULL,side INTEGER NOT NULL,event_id TEXT NOT NULL,entry_time INTEGER NOT NULL,initial_margin TEXT,PRIMARY KEY(owner,contract,side));
       CREATE TABLE IF NOT EXISTS trade_intents (id TEXT PRIMARY KEY,operation TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL,exchange_id TEXT,created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS raw_positions (contract TEXT NOT NULL,size TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(contract,size));
       CREATE TABLE IF NOT EXISTS snapshots (name TEXT PRIMARY KEY,updated_at TEXT NOT NULL);`);
-    for (const [table, name] of [['position', 'quanto_multiplier'], ['position', 'order_price_round'], ['position_entry_history', 'initial_margin'], ['orderslist', 'raw_activation_price'], ['orderslist', 'raw_amount']]) {
+    for (const [table, name] of [['position', 'quanto_multiplier'], ['position', 'order_price_round'], ['position_entry_history', 'initial_margin'], ['orderslist', 'raw_activation_price'], ['orderslist', 'raw_amount'], ['trade_intents', 'owner'], ['trade_intents', 'request_id'], ['trade_intents', 'review_evidence']]) {
       if (!this.columns(table).includes(name)) this.db.exec(`ALTER TABLE "${table}" ADD COLUMN "${name}" TEXT`);
     }
     if (this.columns('orderslist').includes('trigger_price')) {
@@ -132,7 +133,7 @@ export class Storage {
         const raw = row as TrailOrder & { raw_activation_price?: string; raw_amount?: string };
         insert.run(row.id, row.contract, two(row.amount), two(row.activation_price), row.reduce_only ? 1 : 0, row.original_status, row.timestamp, raw.raw_activation_price ?? row.activation_price, raw.raw_amount ?? row.amount);
       }
-      this.touch('orders');
+      this.touch('orders'); this.touch('trailing');
     });
   }
   positions(): Position[] { return this.rows('position', 'contract,size').map(row => {
@@ -152,8 +153,10 @@ export class Storage {
       for (const row of rows) insert.run(...names.map(name => name === 'size' ? BigInt(decimal(row.size).toFixed(0)) : row[name]));
       const record = this.db.prepare('INSERT INTO raw_positions VALUES (?,?,?)');
       for (const item of raw as Record<string, unknown>[]) record.run(String(item.contract), String(item.size), JSON.stringify(item));
+      this.touch('positions');
     });
   }
+  entrySeen(owner: string, id: string): boolean { return !!this.db.prepare('SELECT 1 FROM position_entry_seen WHERE event_id=? UNION ALL SELECT 1 FROM position_entry_history WHERE event_id=? LIMIT 1').get(`${owner}:${id}`, `${owner}:${id}`); }
   watermark(owner: string) { return this.exists('position_entry_sync') ? Number(this.db.prepare('SELECT through_ms FROM position_entry_sync WHERE owner=?').get(owner)?.through_ms ?? -1) : -1; }
   history(owner: string, events: EntryEvent[], through: number) {
     this.transaction(() => {
@@ -162,12 +165,14 @@ export class Storage {
       const insert = this.db.prepare('INSERT OR IGNORE INTO position_entry_history(event_id,entry_time,contract,side,initial_margin) VALUES (?,?,?,?,?)');
       const margin = this.db.prepare(`INSERT INTO position_entry_margin VALUES (?,?,?,?,?,?) ON CONFLICT(owner,contract,side) DO UPDATE SET event_id=excluded.event_id,entry_time=excluded.entry_time,initial_margin=excluded.initial_margin WHERE excluded.entry_time>position_entry_margin.entry_time OR (excluded.entry_time=position_entry_margin.entry_time AND excluded.event_id>position_entry_margin.event_id)`);
       for (const event of events) {
-        if (event.entry_time <= previous) continue;
+        if (event.entry_time < through - 7 * 86400000 || event.entry_time > through || this.entrySeen(owner, event.event_id)) continue;
         if (event.initial_margin != null && decimal(event.initial_margin).lt(0)) throw new AppError('固定保证金不能为负');
         const id = `${owner}:${event.event_id}`;
+        this.db.prepare('INSERT INTO position_entry_seen VALUES (?,?)').run(id, event.entry_time);
         const result = insert.run(id, event.entry_time, event.contract, event.side, event.initial_margin ?? null);
         if (result.changes) margin.run(owner, event.contract, event.side, id, event.entry_time, event.initial_margin ?? null);
       }
+      this.db.prepare('DELETE FROM position_entry_seen WHERE entry_time<?').run(through - 7 * 86400000);
       this.db.exec('DELETE FROM position_entry_history WHERE event_id NOT IN (SELECT event_id FROM position_entry_history ORDER BY entry_time DESC,event_id DESC LIMIT 100)');
       this.db.prepare('INSERT OR REPLACE INTO position_entry_sync VALUES (?,?)').run(owner, through);
     });
@@ -184,9 +189,9 @@ export class Storage {
   }
   recentEntry(contract: string, side: number, now = Date.now()): boolean { return !!this.db.prepare('SELECT 1 FROM position_entry_history WHERE contract=? AND side=? AND entry_time>=? AND entry_time<=? LIMIT 1').get(contract, side, now - 7 * 86400000, now); }
   intents(): Intent[] { return this.exists('trade_intents') ? this.rows('trade_intents', 'created_at DESC').filter(row => ['pending', 'unknown'].includes(String(row.state))) as unknown as Intent[] : []; }
-  intent(operation: string, payload: string): string {
+  intent(operation: string, payload: string, owner: string | null = null, requestId: string | null = null): string {
     const id = randomUUID();
-    this.transaction(() => this.db.prepare("INSERT INTO trade_intents VALUES (?,?,?,'pending',NULL,?)").run(id, operation, payload, Date.now()));
+    this.transaction(() => this.db.prepare("INSERT INTO trade_intents(id,operation,payload,state,exchange_id,created_at,owner,request_id) VALUES (?,?,?,'pending',NULL,?,?,?)").run(id, operation, payload, Date.now(), owner, requestId));
     return id;
   }
   intentState(id: string, state: string, exchangeId?: string) { this.transaction(() => this.db.prepare('UPDATE trade_intents SET state=?,exchange_id=? WHERE id=?').run(state, exchangeId ?? null, id)); }

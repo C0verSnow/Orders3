@@ -13,7 +13,7 @@ export class HttpClient {
   constructor(activity: Activity, log: RequestLog, sender: Sender = fetch) { this.activity = activity; this.log = log; this.sender = sender; }
   async request(task: string, url: URL, method = 'GET', headers: Record<string, string> = {}, body?: string): Promise<TransportResult> {
     const start = performance.now();
-    let status = 0;
+    let status = 0, completed = false;
     this.activity.active++; this.activity.total++;
     this.activity.record({ task, kind: 'request', state: 'started', host: url.hostname, method });
     try {
@@ -39,14 +39,15 @@ export class HttpClient {
       let data: unknown;
       try { data = parse(text, undefined, value => value); }
       catch { throw new AppError(`远端返回无效 JSON（HTTP ${status}）`, 502); }
+      completed = status >= 200 && status < 300;
       return { status, headers: response.headers, text, data };
     } catch (error) {
       if (error instanceof AppError) throw error;
       throw new AppError('网络请求中断或超过 30 秒；交易写入结果可能未知，请核对交易所', 502);
     } finally {
       this.activity.active--;
-      this.activity.record({ task, kind: 'request', state: status >= 200 && status < 300 ? 'completed' : 'failed', method, host: url.hostname, status });
-      this.log.write('outbound', method, url, status, Math.round(performance.now() - start));
+      this.activity.record({ task, kind: 'request', state: completed ? 'completed' : 'failed', method, host: url.hostname, status });
+      this.log.write('outbound', method, url, status, Math.round(performance.now() - start), completed);
     }
   }
 }

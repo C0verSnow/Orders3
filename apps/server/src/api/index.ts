@@ -62,14 +62,9 @@ export function createServer(dashboard: Dashboard, scheduler: Scheduler, credent
   app.post('/api/schedule', request => scheduler.update(request.body));
   app.get('/api/download', (_request, reply) => reply.type('application/vnd.sqlite3').header('Content-Disposition', 'attachment; filename="data.db"').send(dashboard.storage.download()));
   app.post('/api/intents/resolve', async request => {
-    const parsed = z.object({ id: z.string().uuid(), confirmed_exchange_review: z.literal(true) }).strict().safeParse(request.body);
+    const parsed = z.object({ id: z.string().uuid(), confirmed_exchange_review: z.literal(true), evidence: z.string().trim().min(8).max(2000) }).strict().safeParse(request.body);
     if (!parsed.success) throw new AppError('必须明确确认已在 Gate 核对本笔交易');
-    if (dashboard.gateBusy || dashboard.sourcesBusy) throw new AppError('请等待当前任务完成', 409);
-    if (!dashboard.storage.intents().some(row => row.id === parsed.data.id)) throw new AppError('待核对交易不存在', 404);
-    // Resolving is a local acknowledgement, never a retry of an exchange write.
-    await dashboard.refreshOrders(false);
-    dashboard.storage.intentState(parsed.data.id, 'reviewed');
-    dashboard.activity.record({ task: 'manual-review', kind: 'task', state: 'completed' });
+    await dashboard.resolveIntent(parsed.data.id, parsed.data.evidence);
     return { pending: dashboard.storage.intents() };
   });
   app.get('/api/history', () => ({ entries: dashboard.storage.rows('position_entry_history', 'entry_time DESC,event_id DESC') }));

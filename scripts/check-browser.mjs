@@ -34,6 +34,26 @@ try {
     assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');assert.deepEqual(errors,[]);
     await page.close();
   }
+  // Fault-injection regressions: production UI + real server, only /api/status failure is intercepted.
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await page.goto(`${base}/#token=${token}`);
+  await page.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
+  await page.getByRole('button', { name: '系统设置', exact: true }).click();
+  await page.locator('input[name="API_KEY"]').fill('unsaved-key-draft');
+  await page.getByLabel('Cron 表达式', { exact: true }).fill('7 * * * *');
+  await page.waitForTimeout(1200);
+  const settingsRead = page.waitForResponse(response => response.url().endsWith('/api/settings') && response.request().method() === 'GET');
+  const scheduleRead = page.waitForResponse(response => response.url().endsWith('/api/schedule') && response.request().method() === 'GET');
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await Promise.all([settingsRead, scheduleRead]);
+  assert.equal(await page.locator('input[name="API_KEY"]').inputValue(), 'unsaved-key-draft');
+  assert.equal(await page.getByLabel('Cron 表达式', { exact: true }).inputValue(), '7 * * * *');
+  await page.route('**/api/status', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'status fixture unavailable' }) }));
+  await page.getByRole('button', { name: '活动与运行状态', exact: true }).click();
+  await page.getByText('无法确认当前阻断状态，请重试。', { exact: true }).waitFor();
+  assert.equal(await page.getByText('当前没有待核对请求。', { exact: true }).count(), 0);
+  await page.screenshot({ path: 'tests/artifacts/status-unavailable.png', fullPage: true });
+  await page.close();
   console.log('Browser checks passed at six widths, both themes, session bootstrap, settings and secret fields');
 } finally {
   await browser?.close();child.kill('SIGTERM');

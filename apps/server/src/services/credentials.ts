@@ -24,6 +24,7 @@ export class Credentials {
       if (auth.status < 200 || auth.status >= 300) throw new AppError('认证失败');
       const token = credential(text(object(auth.data).accessToken));
       if (!token) throw new AppError('认证令牌无效');
+      const values: Record<string, string> = {};
       for (const [name, local] of [['GATE_API_KEY', 'API_KEY'], ['GATE_API_SECRET', 'API_SECRET']]) {
         try {
           const url = new URL(`/api/v4/secrets/${name}`, base);
@@ -32,9 +33,10 @@ export class Credentials {
           if (response.status < 200 || response.status >= 300) throw new AppError('密钥读取失败');
           const secret = object(object(response.data).secret), value = credential(text(secret.secretValue));
           if (secret.secretKey !== name || secret.secretValueHidden || !value) throw new AppError('密钥无效');
-          if (this.generation === generation && !this.stopped) this.config.fallback[local] = value;
+          values[local] = value;
         } catch { failed = true; }
       }
+      if (this.generation === generation && !this.stopped) this.config.setFallback(values);
     } catch { failed = true; }
     if (failed && this.generation === generation && !this.stopped) {
       if (retry) this.timer = setTimeout(() => { void this.refresh(); }, 5000);

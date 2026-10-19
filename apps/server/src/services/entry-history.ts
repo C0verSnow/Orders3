@@ -15,7 +15,7 @@ export function fillDirection(size: string, close: string): number | null {
 export async function syncEntries(gate: Gate, storage: Storage, now = Date.now()): Promise<boolean> {
   const previous = storage.watermark(gate.owner);
   if (previous >= now) return false;
-  const from = Math.floor((previous < 0 ? now - 7 * 86400000 : previous) / 1000), to = Math.floor(now / 1000) + 1;
+  const from = Math.floor((now - 7 * 86400000) / 1000), to = Math.floor(now / 1000) + 1;
   const events: EntryEvent[] = [], seen = new Set<string>();
   for (let offset = 0; ; ) {
     const response = await gate.request(`/api/v4/futures/usdt/my_trades_timerange?from=${from}&to=${to}&limit=100&offset=${offset}`); gateSuccess(response);
@@ -28,7 +28,7 @@ export async function syncEntries(gate: Gate, storage: Storage, now = Date.now()
       const time = decimal(row.create_time).times(1000).floor();
       if (time.lt(0) || time.gt(Number.MAX_SAFE_INTEGER)) throw new AppError('成交历史时间无效');
       const contract = contractName(row.contract), side = fillDirection(text(row.size), text(row.close_size));
-      if (side !== null && time.gt(previous) && time.lte(now)) events.push({ event_id: id, entry_time: time.toNumber(), contract, side });
+      if (side !== null && time.gte(now - 7 * 86400000) && time.lte(now) && !storage.entrySeen(gate.owner, id)) events.push({ event_id: id, entry_time: time.toNumber(), contract, side });
     }
     offset += page.length;
     if (offset > 1_000_000) throw new AppError('成交历史分页过多');

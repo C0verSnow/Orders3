@@ -1,6 +1,7 @@
 import { closePrice, decimal, integer, two, executionPrice, type ContractRules } from '../../../../packages/decimal/index.ts';
 import type { Execution, Position, SourceOrder, TrailOrder } from '../../../../packages/shared/types.ts';
 import type { Storage } from '../database/index.ts';
+import { randomUUID } from 'node:crypto';
 import { Gate, TRAIL, businessSuccess } from '../exchange/gate.ts';
 import { object, text } from '../exchange/http.ts';
 import { syncEntries } from './entry-history.ts';
@@ -24,7 +25,9 @@ export function matchOrders(desired: Desired[], trailing: TrailOrder[], reduceOn
 }
 async function writeExchange(gate: Gate, storage: Storage, operation: 'stop' | 'create', body: string, onSuccess: (data: Record<string, unknown>) => void) {
   if (storage.intents().length) throw new AppError('存在结果未知的交易，已禁止自动重试。请先核对 Gate 并在运行状态中处理', 409);
-  const id = storage.intent(operation, body);
+  const requestId = `t-${randomUUID().replaceAll('-', '').slice(0, 28)}`;
+  if (operation === 'create') body = JSON.stringify({ ...JSON.parse(body), text: requestId });
+  const id = storage.intent(operation, body, gate.owner, requestId);
   try {
     const response = await gate.request(`${TRAIL}/${operation}`, 'POST', body);
     // A non-2xx or malformed response is treated conservatively as unknown, never retried.
@@ -47,6 +50,9 @@ async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trail
   const { retained, candidates, results } = matchOrders(desired, trailing, reduceOnly);
   const stops = trailing.map((row, index) => ({ row, index })).filter(({ row, index }) => !retained.has(index) && row.reduce_only === reduceOnly && row.original_status === 1);
   for (const { row } of stops) if (!/^[1-9]\d*$/.test(row.id) || BigInt(row.id) > 9223372036854775807n) throw new AppError('旧订单 ID 无效');
+  if (reduceOnly && stops.some(({ row }) => candidates.some(entry => entry.contract === row.contract && decimal(entry.amount).isNegative() === decimal(row.amount).isNegative()))) {
+    return [...results, { action: 'failed', operation: 'replace', contract: stops[0].row.contract, error: '保护单参数需要替换：已保留旧保护单，未停止或重复创建。请在 Gate 人工替换后重新同步；当前接口未提供已验证的原子替换协议' }];
+  }
   if (!reduceOnly && candidates.length) await syncEntries(gate, storage);
   if ((stops.length || candidates.length) && storage.intents().length) throw new AppError('存在结果未知的交易，请先核对 Gate，自动交易已暂停', 409);
   for (const { row, index } of stops) {
@@ -82,8 +88,6 @@ async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trail
 }
 export async function openOrders(gate: Gate, storage: Storage): Promise<Execution[]> {
   const sources = storage.sources().orders, rules = new Map<string, ContractRules>();
-  const trailingCache = storage.trailing();
-  if (!sources.length && !trailingCache.some(row => !row.reduce_only && row.original_status === 1)) return [];
   gate.requireCredentials();
   const desired: Desired[] = [];
   for (const source of sources) {

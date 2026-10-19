@@ -31,7 +31,7 @@ export interface SourceSnapshot {
 }
 export interface OrdersSnapshot {
   orders: TrailOrder[]; positions: Position[]; close_execution: Execution[];
-  updated_at: string | null; error: string | null; refreshing: boolean;
+  updated_at: string | null; position_updated_at: string | null; trailing_updated_at: string | null; error: string | null; refreshing: boolean;
   unrealised_pnl: string; realised_pnl: string; uptime_ms: number;
 }
 export interface ActivityEvent {
@@ -39,4 +39,4 @@ export interface ActivityEvent {
   state: 'started' | 'completed' | 'failed'; method?: string; host?: string; status?: number;
 }
 export interface ActivitySnapshot { events: ActivityEvent[]; active: number; total: number; tasks: Record<string, boolean>; instance: string }
-export interface Intent { id: string; operation: string; payload: string; state: string; exchange_id: string | null; created_at: number }
+export interface Intent { owner: string | null; request_id: string | null; review_evidence: string | null; id: string; operation: string; payload: string; state: string; exchange_id: string | null; created_at: number }

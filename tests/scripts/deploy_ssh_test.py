@@ -84,6 +84,16 @@ sys.exit(subprocess.run(["bash", "-c", sys.argv[-1]]).returncode)
         key = Path(args[args.index("-i") + 1])
         self.assertFalse(key.exists(), "temporary private key must be removed")
 
+    def test_verified_digest_reaches_remote_startup_unchanged(self):
+        self.env["ORDERS_IMAGE"] = "ghcr.io/c0versnow/orders3@sha256:" + "a" * 64
+        self.assert_started(self.deploy())
+
+    def test_malformed_or_shell_image_is_rejected_before_ssh(self):
+        for image in ["ghcr.io/c0versnow/orders3@sha256:bad", "ghcr.io/c0versnow/orders3:latest;false", "other.example/orders:latest"]:
+            with self.subTest(image=image):
+                self.assertNotEqual(self.deploy(ORDERS_IMAGE=image).returncode, 0)
+                self.assertFalse((self.base / "ssh-args.json").exists())
+
     def test_overwrite_and_run_updated_content(self):
         target = self.home / "start-docker.sh"
         target.write_text("old content that must not run\n")

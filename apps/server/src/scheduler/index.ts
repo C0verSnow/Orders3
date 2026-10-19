@@ -31,7 +31,7 @@ export class Cron {
     while (next <= limit) {
       if (this.matches(next)) return next;
       // Step actual minutes through DST, skip whole nonmatching local calendar days safely.
-      if (!this.fields[3].has(next.getMonth() + 1)) next.setDate(next.getDate() + 1);
+      if (!this.fields[3].has(next.getMonth() + 1)) { next.setDate(next.getDate() + 1); next.setHours(0, 0, 0, 0); }
       else next.setTime(next.getTime() + 60000);
     }
     throw new AppError('Cron 在未来八年内没有执行时间');

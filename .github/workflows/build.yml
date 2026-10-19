@@ -16,7 +16,7 @@ permissions:
   contents: read
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/mian' && !startsWith(github.ref, 'refs/tags/v') }}
+  cancel-in-progress: ${{ github.ref_name != github.event.repository.default_branch && !startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
   publication:
@@ -31,6 +31,7 @@ jobs:
         id: version
         env:
           PREVIEW: ${{ inputs.publish_preview }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         shell: bash
         run: |
           set -euo pipefail
@@ -45,7 +46,7 @@ jobs:
             version="${version/-/~}"
             enabled=true
             [[ "$tag" == *-* ]] || prerelease=false
-          elif [[ "$GITHUB_REF" == refs/heads/mian || "$PREVIEW" == true ]]; then
+          elif [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" || "$PREVIEW" == true ]]; then
             enabled=true
           fi
           printf 'enabled=%s\ntag=%s\nversion=%s\nprerelease=%s\n' "$enabled" "$tag" "$version" "$prerelease" >> "$GITHUB_OUTPUT"
@@ -264,6 +265,7 @@ jobs:
           IMAGE: ${{ steps.image.outputs.name }}
           VERSION: ${{ needs.publication.outputs.tag }}
           PRERELEASE: ${{ needs.publication.outputs.prerelease }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
           sources=()
@@ -274,8 +276,8 @@ jobs:
           done
           test "${#sources[@]}" -eq 2
           tags=(--tag "$IMAGE:$VERSION" --tag "$IMAGE:sha-${GITHUB_SHA}")
-          if [[ "$GITHUB_REF" == refs/heads/mian || "$PRERELEASE" == false ]]; then tags+=(--tag "$IMAGE:latest"); fi
-          if [[ "$GITHUB_REF" == refs/heads/mian ]]; then tags+=(--tag "$IMAGE:mian"); fi
+          if [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" || "$PRERELEASE" == false ]]; then tags+=(--tag "$IMAGE:latest"); fi
+          if [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]]; then tags+=(--tag "$IMAGE:$DEFAULT_BRANCH"); fi
           docker buildx imagetools create "${tags[@]}" "${sources[@]}"
           digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{.Manifest.Digest}}')"
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
@@ -313,12 +315,12 @@ jobs:
           gh release upload "$TAG" *.exe *.deb container-image.txt SHA256SUMS.txt --clobber
 
   deploy:
-    name: Deploy mian over Tailscale and SSH
+    name: Deploy default branch over Tailscale and SSH
     needs: [container, release]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/mian'
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    concurrency: { group: deploy-mian, cancel-in-progress: false }
+    concurrency: { group: deploy-production, cancel-in-progress: false }
     steps:
       - uses: actions/checkout@v7.0.1
         with: { persist-credentials: false }

@@ -50,6 +50,29 @@ esac
         self.assertEqual((self.base / 'docker.md').read_text(), f'本地看板：\n{address}\n')
         self.assertEqual(list(self.base.glob('.docker.md.*')), [])
 
+    def test_infisical_env_file_is_passed_to_docker_without_shell_evaluation(self):
+        env_file = self.base / 'machine credentials.env'
+        env_file.write_text('INFISICAL_CLIENT_SECRET=$(touch should-not-execute)\n')
+        args = self.base / 'create-args'
+        self.command('docker', """case "$1" in
+info|pull|start|rm|logs) exit 0 ;;
+container) exit 1 ;;
+create) printf '%s\\n' "$@" > "$CREATE_ARGS"; printf 'test-container\\n' ;;
+inspect) printf 'true\\n' ;;
+esac
+""")
+        result = self.run_script(ORDERS_ENV_FILE=str(env_file), CREATE_ARGS=str(args))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        values = args.read_text().splitlines()
+        self.assertEqual(values[values.index('--env-file') + 1], str(env_file))
+        self.assertFalse((self.base / 'should-not-execute').exists())
+        self.assertNotIn('INFISICAL_CLIENT_SECRET', result.stdout + result.stderr)
+
+    def test_missing_explicit_env_file_fails_before_replacing_container(self):
+        result = self.run_script(ORDERS_ENV_FILE=str(self.base / 'missing.env'))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('文件不存在', result.stderr)
+
     def test_overwrites_old_record(self):
         (self.base / 'docker.md').write_text('old address\n')
         self.test_creates_record_from_actual_success_output()

@@ -55,6 +55,21 @@ export class Configuration {
   fallback: Record<string, string> = {};
   startup: NodeJS.ProcessEnv;
   restartRequired = false;
+  private connectionUsers = 0;
+  private pendingFallback: Record<string, string> | null = null;
+  private defaultDataPath: string;
+  acquireConnection() {
+    this.connectionUsers++;
+    return () => {
+      this.connectionUsers--;
+      if (!this.connectionUsers && this.pendingFallback) { this.fallback = this.pendingFallback; this.pendingFallback = null; }
+    };
+  }
+  setFallback(values: Record<string, string>) {
+    const next = { ...(this.pendingFallback ?? this.fallback), ...values };
+    if (this.connectionUsers) this.pendingFallback = next;
+    else this.fallback = next;
+  }
   constructor(startup: NodeJS.ProcessEnv = process.env, root = process.cwd()) {
     const defaults: Record<string, string> = {};
     const executableRoot = dirname(process.execPath);
@@ -74,11 +89,12 @@ export class Configuration {
     }
     this.startup = { ...defaults, ...startup };
     const checkout = existsSync(join(root, 'apps/server/src/main.ts'));
-    this.path = expand(startup.ORDERS_CONFIG_PATH || (checkout ? join(root, 'config') : join(homedir(), '.orders-dashboard/config')));
+    this.path = expand(this.startup.ORDERS_CONFIG_PATH || (checkout ? join(root, 'config') : join(homedir(), '.orders-dashboard/config')));
     const saved = iniSection(this.text(), 'environment');
     this.environment = Object.fromEntries(names.map(name => [name, saved[name] ?? this.startup[name] ?? '']));
     for (const name of ['API_KEY', 'API_SECRET']) this.environment[name] = credential(this.environment[name]);
-    this.databasePath = join(expand(this.environment.ORDERS_DATA_DIR || (checkout ? join(root, 'data') : join(homedir(), '.orders-dashboard'))), 'data.db');
+    this.defaultDataPath = checkout ? join(root, 'data') : join(homedir(), '.orders-dashboard');
+    this.databasePath = join(expand(this.environment.ORDERS_DATA_DIR || this.defaultDataPath), 'data.db');
   }
   text() { return existsSync(this.path) ? readFileSync(this.path, 'utf8') : ''; }
   saveSection(section: string, values: Record<string, string>) {
@@ -101,6 +117,7 @@ export class Configuration {
       credential_sources: Object.fromEntries(['API_KEY', 'API_SECRET'].map(name => [name, this.environment[name] ? '本地配置' : this.fallback[name] ? 'Infisical 备用凭证' : '未配置'])) };
   }
   update(payload: unknown): Settings {
+    if (this.connectionUsers) throw new AppError('任务正在使用连接配置，请等待任务完成后保存', 409);
     const schema = z.object(Object.fromEntries(names.map(name => [name, z.string().max(8192).optional()]))).extend({ clear: z.array(z.enum(['SUPABASE_ANON_KEY', 'API_KEY', 'API_SECRET'])).optional() }).strict();
     const parsed = schema.safeParse(payload);
     if (!parsed.success) throw new AppError('配置包含无效字段或类型');
@@ -120,7 +137,7 @@ export class Configuration {
     if (next.ORDERS_ALLOWED_ORIGIN && new URL(next.ORDERS_ALLOWED_ORIGIN).origin !== next.ORDERS_ALLOWED_ORIGIN) throw new AppError('允许来源须为完整 Origin，不带路径');
     this.saveSection('environment', next);
     this.environment = next;
-    this.restartRequired = !!next.ORDERS_DATA_DIR && join(expand(next.ORDERS_DATA_DIR), 'data.db') !== this.databasePath;
+    this.restartRequired = join(expand(next.ORDERS_DATA_DIR || this.defaultDataPath), 'data.db') !== this.databasePath;
     return this.snapshot();
   }
   schedule(): Schedule {
