@@ -42,16 +42,16 @@ try {
   await page.locator('input[name="API_KEY"]').fill('unsaved-key-draft');
   await page.getByLabel('Cron 表达式', { exact: true }).fill('7 * * * *');
   await page.waitForTimeout(1200);
-  // Query's focus manager reacts to a visibility transition, not repeated visible events.
+  // Match Query's window listener and a full hidden/visible transition.
   await page.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
-    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('visibilitychange'));
   });
   const settingsRead = page.waitForResponse(response => response.url().endsWith('/api/settings') && response.request().method() === 'GET');
   const scheduleRead = page.waitForResponse(response => response.url().endsWith('/api/schedule') && response.request().method() === 'GET');
   await page.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
-    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('visibilitychange'));
   });
   await Promise.all([settingsRead, scheduleRead]);
   assert.equal(await page.locator('input[name="API_KEY"]').inputValue(), 'unsaved-key-draft');
