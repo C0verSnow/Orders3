@@ -22,7 +22,7 @@ test('SNDK saved source step matches normalized Gate position and updates protec
   assert.equal(writes.length, 1); assert.ok(writes[0].path.endsWith('/trail/update'));
   assert.match(writes[0].body, /"id":9007199254740993[,}]/);
   assert.equal(JSON.parse(writes[0].body).activation_price, '1201.88');
-  assert.equal(f.storage.trailing()[0].raw_activation_price, '1201.88');
+  assert.equal(f.storage.rows('orderslist', 'id')[0].raw_activation_price, '1201.88');
   assert.equal(f.storage.intents().length, 0);
   assert.equal((await closeOrders(f.gate, f.storage))[0].action, 'skipped');
   assert.equal(writes.length, 1);
