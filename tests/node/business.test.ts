@@ -51,7 +51,7 @@ test('failed history batch never advances watermark', async t => {
 test('precision conflict stops the whole opening batch before any write', async t => {
   let posts=0;
   const f=fixture(t,async(url,init)=> { if(init.method==='POST')posts++; return response({name:'BTC_USDT',quanto_multiplier:'0.1',order_price_round:'0.005'}); });
-  f.storage.saveSources([{ ...source,activation_price:'100.005', price_round:'0.003' }]);
+  f.storage.saveSources([{ ...source,activation_price:'100.008', price_round:'0.003' }]);
   await assert.rejects(openOrders(f.gate,f.storage),/精度冲突/); assert.equal(posts,0); assert.equal(f.storage.intents().length,0);
 });
 test('ambiguous POST is persisted and never retried by a later refresh', async t => {
