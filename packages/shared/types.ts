@@ -13,7 +13,7 @@ export interface TrailOrder {
 export interface Position {
   contract: string; size: string; entry_price: string; value: string;
   leverage_max: string; unrealised_pnl: string; realised_pnl: string;
-  initial_margin: string; mark_price: string; close_price: string;
+  initial_margin: string; mark_price: string;
   quanto_multiplier: string; order_price_round: string;
 }
 export interface Execution {

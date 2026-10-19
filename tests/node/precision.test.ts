@@ -2,7 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture, response, source, list } from './helpers.ts';
-import { openOrders, closeOrders } from '../../apps/server/src/services/trading.ts';
+import { openOrders } from '../../apps/server/src/services/trading.ts';
+import { syncPositions } from '../../apps/server/src/services/positions.ts';
 import { sourceOrder, legacyOrders } from '../../apps/server/src/services/source-parser.ts';
 import { decimal, two } from '../../packages/decimal/index.ts';
 
@@ -53,7 +54,7 @@ test('missing, conflicting, invalid, zero-aligned and Gate-incompatible source s
   }
 });
 
-test('protection uses Supabase step, preserves formula precision and stores unrounded positions', async t => {
+test('position sync preserves unrounded values without protection orders', async t => {
   const posts: Record<string, unknown>[] = [];
   const f = fixture(t, async (url, init) => {
     if (init.method === 'POST') { posts.push(JSON.parse(String(init.body))); return response({ code: 0, data: { id: '321' } }); }
@@ -63,14 +64,14 @@ test('protection uses Supabase step, preserves formula precision and stores unro
     return response([]);
   });
   f.storage.saveSources([{ ...source, price_round: '0.001' }]);
-  assert.equal((await closeOrders(f.gate, f.storage))[0].action, 'created');
-  assert.equal(posts[0].activation_price, '101.005'); assert.equal(posts[0].amount, '-2');
+  await syncPositions(f.gate, f.storage);
+  assert.equal(posts.length, 0);
   const stored = f.storage.rows('position', 'contract,size')[0];
   assert.equal(stored.entry_price, '100.005'); assert.equal(stored.value, '20.001'); assert.equal(stored.mark_price, '100.1234');
-  assert.equal(f.storage.positions()[0].entry_price, '100.01'); assert.equal(f.storage.positions()[0].close_price, '101.01');
+  assert.equal(f.storage.positions()[0].entry_price, '100.01'); assert.equal(Object.hasOwn(f.storage.positions()[0], 'close_price'), false);
 });
 
-test('missing protection step preserves the last snapshot and every live order without POST', async t => {
+test('position sync requires no Supabase step and sends no POST', async t => {
   let posts = 0;
   const f = fixture(t, async (url, init) => {
     if (init.method === 'POST') posts++;
@@ -78,8 +79,8 @@ test('missing protection step preserves the last snapshot and every live order w
     if (url.pathname.includes('/contracts/')) return response(rule);
     return response([]);
   });
-  await assert.rejects(closeOrders(f.gate, f.storage), /price_round/);
-  assert.equal(posts, 0); assert.equal(f.storage.updated('positions'), null);
+  await syncPositions(f.gate, f.storage);
+  assert.equal(posts, 0); assert.ok(f.storage.updated('positions'));
 });
 
 test('full source refresh preserves JSON numeric Supabase step alongside independent Gate rules', async t => {
@@ -131,7 +132,7 @@ test('full source refresh accepts sub-cent prices and clears a previous precisio
 });
 
 
-test('Supabase orders.order_price_round survives Gate enrichment and drives ETH opening and protection', async t => {
+test('Supabase orders.order_price_round survives Gate enrichment and drives ETH opening while position refresh is read only', async t => {
   const posts: Record<string, unknown>[] = [];
   const f = fixture(t, async (url, init) => {
     if (url.hostname === 'supabase.invalid') {
@@ -151,8 +152,8 @@ test('Supabase orders.order_price_round survives Gate enrichment and drives ETH 
   assert.equal(posts[0].activation_price, '100.125'); assert.equal(posts[0].amount, '2');
   assert.equal(f.dashboard.sources().error, null);
   await f.dashboard.refreshOrders();
-  assert.equal(posts[1].activation_price, '101.125'); assert.equal(posts[1].amount, '-2');
-  assert.equal(posts[1].reduce_only, true);
+  assert.equal(posts.length, 1);
+  assert.equal(f.dashboard.orders().error, null);
   assert.equal(f.storage.sources().orders[0].price_round, '0.005');
 });
 

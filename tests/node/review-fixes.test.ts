@@ -7,7 +7,8 @@ import { fixture, response, source, list } from './helpers.ts';
 import { Configuration } from '../../apps/server/src/config/index.ts';
 import { Cron, Scheduler } from '../../apps/server/src/scheduler/index.ts';
 import { syncEntries } from '../../apps/server/src/services/entry-history.ts';
-import { openOrders, closeOrders } from '../../apps/server/src/services/trading.ts';
+import { syncPositions } from '../../apps/server/src/services/positions.ts';
+import { openOrders } from '../../apps/server/src/services/trading.ts';
 import { Credentials } from '../../apps/server/src/services/credentials.ts';
 import { Sessions } from '../../apps/server/src/security/session.ts';
 import { createServer } from '../../apps/server/src/api/index.ts';
@@ -71,7 +72,7 @@ test('F05 API rejects settings while source fetch is pending; fallback changes w
   assert.equal(f.config.fallback.API_KEY, 'deferred');
   f.config.update({ API_KEY: 'replacement-key' }); assert.equal(f.config.connection().gateKey, 'replacement-key');
 });
-test('F06 changed protection stays intact with explicit manual-replacement failure and no POST', async t => {
+test('F06 position sync does not reconcile changed protection and sends no POST', async t => {
   let posts = 0;
   const f = fixture(t, async (url, init) => {
     if (init.method === 'POST') { posts++; throw new Error('must preserve old protection'); }
@@ -81,8 +82,8 @@ test('F06 changed protection stays intact with explicit manual-replacement failu
     return response([]);
   });
   f.storage.saveSources([source]);
-  const result = await closeOrders(f.gate, f.storage);
-  assert.equal(posts, 0); assert.equal(result[0].operation, 'replace'); assert.match(result[0].error!, /保留旧保护单/);
+  await f.dashboard.refreshOrders();
+  assert.equal(posts, 0); assert.deepEqual(f.dashboard.orders().close_execution, []);
   assert.equal(f.storage.trailing()[0].original_status, 1);
 });
 test('F07 unknown creation includes original credential fingerprint and unique Gate text before POST', async t => {

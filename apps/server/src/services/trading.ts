@@ -1,5 +1,5 @@
-import { closePrice, decimal, integer, executionPrice, type ContractRules } from '../../../../packages/decimal/index.ts';
-import type { Execution, Position, SourceOrder, TrailOrder } from '../../../../packages/shared/types.ts';
+import { decimal, integer, executionPrice, type ContractRules } from '../../../../packages/decimal/index.ts';
+import type { Execution, SourceOrder, TrailOrder } from '../../../../packages/shared/types.ts';
 import type { Storage } from '../database/index.ts';
 import { randomUUID } from 'node:crypto';
 import { Gate, TRAIL, businessSuccess } from '../exchange/gate.ts';
@@ -55,7 +55,7 @@ function requireStep(steps: Map<string, string>, contract: string): string {
   if (!step) throw new AppError(`${contract} 缺少 Supabase orders.order_price_round，请先刷新包含该合约的来源配置，已停止整批交易`);
   return step;
 }
-async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trailing: TrailOrder[], reduceOnly: boolean, rules: Map<string, ContractRules>, steps: Map<string, string>): Promise<Execution[]> {
+async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trailing: TrailOrder[], rules: Map<string, ContractRules>, steps: Map<string, string>): Promise<Execution[]> {
   // Complete parameter validation, including all stop IDs, before the first destructive operation.
   for (const entry of desired) {
     const rule = rules.get(entry.contract);
@@ -63,14 +63,10 @@ async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trail
     entry.activation_price = executionPrice(entry.activation_price, entry.amount, rule, requireStep(steps, entry.contract));
     entry.amount = integer(entry.amount);
   }
-  const { retained, candidates, results } = matchOrders(desired, trailing, reduceOnly);
-  const stops = trailing.map((row, index) => ({ row, index })).filter(({ row, index }) => !retained.has(index) && row.reduce_only === reduceOnly && row.original_status === 1);
+  const { retained, candidates, results } = matchOrders(desired, trailing, false);
+  const stops = trailing.map((row, index) => ({ row, index })).filter(({ row, index }) => !retained.has(index) && !row.reduce_only && row.original_status === 1);
   for (const { row } of stops) if (!/^[1-9]\d*$/.test(row.id) || BigInt(row.id) > 9223372036854775807n) throw new AppError('旧订单 ID 无效');
-  const replacement = reduceOnly ? stops.find(({ row }) => candidates.some(entry => entry.contract === row.contract && decimal(entry.amount).isNegative() === decimal(row.amount).isNegative())) : undefined;
-  if (replacement) {
-    return [...results, { action: 'failed', operation: 'replace', contract: replacement.row.contract, error: '保护单参数需要替换：已保留旧保护单，未停止或重复创建。请在 Gate 人工替换后重新同步；当前接口未提供已验证的原子替换协议' }];
-  }
-  if (!reduceOnly && candidates.length) await syncEntries(gate, storage);
+  if (candidates.length) await syncEntries(gate, storage);
   if ((stops.length || candidates.length) && storage.intents().length) throw new AppError('存在结果未知的交易，请先核对 Gate，自动交易已暂停', 409);
   for (const { row, index } of stops) {
     try {
@@ -83,19 +79,17 @@ async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trail
   }
   for (const entry of candidates) {
     try {
-      if (!reduceOnly) {
-        await syncEntries(gate, storage);
-        if (storage.recentEntry(entry.contract, decimal(entry.amount).isNegative() ? -1 : 1)) {
-          results.push({ action: 'skipped', contract: entry.contract, message: '最近 7 天已有同合约、同方向的真实入仓或加仓' }); continue;
-        }
+      await syncEntries(gate, storage);
+      if (storage.recentEntry(entry.contract, decimal(entry.amount).isNegative() ? -1 : 1)) {
+        results.push({ action: 'skipped', contract: entry.contract, message: '最近 7 天已有同合约、同方向的真实入仓或加仓' }); continue;
       }
       let exchangeId = '';
-      const payload = { ...entry, amount: integer(entry.amount), is_gte: decimal(entry.amount).isNegative(), reduce_only: reduceOnly, price_type: 3, price_offset: '1%', pos_margin_mode: 'cross', position_mode: 'dual_plus', text: 'apiv4' };
+      const payload = { ...entry, amount: integer(entry.amount), is_gte: decimal(entry.amount).isNegative(), reduce_only: false, price_type: 3, price_offset: '1%', pos_margin_mode: 'cross', position_mode: 'dual_plus', text: 'apiv4' };
       await writeExchange(gate, storage, 'create', JSON.stringify(payload), data => {
         const id = text(data.id);
         if (!/^[1-9]\d*$/.test(id)) throw new AppError('创建响应缺少有效订单 ID；请核对 Gate', 502);
         exchangeId = id;
-        trailing.push({ ...entry, id, reduce_only: reduceOnly, original_status: 1, timestamp: Date.now() });
+        trailing.push({ ...entry, id, reduce_only: false, original_status: 1, timestamp: Date.now() });
         storage.saveTrailing(trailing);
       });
       results.push({ action: 'created', contract: entry.contract, id: exchangeId });
@@ -115,26 +109,5 @@ export async function openOrders(gate: Gate, storage: Storage): Promise<Executio
   }
   // Reconcile from live exchange data, so a stale cache cannot cause duplicate submissions.
   const trailing = await gate.trailing(); storage.saveTrailing(trailing);
-  return reconcile(gate, storage, desired, trailing, false, rules, steps);
-}
-export async function closeOrders(gate: Gate, storage: Storage): Promise<Execution[]> {
-  const steps = sourceSteps(storage.sources().orders);
-  let raw = await gate.positions();
-  if (await syncEntries(gate, storage)) raw = await gate.positions();
-  const rules = new Map<string, ContractRules>(), positions: Position[] = [], desired: Desired[] = [];
-  for (const row of raw) {
-    const contract = text(row.contract), size = integer(row.size);
-    if (!rules.has(contract)) rules.set(contract, await gate.contract(contract));
-    const rule = rules.get(contract)!;
-    const margin = storage.fixedMargin(gate.owner, contract, decimal(size).isNegative() ? -1 : 1, text(row.initial_margin));
-    const price = closePrice(text(row.entry_price), size, margin, rule.quanto_multiplier, requireStep(steps, contract), rule.order_price_round);
-    desired.push({ contract, amount: decimal(size).negated().toFixed(0), activation_price: price });
-    positions.push({ contract, size, entry_price: text(row.entry_price), value: decimal(size).times(rule.quanto_multiplier).times(text(row.entry_price)).toFixed(),
-      leverage_max: text(row.leverage_max), unrealised_pnl: text(row.unrealised_pnl), realised_pnl: text(row.realised_pnl), initial_margin: margin,
-      mark_price: text(row.mark_price), close_price: price, quanto_multiplier: rule.quanto_multiplier, order_price_round: rule.order_price_round });
-  }
-  // Do not clear the last positions snapshot when any position has an invalid protection price.
-  storage.savePositions(positions, raw);
-  const trailing = await gate.trailing(); storage.saveTrailing(trailing);
-  return reconcile(gate, storage, desired, trailing, true, rules, steps);
+  return reconcile(gate, storage, desired, trailing, rules, steps);
 }

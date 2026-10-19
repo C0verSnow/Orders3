@@ -9,7 +9,7 @@ import { Storage } from '../apps/server/src/database/index.ts';
 const directory = mkdtempSync(join(tmpdir(), 'orders-browser-'));
 // Persist high-precision fixtures before launching the real server; do not mock data APIs.
 const seed = new Storage(join(directory, 'data.db'));
-seed.saveSources([{ contract: 'BTC_USDT', activation_price: '100.005', amount: '2', price_round: '0.001', side: 'buy', timestamp: 1700000000000 }]);
+seed.saveSources([{ contract: 'BTC_USDT', activation_price: '100.005', amount: '2', price_round: '0.001', order_price_round: '0.0001', side: 'buy', timestamp: 1700000000000 }]);
 seed.saveTrailing([{ id: '123', contract: 'BTC_USDT', activation_price: '100.005', amount: '2', reduce_only: false, original_status: 1, timestamp: 1700000000000 }]);
 const seededPosition = { contract: 'BTC_USDT', size: '2', entry_price: '100.005', value: '20.001', leverage_max: '20', unrealised_pnl: '0.005', realised_pnl: '-0.004', initial_margin: '1.005', mark_price: '100.1234', close_price: '101.005', quanto_multiplier: '0.1', order_price_round: '0.0001' };
 seed.savePositions([seededPosition], [seededPosition]);
@@ -58,13 +58,14 @@ try {
   const precision = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   await precision.goto(`${base}/#token=${token}`);
   await precision.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
-  for (const name of ['来源订单', 'Gate 跟踪订单', '持仓与保护']) {
+  for (const name of ['来源订单', 'Gate 跟踪订单', '持仓']) {
     await precision.getByRole('button', { name, exact: true }).click();
     await precision.getByRole('heading', { name, exact: true, level: 1 }).waitFor();
     await precision.getByRole('cell', { name: '100.01', exact: true }).waitFor();
     await precision.getByRole('cell', { name: '2.00', exact: true }).waitFor();
     assert.equal(await precision.getByRole('cell', { name: '100.005', exact: true }).count(), 0);
   }
+  assert.equal(await precision.getByRole('columnheader', { name: '保护激活价', exact: true }).count(), 0);
   await precision.screenshot({ path: 'tests/artifacts/precision-positions.png', fullPage: true });
   await precision.close();
   for(const width of [1920,1440,1280,1024,768,390]) {
@@ -83,6 +84,35 @@ try {
     await page.reload();await page.getByRole('heading',{name:'交易概览',exact:true}).waitFor();
     assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');assert.deepEqual(errors,[]);
     await page.close();
+  }
+  // Production UI + SQLite: grouped details, full precision, keyboard and mobile scrolling.
+  for (const width of [1440, 390]) {
+    for (const theme of ['light', 'dark']) {
+      const detail = await browser.newPage({ viewport: { width, height: 850 } });
+      await detail.goto(`${base}/#token=${token}`);
+      await detail.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
+      if (width <= 768) await detail.getByRole('button', { name: '打开导航', exact: true }).click();
+      await detail.getByRole('combobox', { name: '外观主题' }).selectOption(theme);
+      await detail.getByRole('button', { name: '来源订单', exact: true }).click();
+      const trigger = detail.getByRole('button', { name: '查看第 1 条记录详情', exact: true });
+      await trigger.click();
+      const modal = detail.getByRole('dialog', { name: '来源订单详情', exact: true });
+      await modal.waitFor();
+      await modal.getByRole('heading', { name: '原始值与精度', exact: true }).waitFor();
+      assert.equal(await modal.locator('dd').filter({ hasText: /^100\.005$/ }).count(), 1);
+      assert.equal(await modal.locator('dd').filter({ hasText: /^0\.001$/ }).count(), 1);
+      assert.equal(await modal.locator('dd').filter({ hasText: /^0\.0001$/ }).count(), 1);
+      assert.ok(await modal.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
+      assert.ok(await detail.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      await detail.screenshot({ path: `tests/artifacts/details-${width}-${theme}.png`, fullPage: true });
+      await detail.keyboard.press('Escape');
+      await modal.waitFor({ state: 'hidden' });
+      assert.ok(await trigger.evaluate(el => document.activeElement === el));
+      await trigger.click();
+      await modal.getByRole('button', { name: '关闭详情', exact: true }).first().click();
+      await modal.waitFor({ state: 'hidden' });
+      await detail.close();
+    }
   }
   // Fault-injection regressions: production UI + real server, only /api/status failure is intercepted.
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });

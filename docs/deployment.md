@@ -18,7 +18,7 @@ Release 资产：`orders-windows-x64_v-1.0.0.exe`、`orders3_v-1.0.0_amd64.deb`�
 
 `ORDERS_ACCESS_TOKEN` 是工作台登录凭证，至少 32 个无空格字符，不是 Gate API Key。启动前注入即可；不设置时每次启动自动生成并在私有控制台日志显示。不要放进前端构建变量、URL 查询或 CI artifact。自动浏览器使用 fragment 登录后马上清除；页面不持久化令牌。
 
-`--cached` 仍启用周期任务；首次迁移且不希望自动开仓时，先在 config 的 schedule.enabled=false，并在配置 Gate 前检查已有设置。每分钟持仓保护与来源开关独立，配置有效 Gate 凭证后可能按旧策略调整平仓保护单。
+`--cached` 仍启用周期任务；首次迁移且不希望自动开仓时，先在 config 的 schedule.enabled=false，并在配置 Gate 前检查已有设置。每分钟持仓和订单同步与来源开关独立，仅读取 Gate 数据。自动保护单功能已取消，已有保护单由用户自行管理。
 
 工作台通过 /api/settings 保存连接；机器身份凭证用启动环境。切换数据目录需重启及人工搬迁。不同时运行旧进程或另一个实例；数据目录进程锁不跨多个不同目录或多个账户客户端提供账户级交易锁。
 

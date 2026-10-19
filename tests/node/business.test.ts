@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture, response, source, list } from './helpers.ts';
 import { signedHeaders } from '../../apps/server/src/exchange/gate.ts';
-import { openOrders, closeOrders, matchOrders } from '../../apps/server/src/services/trading.ts';
+import { syncPositions } from '../../apps/server/src/services/positions.ts';
+import { openOrders, matchOrders } from '../../apps/server/src/services/trading.ts';
 import { syncEntries, fillDirection } from '../../apps/server/src/services/entry-history.ts';
 import { fetchSources } from '../../apps/server/src/exchange/supabase.ts';
 import { sourceOrder } from '../../apps/server/src/services/source-parser.ts';
@@ -76,7 +77,7 @@ test('empty sources stop only state 1 opening orders, preserving activated and p
   f.storage.saveSources([]);f.storage.saveTrailing(orders); const result=await openOrders(f.gate,f.storage);
   assert.deepEqual(bodies,['{"id":1}']); assert.equal(result[0].action,'stopped'); assert.equal(f.storage.trailing().find(row=>row.id==='2')?.original_status,2);
 });
-test('close reconciliation preserves an equivalent manual protection order', async t => {
+test('read-only position sync leaves manual protection orders untouched', async t => {
   let posts=0;
   const f=fixture(t,async(url,init)=>{
     if(init.method==='POST'){posts++;throw new Error('unexpected write');}
@@ -86,7 +87,7 @@ test('close reconciliation preserves an equivalent manual protection order', asy
     return response([]);
   });
   f.storage.saveSources([source]);
-  const result=await closeOrders(f.gate,f.storage);assert.equal(posts,0);assert.equal(result[0].action,'skipped');assert.equal(f.storage.positions()[0].close_price,'116.50');
+  await syncPositions(f.gate,f.storage);assert.equal(posts,0);assert.equal(Object.hasOwn(f.storage.positions()[0], 'close_price'),false);
 });
 test('acknowledged creation persists once and a repeated unchanged source does not create again', async t => {
   let created: Record<string, unknown> | undefined, posts = 0;

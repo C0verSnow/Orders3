@@ -137,8 +137,9 @@ export class Storage {
     });
   }
   positions(): Position[] { return this.rows('position', 'contract,size').map(row => {
-    const result: Record<string, unknown> = { ...row, size: two(String(row.size)) };
-    for (const name of ['entry_price','value','leverage_max','unrealised_pnl','realised_pnl','initial_margin','mark_price','close_price']) if (typeof result[name] === 'string') result[name] = two(result[name] as string);
+    const { close_price: _legacyClosePrice, ...current } = row;
+    const result: Record<string, unknown> = { ...current, size: two(String(row.size)) };
+    for (const name of ['entry_price','value','leverage_max','unrealised_pnl','realised_pnl','initial_margin','mark_price']) if (typeof result[name] === 'string') result[name] = two(result[name] as string);
     return result;
   }) as unknown as Position[]; }
   rawPositions(): Record<string, unknown>[] {
@@ -148,8 +149,9 @@ export class Storage {
   savePositions(rows: Position[], raw: unknown[]) {
     this.transaction(() => {
       this.db.exec('DELETE FROM position; DELETE FROM raw_positions');
-      const names = ['contract', 'entry_price', 'value', 'leverage_max', 'unrealised_pnl', 'realised_pnl', 'size', 'initial_margin', 'mark_price', 'close_price', 'quanto_multiplier', 'order_price_round'] as const;
-      const insert = this.db.prepare(`INSERT INTO position(${names.join(',')}) VALUES (${names.map(() => '?').join(',')})`);
+      const names = ['contract', 'entry_price', 'value', 'leverage_max', 'unrealised_pnl', 'realised_pnl', 'size', 'initial_margin', 'mark_price', 'quanto_multiplier', 'order_price_round'] as const;
+      // Keep the legacy NOT NULL column for old databases, never expose a synthetic target price.
+      const insert = this.db.prepare(`INSERT INTO position(${names.join(',')},close_price) VALUES (${names.map(() => '?').join(',')},'0')`);
       for (const row of rows) insert.run(...names.map(name => name === 'size' ? BigInt(decimal(row.size).toFixed(0)) : row[name]));
       const record = this.db.prepare('INSERT INTO raw_positions VALUES (?,?,?)');
       for (const item of raw as Record<string, unknown>[]) record.run(String(item.contract), String(item.size), JSON.stringify(item));

@@ -15,7 +15,7 @@
 | GET /health | 无敏感信息的就绪检查 |
 | GET/POST/DELETE /api/session | 查看会话、令牌登录、退出 |
 | GET /api/data；POST /api/refresh | 来源缓存；抓取、保存并执行开仓策略 |
-| GET /api/orders；POST /api/orders/refresh | 跟踪单/持仓缓存；同步并核对平仓保护 |
+| GET /api/orders；POST /api/orders/refresh | 跟踪单/持仓缓存；只读同步持仓与订单 |
 | GET /api/activity | 最近 64 个真实请求/任务事件；600 ms 页面轮询 |
 | GET/POST /api/settings | 脱敏设置、保存设置并后台刷新 Infisical |
 | GET/POST /api/schedule | 五段 Cron 与下一次本地时间 |

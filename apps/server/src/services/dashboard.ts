@@ -8,7 +8,8 @@ import { syncEntries } from './entry-history.ts';
 import { Gate } from '../exchange/gate.ts';
 import { fetchSources } from '../exchange/supabase.ts';
 import { sourceOrder } from './source-parser.ts';
-import { openOrders, closeOrders } from './trading.ts';
+import { openOrders } from './trading.ts';
+import { syncPositions } from './positions.ts';
 import { AppError, safeError } from '../utils/errors.ts';
 
 export class Dashboard {
@@ -19,7 +20,6 @@ export class Dashboard {
   sourceError: string | null = null;
   ordersError: string | null = null;
   execution: Execution[] = [];
-  closeExecution: Execution[] = [];
   started = performance.now();
   config: Configuration;
   storage: Storage;
@@ -32,7 +32,7 @@ export class Dashboard {
   orders(): OrdersSnapshot {
     const positions = this.storage.positions();
     const total = (field: 'unrealised_pnl' | 'realised_pnl') => two(this.storage.rawPositions().reduce((sum, row) => sum.plus(String(row[field])), decimal('0')));
-    return { orders: this.storage.trailing(), positions, close_execution: this.closeExecution, updated_at: this.storage.updated('orders'), position_updated_at: this.storage.updated('positions'), trailing_updated_at: this.storage.updated('trailing'), error: this.ordersError ?? this.storage.schemaError,
+    return { orders: this.storage.trailing(), positions, close_execution: [], updated_at: this.storage.updated('orders'), position_updated_at: this.storage.updated('positions'), trailing_updated_at: this.storage.updated('trailing'), error: this.ordersError ?? this.storage.schemaError,
       refreshing: this.gateBusy, unrealised_pnl: total('unrealised_pnl'), realised_pnl: total('realised_pnl'), uptime_ms: Math.floor(performance.now() - this.started) };
   }
   async refreshSources() {
@@ -90,19 +90,16 @@ export class Dashboard {
     this.gateWork = work.catch(() => {});
     await work;
   }
-  async refreshOrders(execute = true) {
+  async refreshOrders(includePositions = true) {
     if (this.gateBusy) throw new AppError('交易任务正在运行，请稍后', 409);
     const release = this.config.acquireConnection();
-    this.gateBusy = true; this.ordersError = null; this.closeExecution = []; this.activity.begin('orders');
+    this.gateBusy = true; this.ordersError = null; this.activity.begin('orders');
     const gate = new Gate(this.http, this.config.connection(), 'orders');
     const work = (async () => {
       try {
         if (this.storage.schemaError) throw new AppError(this.storage.schemaError);
-        if (execute) {
-          this.closeExecution = await closeOrders(gate, this.storage);
-          const failure = this.closeExecution.find(row => row.action === 'failed');
-          if (failure) throw new AppError(failure.error || '平仓保护处理失败', 502);
-        } else this.storage.saveTrailing(await gate.trailing());
+        if (includePositions) await syncPositions(gate, this.storage);
+        this.storage.saveTrailing(await gate.trailing());
         this.activity.finish('orders', true);
       } catch (error) {
         this.ordersError = safeError(error); this.activity.finish('orders', false); throw new AppError(this.ordersError, 502);
