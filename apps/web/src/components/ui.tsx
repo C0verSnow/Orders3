@@ -24,12 +24,12 @@ export function Button({
   };
   return (
     <button
-      className={`inline-flex min-h-9 shrink-0 cursor-pointer touch-manipulation select-none items-center justify-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium transition-[background-color,color,border-color,transform] duration-300 ease-[cubic-bezier(.22,1,.36,1)] active:scale-[.98] disabled:cursor-default disabled:opacity-50 motion-reduce:transform-none motion-reduce:transition-none ${focus} ${variants[variant]} ${className}`}
+      className={`inline-flex font-sans min-h-9 shrink-0 cursor-pointer touch-manipulation select-none items-center justify-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium transition-[background-color,color,border-color,transform] duration-300 ease-[cubic-bezier(.22,1,.36,1)] active:scale-[.98] disabled:cursor-default disabled:opacity-50 motion-reduce:transform-none motion-reduce:transition-none ${focus} ${variants[variant]} ${className}`}
       {...props}
     />
   );
 }
-const field = `w-full min-w-0 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-base text-zinc-900 md:text-[13px] dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 ${focus}`;
+const field = `font-sans w-full min-w-0 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-base text-zinc-900 md:text-[13px] dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 ${focus}`;
 export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input

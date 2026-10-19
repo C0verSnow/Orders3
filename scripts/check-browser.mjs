@@ -186,6 +186,8 @@ try {
   assert.ok(await motion.locator('[data-ui="position-count"] [data-ui="animated-value"]>span').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 28), 'position count retains card typography');
   await motion.screenshot({ path: 'tests/artifacts/ui-motion-light.png', fullPage: true });
   await motion.getByRole('combobox', { name: '外观主题' }).selectOption('dark');
+  assert.ok(await motion.locator('table td').first().evaluate(el => getComputedStyle(el).color === getComputedStyle(document.querySelector('main')).color), 'dark table inherits readable foreground');
+  assert.ok(await motion.locator('table').evaluate(el => getComputedStyle(el).fontFamily === getComputedStyle(document.querySelector('main')).fontFamily), 'table inherits the application sans font');
   await motion.screenshot({ path: 'tests/artifacts/ui-motion-dark.png', fullPage: true });
   await motion.emulateMedia({ reducedMotion: 'reduce' });
   assert.equal(await animated.locator('[data-ui="value-in"]').evaluate(el => el.getAnimations().length), 0);
