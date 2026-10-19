@@ -56,3 +56,4 @@ main 已通过67502aa（skip ci）恢复旧部署分支f8d1a45的代码快照，
 - 新增 `使用手册.md` 并核对实际路径、优先级、打包文件、Infisical 与 Docker 宿主机脚本；Compose/systemd 为自建示例，未实机执行。
 - 文档提交 `2ecd92f` 的远端安装包检查成功，但浏览器首次登录超时。随后用真实生产服务的登录 POST 加延迟匿名 GET 重现：[`1e739e0` / 39200989809](https://github.com/C0verSnow/Orders3/actions/runs/39200989809) 明确失败于 `late anonymous session cannot undo login`。
 - 修复登录成功前取消旧会话查询，向会话 GET 传递 AbortSignal；相同断言保留，修复后的完整远端结果在 PR 说明更新。未进行本地编译、构建或测试。
+- 修复提交 `6cbcf35` 的[完整远端 CI 39201168155](https://github.com/C0verSnow/Orders3/actions/runs/39201168155) 全部成功：相同登录回归、六宽度双主题与草稿/状态错误场景、业务/安全/类型/构建、Windows EXE、AMD64/ARM64 DEB 和双架构原生容器。发布、镜像推送合并与生产部署跳过。后续只补验证记录与 tasklist，使用 `[skip ci]`，运行代码与已通过提交相同。
