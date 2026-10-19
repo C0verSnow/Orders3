@@ -41,6 +41,10 @@ Infisical 仍支持 Universal Auth 与两个内存备用字段：`INFISICAL_CLIE
 
 旧 records / record_json、orders 别名列、orderslist、position、真实入仓历史、同步水位和固定保证金继续读取。刷新在事务中替换自己的快照；`managed_close_orders` 历史表不删除也不使用。旧 `trigger_price` 不当作激活价格，必须重新同步 Gate。详细见 [数据库](docs/database.md)、[迁移说明](docs/migration.md) 和 [业务对照](docs/business-parity.md)。
 
+## 执行流程审查
+
+[检查报告（issue #33）](检查报告.md) 按启动、数据同步、交易执行、持仓保护、异常恢复和前后端交互梳理现行函数，列出已确认问题、修复建议与待验证风险。报告基线为 `358df62`；审查交付与现有 CI 通过不代表其中问题已修复或实盘已验收。
+
 ## 交易规则与精度
 
 来源从 Supabase `public.orders` 完整分页读取，全部校验后保存。成功保存后按已有策略匹配开仓追踪单，数量正负决定方向。状态 1 可停止，状态 2 保留；真实开仓/加仓成交触发同合约同方向 7 天限制，历史最多保留 100 条。平仓保护每分钟独立运行，固定保证金 3.1 倍毛收益，多仓乘 1.01、空仓乘 0.99，再按真实 tick 五成双对齐。
