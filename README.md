@@ -8,8 +8,10 @@ React + TypeScript 交易工作台，Node.js + TypeScript 负责真实 Supabase 
 
 普通用户完整操作步骤见 [使用手册](使用手册.md)，分别说明 Windows EXE、Linux DEB、Docker、配置优先级及日常排查。
 
-- Windows x64：下载 Release 的 `orders-windows-x64.exe`，双击或从终端运行。程序打开系统浏览器，不再提供 Qt 窗口。exe 包含 Node 和 React 资源，无需另装 Node。
-- Linux AMD64 / ARM64：下载对应 `.deb`，执行 `sudo dpkg -i orders3_版本_架构.deb`，再运行 `orders3`。
+Release 附件统一带 `v-版本`，以下 `1.0.0` 为示例，请替换成实际下载版本。自动预发布使用 `1.0.0-build.运行ID.重试号`，旧 Release 附件不会自动改名。
+
+- Windows x64：下载 Release 的 `orders-windows-x64_v-1.0.0.exe`，双击或从终端运行。程序打开系统浏览器，不再提供 Qt 窗口。exe 包含 Node 和 React 资源，无需另装 Node。
+- Linux AMD64 / ARM64：下载对应 `.deb`，执行 `sudo dpkg -i orders3_v-版本_架构.deb`，再运行 `orders3`。
 - 容器：镜像位于 [GHCR Packages](https://github.com/C0verSnow/Orders3/pkgs/container/orders3)，支持 `linux/amd64` 和 `linux/arm64`。发布状态与产物以 [Actions](https://github.com/C0verSnow/Orders3/actions) 和 [Releases](https://github.com/C0verSnow/Orders3/releases) 为准。
 
 ```sh

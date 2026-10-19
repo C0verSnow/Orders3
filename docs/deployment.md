@@ -6,9 +6,11 @@
 
 两个原生 Linux Runner 分别构建和启动 Docker 镜像，验证架构、React 页面、认证 API、随机端口启动脚本，成功后按 digest 推送，最终合并双架构 manifest。没有 QEMU 或旧 Qt 构建。所有步骤必须通过才创建 Release。
 
-触发方式：`v1.2.3` 标签正式发布；默认分支 main 自动生成预发布；feature 分支手动 workflow_dispatch 的 publish_preview=true 生成预发布，不更新 latest、不部署。预发布 tag 为 `build-运行ID-重跑次数`，deb 使用有效 Debian 版本 `1.0.0+build.ID.attempt`，tag 源提交为同一个 GITHUB_SHA。exe `--version`、OCI revision、Release 说明和 container-image.txt 均记录该提交。
+触发方式：`v1.2.3` 标签正式发布；默认分支 main 自动生成预发布；feature 分支手动 workflow_dispatch 的 publish_preview=true 生成预发布，不更新 latest、不部署。预发布 tag 为 `build-运行ID-重跑次数`，deb 使用有效 Debian 版本 `1.0.0+build.ID.attempt`，tag 源提交为同一个 GITHUB_SHA。exe `--version`、OCI revision、Release 说明和 container-image_v-1.0.0.txt 均记录该提交。
 
-Release 资产：`orders-windows-x64.exe`、`orders3_版本_amd64.deb`、`orders3_版本_arm64.deb`、SHA256SUMS.txt、container-image.txt。Actions artifact 可用于 PR 审查，只有实际 Release 和 GHCR digest 出现才算发布完成。
+所有新 Release 附件均带 `v-版本`，下面以正式版 `1.0.0` 为例；实际版本来自标签，自动预发布为 `1.0.0-build.运行ID.重试号`。五个文件使用相同版本，校验清单按新文件名生成并在上传前验证，上传使用明确文件清单，避免混入旧文件。DEB 内部版本规则保持有效，安装命令仍为 `orders3`；旧 Release 附件保留原名。
+
+Release 资产：`orders-windows-x64_v-1.0.0.exe`、`orders3_v-1.0.0_amd64.deb`、`orders3_v-1.0.0_arm64.deb`、SHA256SUMS_v-1.0.0.txt、container-image_v-1.0.0.txt。Actions artifact 可用于 PR 审查，只有实际 Release 和 GHCR digest 出现才算发布完成。
 
 ## 运行
 

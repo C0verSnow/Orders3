@@ -25,6 +25,7 @@ class PublicationTest(unittest.TestCase):
             ('refs/heads/feature/test', 'true', 'true', 'true'),
             ('refs/pull/34/merge', 'false', 'false', 'true'),
             ('refs/tags/v1.2.3', 'false', 'true', 'false'),
+            ('refs/tags/v1.2.3-rc.1', 'false', 'true', 'true'),
         ]:
             with self.subTest(ref=ref), tempfile.TemporaryDirectory() as directory:
                 output = Path(directory) / 'output'
@@ -36,6 +37,9 @@ class PublicationTest(unittest.TestCase):
                 values = dict(line.split('=', 1) for line in output.read_text().splitlines())
                 self.assertEqual(values['enabled'], enabled)
                 self.assertEqual(values['prerelease'], prerelease)
+                self.assertEqual(values['file_version'], ref.removeprefix('refs/tags/v') if ref.startswith('refs/tags/v') else '1.0.0-build.123.1')
+                if ref.endswith('v1.2.3-rc.1'):
+                    self.assertEqual(values['version'], '1.2.3~rc.1')
 
     def test_latest_tags_follow_default_branch_and_never_feature_preview(self):
         script = block('      - id: manifest', '\n  release:')
@@ -61,6 +65,38 @@ else printf 'sha256:%064d\\n' 0; fi
                 args = (root / 'args').read_text().splitlines()
                 self.assertEqual('ghcr.io/c0versnow/orders3:latest' in args, latest)
                 self.assertEqual('ghcr.io/c0versnow/orders3:main' in args, ref == 'refs/heads/main')
+
+
+    def test_release_upload_uses_one_version_for_all_five_assets_and_checksum_entries(self):
+        script = block('      - name: Publish verified artifacts for this SHA', '\n  deploy:')
+        for version in ['1.2.3', '1.2.3-rc.1', '1.0.0-build.123.2']:
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                release = root / 'release'
+                release.mkdir()
+                binaries = [f'orders-windows-x64_v-{version}.exe', f'orders3_v-{version}_amd64.deb', f'orders3_v-{version}_arm64.deb']
+                for name in binaries:
+                    (release / name).write_text(f'fixture: {name}')
+                # Unrelated old files must never leak into a new release or its checksum list.
+                (release / 'orders-windows-x64.exe').write_text('stale')
+                (release / 'orders3_old_amd64.deb').write_text('stale')
+                command = root / 'gh'
+                command.write_text('#!/usr/bin/env bash\nset -eu\nif [[ "$2" == upload ]]; then printf "%s\\n" "$@" > "$UPLOAD_ARGS"; fi\n')
+                command.chmod(0o755)
+                env = {**os.environ, 'PATH': f"{root}:{os.environ['PATH']}", 'FILE_VERSION': version,
+                       'TAG': f'v{version}', 'PRERELEASE': 'true' if '-' in version else 'false',
+                       'IMAGE': 'ghcr.io/c0versnow/orders3', 'DIGEST': 'sha256:' + 'a' * 64,
+                       'GITHUB_SHA': 'b' * 40, 'UPLOAD_ARGS': str(root / 'upload')}
+                result = subprocess.run(['bash', '-c', script], cwd=root, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                image = f'container-image_v-{version}.txt'
+                sums = f'SHA256SUMS_v-{version}.txt'
+                self.assertEqual((root / 'upload').read_text().splitlines(), ['release', 'upload', f'v{version}', *binaries, image, sums, '--clobber'])
+                checks = (release / sums).read_text().splitlines()
+                self.assertEqual([line.split('  ', 1)[1] for line in checks], [*binaries, image])
+                verified = subprocess.run(['sha256sum', '-c', sums], cwd=release, capture_output=True, text=True)
+                self.assertEqual(verified.returncode, 0, verified.stderr)
+                self.assertEqual((release / image).read_text().splitlines(), [f"{env['IMAGE']}:{env['TAG']}", f"{env['IMAGE']}@{env['DIGEST']}", f"commit={env['GITHUB_SHA']}"])
 
 
 if __name__ == '__main__':
