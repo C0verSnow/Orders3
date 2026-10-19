@@ -17,6 +17,36 @@ try {
   for(let index=0;index<100;index++) { if(child.exitCode!==null)throw new Error(output); try {if((await fetch(base+'/health')).ok){ready=true;break;}}catch{} await new Promise(resolve=>setTimeout(resolve,100)); }
   assert.ok(ready);
   browser=await chromium.launch();mkdirSync('tests/artifacts',{recursive:true});
+  // Hold an anonymous session GET until after the real login POST succeeds.
+  // A late anonymous response must never replace the authenticated cache.
+  const bootstrap = await browser.newPage();
+  let releaseSession, captureSession;
+  const sessionHeld = new Promise(resolve => { releaseSession = resolve; });
+  const sessionCaptured = new Promise(resolve => { captureSession = resolve; });
+  let held = false;
+  let finishSession;
+  const sessionFinished = new Promise(resolve => { finishSession = resolve; });
+  await bootstrap.route('**/api/session', async route => {
+    if (route.request().method() === 'GET' && !held) {
+      held = true;
+      const response = await route.fetch();
+      assert.equal((await response.json()).authenticated, false);
+      captureSession();
+      await sessionHeld;
+      // Cancellation may already have aborted the browser's request.
+      try { await route.fulfill({ response }); } finally { finishSession(); }
+    } else {
+      if (route.request().method() === 'POST') await sessionCaptured;
+      await route.continue();
+    }
+  });
+  await bootstrap.goto(`${base}/#token=${token}`);
+  await bootstrap.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
+  releaseSession();
+  await sessionFinished;
+  await bootstrap.waitForTimeout(300);
+  assert.ok(await bootstrap.getByRole('heading', { name: '交易概览', exact: true }).isVisible(), 'late anonymous session cannot undo login');
+  await bootstrap.close();
   for(const width of [1920,1440,1280,1024,768,390]) {
     const page=await browser.newPage({viewport:{width,height:1000},reducedMotion:'reduce'}), errors=[];
     page.on('pageerror',error=>errors.push(error.message));
