@@ -6,7 +6,7 @@
 
 两个原生 Linux Runner 分别构建和启动 Docker 镜像，验证架构、React 页面、认证 API、随机端口启动脚本，成功后按 digest 推送，最终合并双架构 manifest。没有 QEMU 或旧 Qt 构建。所有步骤必须通过才创建 Release。
 
-触发方式：`v1.2.3` 标签正式发布；mian 自动生成预发布；feature 分支手动 workflow_dispatch 的 publish_preview=true 生成预发布，不更新 latest、不部署。预发布 tag 为 `build-运行ID-重跑次数`，deb 使用有效 Debian 版本 `1.0.0+build.ID.attempt`，tag 源提交为同一个 GITHUB_SHA。exe `--version`、OCI revision、Release 说明和 container-image.txt 均记录该提交。
+触发方式：`v1.2.3` 标签正式发布；默认分支 main 自动生成预发布；feature 分支手动 workflow_dispatch 的 publish_preview=true 生成预发布，不更新 latest、不部署。预发布 tag 为 `build-运行ID-重跑次数`，deb 使用有效 Debian 版本 `1.0.0+build.ID.attempt`，tag 源提交为同一个 GITHUB_SHA。exe `--version`、OCI revision、Release 说明和 container-image.txt 均记录该提交。
 
 Release 资产：`orders-windows-x64.exe`、`orders3_版本_amd64.deb`、`orders3_版本_arm64.deb`、SHA256SUMS.txt、container-image.txt。Actions artifact 可用于 PR 审查，只有实际 Release 和 GHCR digest 出现才算发布完成。
 
@@ -22,6 +22,16 @@ Release 资产：`orders-windows-x64.exe`、`orders3_版本_amd64.deb`、`orders
 
 ## 自动 SSH 部署
 
-mian 的 Release 与双架构镜像都成功后，沿用 Tailscale + scripts/deploy-ssh.sh，上传唯一根 start-docker.sh 并运行。使用 AUTH_KEY、DEPLOY_HOST、DEPLOY_USER、DEPLOY_PORT、DEPLOY_SSH_KEY、DEPLOY_KNOWN_HOSTS，部署到验证过的不可变 digest。需要远端 Bash、curl、Docker、Tailscale 和部署专用 SSH 公钥。
+默认分支的 Release 与双架构镜像都成功后，沿用 Tailscale + scripts/deploy-ssh.sh，上传唯一根 start-docker.sh 并运行。使用 AUTH_KEY、DEPLOY_HOST、DEPLOY_USER、DEPLOY_PORT、DEPLOY_SSH_KEY、DEPLOY_KNOWN_HOSTS，部署到验证过的不可变 digest。需要远端 Bash、curl、Docker、Tailscale 和部署专用 SSH 公钥。
+
+## PR #34 的发布与凭证修正
+
+默认分支已由 mian 改名 main。工作流读取 GitHub 的 repository.default_branch，默认分支发布 latest 和同名分支标签；正式版本也可更新 latest。feature 预发布不移动 latest，PR 不发布或部署。已有 latest 不会因改名自动变化，需等用户 review、合并后成功运行发布流程。
+
+按用户更正，main 已通过带 `[skip ci]` 的提交回退到旧部署分支快照，保留 tasklist 执行记录。本 PR 保留完整 Node/React 方案及报告修复供审阅，没有合并 main，也没有触发生产部署。
+
+SSH 镜像参数接受严格校验的 GHCR `@sha256:<64位小写hex>`，手动兼容 `:latest`。根 start-docker.sh 默认用 Docker --env-file 传入远端当前目录的 .env；其他位置可指定 ORDERS_ENV_FILE。显式指定文件不存在时，在替换容器前报错。文件内容不会作为 Bash 执行，也不会在日志打印。
+
+Infisical Universal Auth 获取函数原已在 services/credentials.ts 中实现；这次补齐宿主机 env-file 到容器的接线。机器认证字段见 example.env，应在远端独立配置并设置权限 600；SSH 脚本不从仓库或 CI 上传它。交易任务持有连接租约，期间拒绝保存设置，Infisical 备用字段更新在任务结束后生效。
 
 GHCR 包需允许远端读取；公开源码不代表包自动公开。拉取失败保留旧容器；替换时有短暂中断；失败不会假报成功，没有自动回滚。生产 secrets 不传入 PR 验证。权限、Runner 或 Registry 阻断需在仓库 Settings 修复，不能绕过检查发布。

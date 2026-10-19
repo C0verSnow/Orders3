@@ -68,6 +68,7 @@ jobs:
           bash -n start-docker.sh scripts/deploy-ssh.sh scripts/start-docker.sh scripts/package-deb.sh
           python3 tests/scripts/deploy_ssh_test.py
           python3 tests/scripts/start_docker_test.py
+          python3 tests/scripts/publication_test.py
       - run: npm run build
         env:
           ORDERS_VERSION: ci-${{ github.run_id }}
