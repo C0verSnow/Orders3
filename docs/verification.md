@@ -36,5 +36,7 @@
 
 - 审查源码基线：`358df625c0390e29b47900df523e681b4cb4cabe`。本次仅新增 `检查报告.md`、README 导航和过程记录，不修改运行代码。
 - 本地仅做文档引用、代码位置和差异检查；没有执行构建、类型检查、测试或服务启动，没有连接真实交易账户。
-- 当前 PR 的远端 CI：提交后核实并补充真实运行链接；此处尚不认定通过。
+- [PR #34](https://github.com/C0verSnow/Orders3/pull/34) 的首轮完整远端验证已成功：[Actions 39183743439](https://github.com/C0verSnow/Orders3/actions/runs/39183743439)，对应报告提交 `27db5b8e43d4dbfdb479843f3ccd849ac1fa3c9d`。37 项 Node 回归（0 失败）、13 项宿主机脚本回归、静态语法/类型检查、React/Node 构建、六种宽度双主题浏览器检查、Windows exe、Linux AMD64/ARM64 deb 安装启动、双架构原生容器检查全部成功。
+- feature 分支的 container manifest 发布、Release 和生产 SSH 部署按工作流条件跳过；不得把跳过视为部署问题 F12 已解决。后续提交只补本节与任务记录，最新提交检查以 [PR 检查页](https://github.com/C0verSnow/Orders3/pull/34/checks) 为准。
+- issue #33 的审查报告已交付并关闭；PR #34 已转为可审阅，尚未合并。
 - 现有回归没有覆盖报告列出的全部问题；CI 通过也不能当作这些问题已修复。
