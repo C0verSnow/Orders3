@@ -40,3 +40,11 @@
 - feature 分支的 container manifest 发布、Release 和生产 SSH 部署按工作流条件跳过；不得把跳过视为部署问题 F12 已解决。后续提交只补本节与任务记录，最新提交检查以 [PR 检查页](https://github.com/C0verSnow/Orders3/pull/34/checks) 为准。
 - issue #33 的审查报告已交付并关闭；PR #34 已转为可审阅，尚未合并。
 - 现有回归没有覆盖报告列出的全部问题；CI 通过也不能当作这些问题已修复。
+
+## PR #34 评论修复与 main 回退
+
+main 已通过67502aa（skip ci）恢复旧部署分支f8d1a45的代码快照，唯一保留差异是带Unix时间戳的tasklist。PR已同步回退后的main基线，包含完整Node/React迁移和报告问题处理，未合并。
+
+首轮037868d远端的类型检查、全部Node回归、宿主机回归及三种安装包启动已通过；因同步main基线而取消旧浏览器/容器流程，不能把该轮称作最终全绿。最终结果以[PR检查页](https://github.com/C0verSnow/Orders3/pull/34/checks)为准。新增回归覆盖配置路径、跨月Cron、空来源实时单、迟到成交/裁剪去重、忙时配置更新、保护单保留、原凭证核查、独立时间戳、正文解析失败、表单草稿、状态读取失败、digest传递、env-file和默认分支/latest条件。
+
+本地只做阅读、git diff --check和shell静态语法检查，没有本地编译、构建、测试或服务启动。未连接真实交易账户，未更新现有latest、未生产部署。F06采用保留旧保护并人工替换；原子自动替换未验收。

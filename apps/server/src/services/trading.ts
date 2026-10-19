@@ -50,8 +50,9 @@ async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trail
   const { retained, candidates, results } = matchOrders(desired, trailing, reduceOnly);
   const stops = trailing.map((row, index) => ({ row, index })).filter(({ row, index }) => !retained.has(index) && row.reduce_only === reduceOnly && row.original_status === 1);
   for (const { row } of stops) if (!/^[1-9]\d*$/.test(row.id) || BigInt(row.id) > 9223372036854775807n) throw new AppError('旧订单 ID 无效');
-  if (reduceOnly && stops.some(({ row }) => candidates.some(entry => entry.contract === row.contract && decimal(entry.amount).isNegative() === decimal(row.amount).isNegative()))) {
-    return [...results, { action: 'failed', operation: 'replace', contract: stops[0].row.contract, error: '保护单参数需要替换：已保留旧保护单，未停止或重复创建。请在 Gate 人工替换后重新同步；当前接口未提供已验证的原子替换协议' }];
+  const replacement = reduceOnly ? stops.find(({ row }) => candidates.some(entry => entry.contract === row.contract && decimal(entry.amount).isNegative() === decimal(row.amount).isNegative())) : undefined;
+  if (replacement) {
+    return [...results, { action: 'failed', operation: 'replace', contract: replacement.row.contract, error: '保护单参数需要替换：已保留旧保护单，未停止或重复创建。请在 Gate 人工替换后重新同步；当前接口未提供已验证的原子替换协议' }];
   }
   if (!reduceOnly && candidates.length) await syncEntries(gate, storage);
   if ((stops.length || candidates.length) && storage.intents().length) throw new AppError('存在结果未知的交易，请先核对 Gate，自动交易已暂停', 409);

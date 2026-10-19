@@ -21,7 +21,7 @@
 | GET/POST /api/schedule | 五段 Cron 与下一次本地时间 |
 | GET /api/history | 最近 100 条真实入仓事件 |
 | GET /api/status | 数据库阻断、未知交易意图 |
-| POST /api/intents/resolve | 用户确认 Gate 核查后读取最新列表，解除指定本地阻断 |
+| POST /api/intents/resolve | 原凭证指纹匹配、人工依据和实时订单/持仓/成交读取成功后串行解除，不重发请求 |
 | GET /api/download | VACUUM INTO 独立一致 SQLite 快照 |
 
 除 /health 和会话状态外，API 需要令牌/会话；写请求同时要求受信任 Origin，所有请求检查 Host，显式外来 Origin 拒绝。会话令牌通过恒定时间比较。无 CORS 通配符，不从任意路径读取资源。响应禁缓存、nosniff、严格 CSP，禁止第三方脚本、frame 和外部表单。

@@ -10,10 +10,11 @@ Node 使用内置 `node:sqlite`（无第三方原生扩展）。旧库直接打�
 | position | 保留旧字段并补合约乘数和 tick；同合约多空分别保存；展示/业务结果两位字符串，size 仍按 INTEGER 保存以兼容旧库 |
 | raw_positions | 对应当前持仓的完整上游原始记录，保留实际精度 |
 | position_entry_history | 原 owner:trade_id 去重、UTC 毫秒、方向、原始固定保证金；最多 100 条 |
+| position_entry_seen | 独立保留七天成交身份；展示历史裁剪后仍去重，允许补入水位前的迟到成交 |
 | position_entry_sync | 每个 Key SHA256 摘要的进度，与历史同事务提交 |
 | position_entry_margin | 按 owner/合约/方向保留最新真实入仓固定保证金；历史清理不清此表 |
-| snapshots | 来源和 Gate 独立成功更新时间 |
-| trade_intents | 交易发送前先写 pending；确认响应及缓存保存后 confirmed；失败 unknown；人工查 Gate 后 reviewed |
+| snapshots | sources、trailing、positions 各自成功保存时间；旧 orders 字段保留兼容，不代表完整快照 |
+| trade_intents | 写前 pending，响应与缓存确认后 confirmed，失败 unknown；新增 owner 原Key指纹、request_id、review_evidence。人工核查必须恢复原凭证并提供依据；旧无身份记录不在线解除 |
 
 旧 managed_close_orders 和其他无关表不主动删除。来源事务只替换 records/orders；Gate 更新只替换 orderslist；持仓更新只替换 position/raw_positions。任何事务失败回滚；来源网络/字段失败不进入保存。历史分页失败不推进水位，失败不新开仓。
 

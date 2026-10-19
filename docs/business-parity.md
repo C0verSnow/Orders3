@@ -5,8 +5,8 @@
 | 来源抓取 | fetchSourceRecords / parseSupabaseOrders | exchange/supabase、source-parser | 直接 orders，短页继续，总数变动/重复页失败，显式 null 空订单，全部校验后事务保存 |
 | 合约参数 | contractParameters | Gate.contract | 真实合约名、乘数、tick，新增最小/最大张数边界 |
 | 开仓 | createTrailingOrders | trading.openOrders/reconcile | 保留有符号量/价格匹配；状态 1 可停，2 保留；reduce_only=false；原固定参数 |
-| 平仓 | closePositionOrders、decimal.closePrice | trading.closeOrders、decimal.closePrice | 固定保证金 3.1；多 1.01、空 0.99；tick HALF_EVEN；同方向保留一单；仅状态 1 清理 |
-| 成交历史 | syncEntryHistory | entry-history.syncEntries | 固定窗口分页、重叠起点秒、去重、最新方向保存观察保证金、原子水位 |
+| 平仓 | closePositionOrders、decimal.closePrice | trading.closeOrders、decimal.closePrice | 固定保证金 3.1；多 1.01、空 0.99；tick HALF_EVEN；同方向保留一单；仅状态 1 清理；替换旧保护改为保留并提示人工处理 |
+| 成交历史 | syncEntryHistory | entry-history.syncEntries | 七天完整回看分页、独立成交身份去重、最新方向保存观察保证金、原子水位 |
 | 7 天限制 | hasRecentEntry | Storage.recentEntry | 同合约同方向含 7 天边界；最多 100 条；加仓重新计时 |
 | 保证金 | fixedEntryMargin | Storage.fixedMargin/history | 只在真实新入仓/加仓更新；旧仓初始化；行情不覆盖 |
 | 定时 | Cron、Scheduler | scheduler | 本地时区，日/周 OR，周日 0/7，不补跑，Gate 每分钟独立运行 |
