@@ -144,10 +144,11 @@ try {
   const finalIndicator = await indicator.boundingBox();
   assert.ok(middleIndicator.y > firstIndicator.y && middleIndicator.y < finalIndicator.y, 'one shared indicator moves continuously');
   assert.equal(await indicator.count(), 1);
-  await motion.mouse.move(1000, 20); await motion.waitForTimeout(250);
+  await motion.mouse.move(1000, 20);
+  await motion.waitForFunction(() => getComputedStyle(document.querySelector('[data-ui="nav-indicator"]')).opacity === '0');
   assert.equal(await indicator.evaluate(el => getComputedStyle(el).opacity), '0');
   await motion.getByRole('button', { name: '来源订单', exact: true }).focus();
-  await motion.waitForTimeout(250);
+  await motion.waitForFunction(() => getComputedStyle(document.querySelector('[data-ui="nav-indicator"]')).opacity === '1');
   assert.equal(await indicator.evaluate(el => getComputedStyle(el).opacity), '1', 'keyboard focus gets the same indicator');
   const fade = motion.locator('[data-ui="scroll-fade"]').first(), viewport = fade.locator('[data-ui="fade-viewport"]');
   await motion.waitForFunction(() => document.querySelector('[data-ui="scroll-fade"]').dataset.more === 'true');
