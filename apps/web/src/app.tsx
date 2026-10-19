@@ -36,9 +36,9 @@ const historyColumns = columns([['contract', '合约'], ['side', '方向（1 多
 export function App() {
   const themeState = useTheme();
   const [token, setToken] = useState(''), [initialToken] = useState(() => new URLSearchParams(location.hash.slice(1)).get('token'));
-  const session = useQuery({ queryKey: ['session'], queryFn: () => api<{ authenticated: boolean }>('/api/session'), retry: false });
+  const session = useQuery({ queryKey: ['session'], queryFn: ({ signal }) => api<{ authenticated: boolean }>('/api/session', { signal }), retry: false });
   const client = useQueryClient();
-  const login = useMutation({ mutationFn: (value: string) => api<{ authenticated: boolean }>('/api/session', { method: 'POST', headers: { Authorization: `Bearer ${value}` } }), onSuccess: data => { setToken(''); client.setQueryData(['session'], data); } });
+  const login = useMutation({ mutationFn: (value: string) => api<{ authenticated: boolean }>('/api/session', { method: 'POST', headers: { Authorization: `Bearer ${value}` } }), onSuccess: async data => { await client.cancelQueries({ queryKey: ['session'] }); setToken(''); client.setQueryData(['session'], data); } });
   useEffect(() => {
     if (initialToken) {
       history.replaceState(null, '', location.pathname + location.search);

@@ -50,3 +50,9 @@ main 已通过67502aa（skip ci）恢复旧部署分支f8d1a45的代码快照，
 本地只做阅读、git diff --check和shell静态语法检查，没有本地编译、构建、测试或服务启动。未连接真实交易账户，未更新现有latest、未生产部署。F06采用保留旧保护并人工替换；原子自动替换未验收。
 
 最终源码 `1b58bd61aceae4a5b851bfb46023c9328d3ce0b1` 的[完整远端验证39195339290](https://github.com/C0verSnow/Orders3/actions/runs/39195339290)已全部成功：47项Node回归、19项宿主机回归、静态/类型、React/Node构建、六宽度双主题浏览器及新增焦点草稿和状态错误检查、Windows exe、Linux AMD64/ARM64 deb实际安装启动、双架构原生容器与随机端口宿主机启动均通过。已下载查看状态读取失败页和桌面设置页截图。Release、manifest发布与SSH生产部署按feature条件跳过，未更新latest。后续交付提交只补本文与tasklist，最终提交状态仍以PR检查页为准。
+
+## PR #34 使用手册与首次登录竞态
+
+- 新增 `使用手册.md` 并核对实际路径、优先级、打包文件、Infisical 与 Docker 宿主机脚本；Compose/systemd 为自建示例，未实机执行。
+- 文档提交 `2ecd92f` 的远端安装包检查成功，但浏览器首次登录超时。随后用真实生产服务的登录 POST 加延迟匿名 GET 重现：[`1e739e0` / 39200989809](https://github.com/C0verSnow/Orders3/actions/runs/39200989809) 明确失败于 `late anonymous session cannot undo login`。
+- 修复登录成功前取消旧会话查询，向会话 GET 传递 AbortSignal；相同断言保留，修复后的完整远端结果在 PR 说明更新。未进行本地编译、构建或测试。
