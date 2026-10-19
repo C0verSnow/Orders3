@@ -57,3 +57,13 @@ main 已通过67502aa（skip ci）恢复旧部署分支f8d1a45的代码快照，
 - 文档提交 `2ecd92f` 的远端安装包检查成功，但浏览器首次登录超时。随后用真实生产服务的登录 POST 加延迟匿名 GET 重现：[`1e739e0` / 39200989809](https://github.com/C0verSnow/Orders3/actions/runs/39200989809) 明确失败于 `late anonymous session cannot undo login`。
 - 修复登录成功前取消旧会话查询，向会话 GET 传递 AbortSignal；相同断言保留，修复后的完整远端结果在 PR 说明更新。未进行本地编译、构建或测试。
 - 修复提交 `6cbcf35` 的[完整远端 CI 39201168155](https://github.com/C0verSnow/Orders3/actions/runs/39201168155) 全部成功：相同登录回归、六宽度双主题与草稿/状态错误场景、业务/安全/类型/构建、Windows EXE、AMD64/ARM64 DEB 和双架构原生容器。发布、镜像推送合并与生产部署跳过。后续只补验证记录与 tasklist，使用 `[skip ci]`，运行代码与已通过提交相同。
+
+
+## PR #34 显示、计算和下单精度分离
+
+- 按最新评论及用户确认，开仓与保护价均按 Supabase `price_round` 用 ROUND_HALF_EVEN 对齐，再独立校验 Gate 实际步长、整数张数和上下限。两位 HALF_UP 仅用于展示，不再阻止合法高精度下单。缺失、无效或同合约冲突的 Supabase 步长仍整批拦截，不用 Gate 步长替代。
+- 来源原始价格/数量与 Supabase 步长独立持久化，Gate 规则刷新不覆盖它。追踪单 raw 字段供匹配，持仓计算值入库保留高精度，盈亏仍先汇总原始值再展示。保护公式的循环小数保留内部 Decimal 至最终对齐。
+- 最终源码 `5612af595204db01dfdf1f1308256bf728183dd0` 的[完整远端 CI 39219606380](https://github.com/C0verSnow/Orders3/actions/runs/39219606380) 全部成功：53 项 Node 回归（0 失败）、19 项宿主机回归、静态语法/类型、构建和运行冒烟、六宽度双主题浏览器、Windows EXE、Linux AMD64/ARM64 DEB 安装启动和两架构原生容器。
+- 新回归覆盖 `100.005` 精确下单、`0.005` 整数倍步长、HALF_EVEN 居中取偶、低价及零对齐、缺失/冲突/无效步长、Gate 不兼容、整批无 POST、原始存储、重复匹配、保护价高精度及来源数字字段完整刷新。真实服务读取预置 SQLite，浏览器核查来源、追踪单和持仓均显示两位；已下载查看 `browser-evidence/precision-positions.png`，确认持仓 `2.00`、均价 `100.01`、标记价 `100.12` 和保护价 `101.01`。
+- README、使用手册、报告中的现行规则已更新；本地文档围栏、引用和 git diff --check 通过。没有本地编译、构建、类型检查、测试或服务启动，没有连接真实交易账户。Release、镜像 manifest 发布及生产部署均跳过，未移动 latest。
+- 保护任务只读取最近保存来源快照中对应合约的步长；升级前备份，旧缓存需成功刷新来源，无对应步长则保护批次停止并保留已有保护。旧数据已舍入且无 raw 副本的精度不可恢复。后续交付提交只更新本验证文档和 tasklist，标记 skip ci，运行代码与上述成功提交一致。PR 等待用户 review，未合并；仓库没有待关闭的开放 issue。
