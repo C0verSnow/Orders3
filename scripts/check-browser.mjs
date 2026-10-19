@@ -190,8 +190,13 @@ try {
   assert.equal(await animated.locator('[data-ui="value-out"]').evaluate(el => getComputedStyle(el).opacity), '0');
   // Retarget an active number animation through actual SQLite/API updates.
   const refreshQueries = async () => {
+    // Query cache is fresh for 1s, longer than the 850ms animation. Advance only
+    // Date.now for staleness; WAAPI's monotonic document timeline keeps running.
+    await motion.evaluate(() => { const previousNow = Date.now; Date.now = () => previousNow() + 2000; });
+    const received = motion.waitForResponse(response => response.url().endsWith('/api/orders') && response.request().method() === 'GET');
     await motion.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); window.dispatchEvent(new Event('visibilitychange')); });
     await motion.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); window.dispatchEvent(new Event('visibilitychange')); });
+    assert.equal((await received).status(), 200);
   };
   const pnl = animated.locator('[data-ui="value-in"]');
   uiStore.savePositions([{ ...seededPosition, unrealised_pnl: '-2.855' }], [{ ...seededPosition, unrealised_pnl: '-2.855' }]);
