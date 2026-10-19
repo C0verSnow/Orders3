@@ -1,7 +1,4 @@
 __pycache__/
-node_modules/
-*.tsbuildinfo
-/.orders*
 *.py[cod]
 *.exe
 *.tmp

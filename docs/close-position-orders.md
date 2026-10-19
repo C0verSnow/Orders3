@@ -1,5 +1,3 @@
-> 迁移说明：本文保留旧业务规则作为基线。当前实现已改为 Node.js/TypeScript；函数映射和两位精度阻断见 [业务对照](business-parity.md)。旧 C++ 文件名仅供 Git 历史查阅，旧 UI 展示位数以新两位规则为准。
-
 # 自动平仓追踪单
 
 > 收益口径核查见 [平多仓收益分析（issue #12）](close-profit-analysis.md)。下文记录现有代码行为；close_price 是追踪单激活价，不能当作实际成交价或三倍净利润保证。

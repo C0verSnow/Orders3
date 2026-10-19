@@ -1,6 +1,0 @@
-{
-  "name": "@orders/web", "version": "1.0.0", "private": true, "type": "module",
-  "scripts": { "dev": "vite --host 127.0.0.1", "build": "vite build", "preview": "vite preview" },
-  "dependencies": { "react": "^19.1.0", "react-dom": "^19.1.0", "@tanstack/react-query": "^5.90.0", "@tanstack/react-table": "^8.21.0", "lucide-react": "^0.468.0" },
-  "devDependencies": { "vite": "^7.1.0", "@vitejs/plugin-react": "^5.0.0", "@types/react": "^19.1.0", "@types/react-dom": "^19.1.0", "tailwindcss": "^4.1.0", "@tailwindcss/vite": "^4.1.0" }
-}

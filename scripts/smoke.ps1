@@ -1,0 +1,123 @@
+param([Parameter(Mandatory = $true)][string]$Executable)
+$ErrorActionPreference = "Stop"
+$executablePath = (Resolve-Path -LiteralPath $Executable).Path
+$taskTemporary = Join-Path ([IO.Path]::GetTempPath()) ("orders-smoke-" + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $taskTemporary | Out-Null
+$oldData = $env:ORDERS_DATA_DIR
+$oldConfig = $env:ORDERS_CONFIG_PATH
+$oldOrigin = $env:ORDERS_ALLOWED_ORIGIN
+$isolatedVariables = @(
+    "PATH", "QT_ROOT_DIR", "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH",
+    "QML2_IMPORT_PATH", "QML_IMPORT_PATH", "QTWEBENGINEPROCESS_PATH",
+    "QTWEBENGINE_RESOURCES_PATH", "QTWEBENGINE_LOCALES_PATH"
+)
+$oldEnvironment = @{}
+foreach ($name in $isolatedVariables) {
+    $oldEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+}
+$process = $null
+try {
+    foreach ($name in $isolatedVariables) {
+        [Environment]::SetEnvironmentVariable($name, $null, "Process")
+    }
+    $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+    $env:ORDERS_DATA_DIR = $taskTemporary
+    $env:ORDERS_CONFIG_PATH = Join-Path $taskTemporary "config"
+    $env:ORDERS_ALLOWED_ORIGIN = "http://127.0.0.1:8090"
+    $process = Start-Process -FilePath $executablePath -ArgumentList @(
+        "--cached", "--no-browser", "--port", "8090"
+    ) -WorkingDirectory $taskTemporary -WindowStyle Hidden -PassThru
+    $origin = "http://127.0.0.1:8090"
+    $ready = $false
+    for ($attempt = 0; $attempt -lt 100; $attempt++) {
+        if ($process.HasExited) { throw "Application exited before readiness (exit code $($process.ExitCode))" }
+        try {
+            $data = Invoke-RestMethod "$origin/api/data"
+            $ready = $true
+            break
+        } catch { Start-Sleep -Milliseconds 200 }
+    }
+    if (-not $ready) { throw "Application did not become ready" }
+    if (@($data.items).Count -ne 0) { throw "Expected empty cache" }
+    foreach ($route in @("/", "/app.js", "/flow.js", "/activity.js", "/flow.css", "/api/activity", "/ui.js", "/settings.js", "/schedule.js", "/startup.js", "/style.css", "/logo.svg", "/api/orders")) {
+        $response = Invoke-WebRequest "$origin$route"
+        if ($response.StatusCode -ne 200) { throw "Route failed: $route" }
+        if (-not $response.Headers["X-Content-Type-Options"]) { throw "Missing response headers" }
+    }
+    $schedule = Invoke-RestMethod "$origin/api/schedule" -Method Post -Headers @{
+        Origin = $origin
+    } -ContentType "application/json" -Body '{"enabled":false,"cron":"*/15 * * * *"}'
+    if ($schedule.enabled -or -not (Test-Path -LiteralPath $env:ORDERS_CONFIG_PATH)) {
+        throw "Schedule persistence failed"
+    }
+    $settings = Invoke-RestMethod "$origin/api/settings" -Method Post -Headers @{
+        Origin = $origin
+    } -ContentType "application/json" -Body '{"SUPABASE_URL":"https://example.supabase.co","SUPABASE_ANON_KEY":"smoke-fixture-secret","API_KEY":"smoke-gate-key","API_SECRET":"smoke-gate-secret"}'
+    if (-not $settings.values.SUPABASE_ANON_KEY_SET -or
+        $settings.values.PSObject.Properties.Name -contains "SUPABASE_ANON_KEY" -or
+        $settings.values.PSObject.Properties.Name -contains "API_KEY" -or
+        $settings.values.PSObject.Properties.Name -contains "API_SECRET") {
+        throw "Settings API exposed secrets or failed to save"
+    }
+    $saved = Get-Content -LiteralPath $env:ORDERS_CONFIG_PATH -Raw
+    if (-not $saved.Contains("smoke-fixture-secret") -or -not $saved.Contains("[schedule]")) {
+        throw "Connection settings persistence failed"
+    }
+    $schedule = Invoke-RestMethod "$origin/api/schedule" -Method Post -Headers @{
+        Origin = $origin
+    } -ContentType "application/json" -Body '{"enabled":false,"cron":"0 9 * * 1-5"}'
+    if (-not (Get-Content -LiteralPath $env:ORDERS_CONFIG_PATH -Raw).Contains("smoke-fixture-secret")) {
+        throw "Schedule save overwrote connection settings"
+    }
+    try {
+        Invoke-WebRequest "$origin/api/settings" -Method Post -Headers @{
+            Origin = "http://untrusted.example"
+        } -ContentType "application/json" -Body '{"API_SECRET":"replacement"}'
+        throw "Invalid origin was accepted for settings"
+    } catch {
+        if ([int]$_.Exception.Response.StatusCode -ne 403) { throw }
+    }
+    try {
+        Invoke-WebRequest "$origin/api/schedule" -Method Post -Headers @{
+            Origin = "http://untrusted.example"
+        } -ContentType "application/json" -Body '{"enabled":false,"cron":"*/15 * * * *"}'
+        throw "Invalid origin was accepted"
+    } catch {
+        if ([int]$_.Exception.Response.StatusCode -ne 403) { throw }
+    }
+    try {
+        Invoke-WebRequest "$origin/api/schedule" -Method Post -Headers @{
+            Origin = $origin
+        } -ContentType "application/json" -Body '{"enabled":true,"cron":"0 0 31 2 *"}'
+        throw "Impossible cron was accepted"
+    } catch {
+        if ([int]$_.Exception.Response.StatusCode -ne 400) { throw }
+    }
+    try {
+        Invoke-WebRequest "$origin/not-found?token=smoke-query-secret"
+        throw "Missing route was accepted"
+    } catch {
+        if ([int]$_.Exception.Response.StatusCode -ne 404) { throw }
+    }
+    $logPath = Join-Path $taskTemporary "logs/requests.jsonl"
+    $logText = Get-Content -LiteralPath $logPath -Raw
+    if ($logText -match "smoke-fixture-secret|smoke-gate-secret|smoke-gate-key|smoke-query-secret|replacement") {
+        throw "Request log exposed secrets"
+    }
+    $entries = @(Get-Content -LiteralPath $logPath | ForEach-Object { $_ | ConvertFrom-Json })
+    foreach ($status in @(200, 400, 403, 404)) {
+        if (-not ($entries | Where-Object { $_.direction -eq "inbound" -and $_.status -eq $status })) {
+            throw "Request log missing status $status"
+        }
+    }
+    Write-Output "C++ runtime smoke checks passed"
+} finally {
+    if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+    $env:ORDERS_DATA_DIR = $oldData
+    $env:ORDERS_CONFIG_PATH = $oldConfig
+    $env:ORDERS_ALLOWED_ORIGIN = $oldOrigin
+    foreach ($name in $isolatedVariables) {
+        [Environment]::SetEnvironmentVariable($name, $oldEnvironment[$name], "Process")
+    }
+    # Leave the tiny temporary directory available for diagnosing CI failures.
+}

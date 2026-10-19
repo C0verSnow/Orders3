@@ -1,29 +1,68 @@
-# 架构
+# 工程与迁移说明
 
-`apps/web` 为 React / TypeScript / Vite 应用。TanStack Query 管理服务端快照和失败重读，Table 提供筛选/排序/分页，Lucide 提供图标。Tailwind v4 与 CSS Variables 管理双主题。只需要按钮反馈和导航移动，选择 CSS transform/opacity、系统 reduced-motion，无须再引入 Motion 运行依赖。
+## 模块边界
 
-`apps/server` 为 Node 24 / TypeScript / Fastify。API 层调用 Dashboard；交易、历史同步、调度、配置、凭证和存储分别独立。网络全部异步，交易任务串行，SQLite 同步事务不跨 await。源抓取可与 Gate 网络读取并行，进入交易时等待共享 Gate 锁；Gate 忙时跳过周期检查。进程持有 proper-lockfile 数据目录租约，第二个进程拒绝启动。
+程序入口只负责参数、生命周期和平台选择；业务代码不依赖窗口或 HTTP Server。基础层管理 SQLite 连接及网络请求。每个数据库连接归属于调用线程，连接名唯一，查询销毁后再移除连接；每个请求任务使用自己的网络管理器。
 
-`packages/shared` 提供前后端类型；`packages/decimal` 提供 Decimal 精度和 Gate 约束边界。lossless-json 将远端数字字面量解析为原文，时间/状态显式检查安全整数。源 ID、成交 ID、金额与数量不经过二进制浮点运算。
+所有网络任务在工作线程运行，远程抓取不阻塞网页轮询或窗口事件循环。来源与 Gate 任务分别防重入，各自串行化快照读写；状态和错误有独立互斥保护。HTTP 刷新使用异步响应，完成后返回快照，保持现有网页协议。关闭程序时取消网络请求，等待任务完成后再销毁服务对象。
 
-`scripts/build.mjs` 可独立构建 React（build:web）和 Node（build:server 读取已构建 dist/web）。生产 Node CJS 内嵌白名单 React 资源；没有运行时 npm、源码、配置文件下载或本地文件夹静态开放。Node SEA 用同一原生 Node 二进制生成 blob 并注入，不使用原生 addon 或旧后端。Docker 只需 Node 与 server.cjs。
+来源直接分页读取 Supabase `public.orders` 表，按 `id.asc` 使用 offset / limit；数据库密钥只发送至 Supabase，带密钥的请求拒绝重定向。旧 JWT 密钥同时使用 apikey 与 Bearer，新 sb_* 密钥只使用 apikey。Gate 的 HMAC-SHA512 签名和响应解析位于 `src/infrastructure/gate_api.*`；`services/fetcher.cpp` 负责配置检查和抓取流程，验证响应业务码、时间与字段类型后才交给存储层。
 
-## API
+订单文本解析位于 `src/core/order_parser.*`，不依赖网络、配置或存储；字段名、别名和预编译正则集中定义。`fetcher.hpp` 继续包含解析头文件，兼容已有调用方；存储层直接依赖核心解析模块。
 
-| 路径 | 行为 |
-| --- | --- |
-| GET /health | 无敏感信息的就绪检查 |
-| GET/POST/DELETE /api/session | 查看会话、令牌登录、退出 |
-| GET /api/data；POST /api/refresh | 来源缓存；抓取、保存并执行开仓策略 |
-| GET /api/orders；POST /api/orders/refresh | 跟踪单/持仓缓存；同步并核对平仓保护 |
-| GET /api/activity | 最近 64 个真实请求/任务事件；600 ms 页面轮询 |
-| GET/POST /api/settings | 脱敏设置、保存设置并后台刷新 Infisical |
-| GET/POST /api/schedule | 五段 Cron 与下一次本地时间 |
-| GET /api/history | 最近 100 条真实入仓事件 |
-| GET /api/status | 数据库阻断、未知交易意图 |
-| POST /api/intents/resolve | 用户确认 Gate 核查后读取最新列表，解除指定本地阻断 |
-| GET /api/download | VACUUM INTO 独立一致 SQLite 快照 |
+来源抓取按分页 URL 构造、orders 数字原文保护和字段校验拆分内部函数。服务端未提供总数时以空数组结束，兼容较小页大小；提供 Content-Range 总数时检查总数一致与完整性。整个数组中的合约、价格、整数张数和毫秒时间戳均验证通过后才保存，不再请求来源 URL，也不再解析远程订单文本。任何分页失败或取消都会中止整批抓取。取消信号允许为空。分页不是事务快照，不能检测总数不变时的内容变化。
 
-除 /health 和会话状态外，API 需要令牌/会话；写请求同时要求受信任 Origin，所有请求检查 Host，显式外来 Origin 拒绝。会话令牌通过恒定时间比较。无 CORS 通配符，不从任意路径读取资源。响应禁缓存、nosniff、严格 CSP，禁止第三方脚本、frame 和外部表单。
+读取函数只执行一次请求流程；Scheduler 使用独立的 60 秒定时器获取 Gate 列表，不受来源 Cron 开关影响。来源成功抓取并保存后，Dashboard 自动调用 createTrailingOrders(config)。交易与列表刷新共享互斥锁，网页读取快照不等待网络请求。创建／停止参数及失败处理见 [自动追踪订单](trailing-orders.md)。旧的 [抓取设计草稿](fetcher-design-draft.md) 仅供历史参考。
 
-遥测不伪造交易完成；只有真实请求开始才计 active。失败显示旧缓存与错误。UI 不乐观地把订单标成成交。交易写入超时必须先查交易所，不能自动重试。
+## 本地网页接口
+
+| 方法 | 路径 | 行为 |
+| --- | --- | --- |
+| GET | `/`、`/index.html` | 已嵌入的网页 |
+| GET | `/app.js`、`/flow.js`、`/activity.js`、`/flow.css`、`/ui.js`、`/settings.js`、`/schedule.js`、`/startup.js`、`/style.css`、`/logo.svg` | 已嵌入的白名单资源 |
+| GET | `/api/data` | 来源、解析订单和调度快照 |
+| POST | `/api/refresh` | 抓取来源，完成后返回快照 |
+| GET | `/api/activity` | 内存执行状态与最近 64 条真实请求／任务事件，不读取数据库 |
+| GET | `/api/orders` | Gate 本地订单快照 |
+| POST | `/api/orders/refresh` | 更新持仓和 Gate 订单，替换本程序平仓单后返回快照 |
+| GET / POST | `/api/schedule` | 读取或保存调度配置 |
+| GET / POST | `/api/settings` | 读取或保存连接与存储配置；读取不返回密钥原文 |
+| GET | `/api/download` | 一致的 SQLite 数据库快照 |
+
+写入请求必须带与当前页面一致的 Origin；默认使用实际监听地址和端口，容器或代理可显式配置。响应保留 CSP、禁止 MIME 嗅探和禁用缓存。任意源码、密钥或文件路径不作为静态资源开放。
+
+抓取失败返回 502 并保留数据库，重复刷新返回 409，非法配置返回 400，不匹配的 Origin 返回 403。数据库尚未生成时下载返回 404。
+
+## 网页模块
+
+网页使用原生 ES modules，无需额外前端构建工具。`app.js` 管理来源订单和 Gate 跟踪订单的展示、刷新与快照轮询；`ui.js` 提供表格、日期和按钮状态的公共函数；`settings.js` 管理连接配置；`schedule.js` 管理定时表单和倒计时；`startup.js` 管理启动动画和原生窗口回调。
+
+`activity.js` 是无 DOM 依赖的状态投影，独立测试并发获取、完成停动、失败、断线和事件去重；`flow.js` 负责状态订阅、SVG 更新与执行记录；`flow.css` 管理执行图样式。来源、Gate 与工作台始终同时可见，移除了流程切换、演示、暂停及读取／解析／保存步骤按钮。订单列表合并在同一工作台区域，保留来源与交易记录的字段差异。
+
+`services/activity.*` 维护独立互斥保护的内存遥测。Dashboard 在实际任务开始／结束时记录任务状态，`ScopedHttpObserver` 在当前工作线程安装请求观察器，退出时恢复原观察器；网络请求通过 RAII 报告开始、返回状态和异常结束。只记录任务名、节点、读写类型、HTTP 状态、UTC 时间与递增序号，不保留 URL、查询、密钥、头或请求／响应内容。HTTP 成功表示传输成功，业务响应校验或交易失败仍由任务失败事件及下方执行结果体现。Gate 的来源自动下单与持仓刷新共用同一个交易节点。
+
+前端每 600 毫秒读取独立 `/api/activity`，不受长时间 POST 或数据库读取影响。运行连线仅由 `requests.active` 驱动，等待锁及本地处理不模拟网络流动。轮询间隔内结束的短请求通过新事件触发一次完成反馈，首次打开和服务重启不重播历史动画。读取失败或 3 秒超时立即切换离线显示、关闭流动，2 秒后重连；系统减少动态效果时保留文本状态并关闭动效。事件历史最多 64 条，界面显示最近 5 条；本次进程的累计请求数独立保留。
+
+统一更新入口依次调用现有来源刷新和 Gate 刷新。只读状态同步不会触发交易。任务结束事件触发两类列表同步，原有分钟同步与来源调度作为补充。手动刷新仍使用请求代次丢弃旧快照，避免旧轮询覆盖新结果。前端静态检查与纯状态测试在独立 CI job 执行，发布任务必须等待其通过。
+
+新增网页模块时，需要同时更新 `resources.qrc`、`Server` 静态资源白名单和发布包检查脚本。网页资源由 Qt 嵌入分发，不开放任意目录。
+
+## 数据兼容
+
+持仓自动平仓、订单归属记录和页面盈亏统计见 [自动平仓追踪单](close-position-orders.md)。Gate 每分钟更新及网页手动刷新共用此流程；`--list` 仅读取列表。
+
+来源表保持 `records` 和 `orders` 的现有字段，支持旧 `record_json` 布局。来源、JSON 标量、字段缺失和 null 的区别保留。直接读取的价格、数量、ID 和 value 数字原文先转换为文本，避免浮点数转换；科学计数的价格和数量按精确十进制展开。
+
+来源替换在同一个 SQLite 事务中完成；失败时回滚。跟踪订单只在有效完整响应后事务替换，同时迁移旧列。下载采用 `VACUUM INTO` 获取独立快照，包含已经提交的 WAL 数据。
+
+现有 `.env`、根目录 `config` 和 `data/` 继续兼容。程序页面把连接与存储设置原子保存到 `config` 的 `[environment]` 段，字段值使用 JSON 字符串编码；与 `[schedule]` 相互保留。保存失败不更新内存配置。连接设置立即生效，抓取任务使用开始时的配置副本；数据目录在重启后生效。程序保存的字段优先于环境变量和 `.env`，配置文件位置仍由启动环境的 `ORDERS_CONFIG_PATH` 决定。发布版路径与旧单文件版本一致，默认使用用户目录 `.orders-dashboard/`。Windows 的网页内核从 Python / WebView2 改为原生 Qt WebEngine，保持窗口、启动过渡和数据库保存交互。
+
+## 历史实现
+
+旧 `native/`、Python 包、脚本、测试和迁移文档已移至 `archive/python/`。迁移前已有的两个测试改动以及工作流改动均保留在归档中。归档不参与 CMake、CI 和 Docker 构建，归档中的旧指令仅作为历史资料。
+
+Python 包本来已位于 `src/`，本次并非重新包装它，而是新增原生实现并切换所有当前入口。旧 `build/` 和 `dist/` 本地产物未重新生成，仍可能属于旧版本；使用 CI 新附件判断迁移后的运行行为。
+
+## 验证范围
+
+本次只执行静态检查，没有本地配置 CMake、编译、执行 C++ 测试、启动程序或构建 Docker。CI 已配置原生单元测试、发布包检查和容器 API 检查；Windows 窗口的实际显示、Qt 运行库打包和跨平台运行仍需 CI 及运行环境确认。

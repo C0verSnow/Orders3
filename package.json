@@ -1,23 +1,11 @@
 {
-  "name": "orders3",
-  "version": "1.0.0",
+  "name": "orders-dashboard-web",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "npm run dev -w @orders/web",
-    "dev:server": "node --env-file-if-exists=.env apps/server/src/main.ts",
-    "build": "node scripts/build.mjs",
-    "build:web": "npm run build -w @orders/web",
-    "build:server": "node scripts/build.mjs --server-only",
-    "start": "node dist/server.cjs",
     "export:orders": "node scripts/export-orders.mjs",
-    "check": "node scripts/check-source.mjs",
-    "typecheck": "tsc -p apps/server/tsconfig.json && tsc -p apps/web/tsconfig.json",
-    "test": "node --test tests/node/*.test.ts tests/scripts/export-orders.test.mjs",
-    "package:exe": "node scripts/package-executable.mjs",
-    "package:deb": "bash scripts/package-deb.sh"
+    "check": "node scripts/check-web.mjs",
+    "test": "node --test tests/web/*.test.mjs tests/scripts/*.test.mjs"
   },
-  "engines": { "node": ">=24.4.0 <25" },
-  "devDependencies": { "@types/node": "^24.0.0", "esbuild": "^0.25.0", "postject": "^1.0.0-alpha.6", "typescript": "^5.9.0", "playwright": "^1.56.0" }
+  "engines": { "node": ">=22" }
 }

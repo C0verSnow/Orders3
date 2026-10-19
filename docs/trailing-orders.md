@@ -1,5 +1,3 @@
-> 迁移说明：本文保留旧业务规则作为基线。当前实现已改为 Node.js/TypeScript；函数映射和两位精度阻断见 [业务对照](business-parity.md)。旧 C++ 文件名仅供 Git 历史查阅，旧 UI 展示位数以新两位规则为准。
-
 # 自动追踪订单
 
 `fetchTrailingOrders(config)` 读取一次 Gate 列表；服务模式下 Scheduler 每 60 秒独立调用持仓与平仓更新流程，不受来源 Cron 启用开关影响，具体见 [自动平仓追踪单](close-position-orders.md)。一次请求尚未结束或正在自动交易时不叠加请求，下次计时继续。`--list` 仍为单次读取；退出时取消网络请求并等待工作线程。

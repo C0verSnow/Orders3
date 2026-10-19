@@ -1,0 +1,2 @@
+// Windows executable icon, generated from web/logo.svg.
+IDI_ORDERS_ICON ICON "@CMAKE_CURRENT_SOURCE_DIR@/src/ui/logo.ico"
