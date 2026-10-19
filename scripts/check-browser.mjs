@@ -153,6 +153,12 @@ try {
   const fade = motion.locator('[data-ui="scroll-fade"]').first(), viewport = fade.locator('[data-ui="fade-viewport"]');
   await motion.waitForFunction(() => document.querySelector('[data-ui="scroll-fade"]').dataset.more === 'true');
   assert.equal(await fade.locator('[data-ui="bottom-fade"]').evaluate(el => getComputedStyle(el).pointerEvents), 'none');
+  await viewport.evaluate(el => { el.scrollTop = 24; });
+  await motion.waitForTimeout(50);
+  const edgeRows = await viewport.locator('tbody [data-ui="row"]').evaluateAll(rows => rows.map(row => Number(row.style.getPropertyValue('--scroll-opacity'))));
+  assert.ok(edgeRows.some(value => value > 0 && value < 1), 'row opacity follows its actual position in the bottom 48px');
+  assert.equal(await viewport.locator('thead').evaluate(el => getComputedStyle(el).filter), 'none');
+  assert.equal(await viewport.locator('tbody td:last-child').first().evaluate(el => getComputedStyle(el).filter), 'none', 'details remain legible and usable at the edge');
   await viewport.evaluate(el => { el.scrollTop = el.scrollHeight; });
   await motion.waitForFunction(() => document.querySelector('[data-ui="scroll-fade"]').dataset.more === 'false');
   await motion.getByRole('button', { name: '查看第 20 条记录详情', exact: true }).click();
@@ -182,6 +188,27 @@ try {
   assert.equal(await animated.locator('[data-ui="value-in"]').textContent(), '-1.86');
   await animated.evaluate(async el => { await Promise.allSettled(el.getAnimations({ subtree: true }).map(a => a.finished)); });
   assert.equal(await animated.locator('[data-ui="value-out"]').evaluate(el => getComputedStyle(el).opacity), '0');
+  // Retarget an active number animation through actual SQLite/API updates.
+  const refreshQueries = async () => {
+    await motion.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); window.dispatchEvent(new Event('visibilitychange')); });
+    await motion.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); window.dispatchEvent(new Event('visibilitychange')); });
+  };
+  const pnl = animated.locator('[data-ui="value-in"]');
+  uiStore.savePositions([{ ...seededPosition, unrealised_pnl: '-2.855' }], [{ ...seededPosition, unrealised_pnl: '-2.855' }]);
+  await refreshQueries();
+  await motion.waitForFunction(() => [...document.querySelectorAll('[data-ui="metric"] [data-ui="value-in"]')].some(el => el.textContent === '-2.86'));
+  await motion.waitForTimeout(120);
+  uiStore.savePositions([{ ...seededPosition, unrealised_pnl: '-3.855' }], [{ ...seededPosition, unrealised_pnl: '-3.855' }]);
+  await refreshQueries();
+  await motion.waitForFunction(() => [...document.querySelectorAll('[data-ui="metric"] [data-ui="value-in"]')].some(el => el.textContent === '-3.86'));
+  const retarget = await pnl.evaluate(el => {
+    const animation = el.getAnimations()[0], frames = animation.effect.getKeyframes();
+    return { duration: animation.effect.getTiming().duration, easing: animation.effect.getTiming().easing, startOpacity: Number(frames[0].opacity), value: el.textContent };
+  });
+  assert.equal(retarget.duration, 850); assert.equal(retarget.easing, 'cubic-bezier(0.22, 0.61, 0.36, 1)');
+  assert.ok(retarget.startOpacity > 0 && retarget.startOpacity < 1, 'interrupted number continues from its visible state');
+  await animated.evaluate(async el => { await Promise.allSettled(el.getAnimations({ subtree: true }).map(a => a.finished)); });
+  assert.equal(await pnl.textContent(), '-3.86');
   await motion.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
   assert.ok(await motion.locator('[data-ui="position-count"] [data-ui="animated-value"]>span').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 28), 'position count retains card typography');
   await motion.screenshot({ path: 'tests/artifacts/ui-motion-light.png', fullPage: true });
@@ -202,6 +229,28 @@ try {
   }
   assert.deepEqual(motionErrors, []);
   await motion.close(); uiStore.close();
+
+  const appearance = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await appearance.goto(`${base}/#token=${token}`);
+  await appearance.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
+  assert.equal(await appearance.locator('header [aria-label="本地受信任会话"]').count(), 0);
+  assert.equal(await appearance.locator('svg[data-ui="brand-logo"]').count(), 1);
+  await appearance.getByRole('button', { name: '跟随系统', exact: true }).click();
+  await appearance.emulateMedia({ colorScheme: 'dark' });
+  await appearance.locator('html[data-theme="dark"]').waitFor();
+  await appearance.emulateMedia({ colorScheme: 'light' });
+  await appearance.locator('html[data-theme="light"]').waitFor();
+  await appearance.getByRole('button', { name: '深色模式', exact: true }).click();
+  await appearance.emulateMedia({ colorScheme: 'light' });
+  assert.equal(await appearance.locator('html').getAttribute('data-theme'), 'dark');
+  assert.equal(await appearance.getByRole('button', { name: '深色模式', exact: true }).getAttribute('aria-pressed'), 'true');
+  await appearance.getByRole('button', { name: '系统设置', exact: true }).click();
+  assert.equal(await appearance.getByLabel('启用自动开仓（涉及真实交易）', { exact: true }).isChecked(), false);
+  await appearance.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
+  await appearance.getByLabel('Cron 表达式', { exact: true }).first().fill('7 * * * *');
+  assert.equal(await appearance.getByLabel('Cron 表达式', { exact: true }).nth(1).inputValue(), '3 * * * *');
+  await appearance.screenshot({ path: 'tests/artifacts/independent-schedules-dark.png', fullPage: true });
+  await appearance.close();
 
   // Fault-injection regressions: production UI + real server, only /api/status failure is intercepted.
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });

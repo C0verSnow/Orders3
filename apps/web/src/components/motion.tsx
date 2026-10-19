@@ -28,39 +28,41 @@ const easing = 'cubic-bezier(0.22,0.61,0.36,1)';
 export function AnimatedValue({ value, text = false }: { value: string; text?: boolean }) {
   const reduced = useContext(ReducedMotion),
     incoming = useRef<HTMLSpanElement>(null),
-    outgoing = useRef<HTMLSpanElement>(null);
+    outgoing = useRef<HTMLSpanElement>(null),
+    active = useRef(false);
   const [frame, setFrame] = useState({ value, previous: value, revision: 0, width: value.length });
   if (frame.value !== value)
     setFrame({
       value,
-      previous: frame.value,
+      previous: active.current ? frame.previous : frame.value,
       revision: frame.revision + 1,
       width: Math.max(frame.width, value.length),
     });
-  const interrupted = useRef<{ opacity: string; transform: string } | null>(null);
+  const interrupted = useRef<{ enter: { opacity: string; transform: string }; exit: { opacity: string; transform: string } } | null>(null);
   useLayoutEffect(() => {
-    if (!frame.revision || reduced) return;
+    if (!frame.revision || reduced) { interrupted.current = null; active.current = false; return; }
+    active.current = true;
     const options = { duration: text ? 550 : 850, easing, fill: 'both' as const };
     const enter = incoming.current?.animate(
       [
-        interrupted.current ?? { opacity: 0, transform: text ? 'none' : 'translateY(65%)' },
+        interrupted.current?.enter ?? { opacity: 0, transform: text ? 'none' : 'translateY(65%)' },
         { opacity: 1, transform: 'none' },
       ],
       options,
     );
     const exit = outgoing.current?.animate(
       [
-        interrupted.current ?? { opacity: 1, transform: 'none' },
+        interrupted.current?.exit ?? { opacity: 1, transform: 'none' },
         { opacity: 0, transform: text ? 'none' : 'translateY(-65%)' },
       ],
       options,
     );
     interrupted.current = null;
-    if (enter) enter.onfinish = () => { interrupted.current = null; };
+    if (enter) enter.onfinish = () => { interrupted.current = null; active.current = false; };
     return () => {
       if (enter?.playState === 'running' && incoming.current) {
-        const current = getComputedStyle(incoming.current);
-        interrupted.current = { opacity: current.opacity, transform: current.transform };
+        const current = getComputedStyle(incoming.current), previous = getComputedStyle(outgoing.current!);
+        interrupted.current = { enter: { opacity: current.opacity, transform: current.transform }, exit: { opacity: previous.opacity, transform: previous.transform } };
       }
       enter?.cancel();
       exit?.cancel();
@@ -157,17 +159,17 @@ export function MotionList({
   as?: 'tbody' | 'ol' | 'ul';
   className?: string;
 }) {
-  const [snapshot, setSnapshot] = useState({ items, exiting: [] as MotionItem[] });
+  const [snapshot, setSnapshot] = useState({ items, exiting: [] as (MotionItem & { expires: number })[] });
   if (snapshot.items !== items) {
     const ids = new Set(items.map((item) => item.id));
     setSnapshot({
       items,
-      exiting: [...snapshot.exiting, ...snapshot.items.filter((item) => !ids.has(item.id))].filter((item, index, all) => !ids.has(item.id) && all.findIndex(other => other.id === item.id) === index).slice(0, 40),
+      exiting: [...snapshot.exiting, ...snapshot.items.filter((item) => !ids.has(item.id)).map(item => ({ ...item, expires: Date.now() + 750 }))].filter((item, index, all) => !ids.has(item.id) && all.findIndex(other => other.id === item.id) === index).slice(0, 40),
     });
   }
   useEffect(() => {
     if (!snapshot.exiting.length) return;
-    const timer = setTimeout(() => setSnapshot((current) => ({ ...current, exiting: [] })), 750);
+    const timer = setTimeout(() => setSnapshot((current) => ({ ...current, exiting: current.exiting.filter(item => item.expires > Date.now()) })), Math.max(0, Math.min(...snapshot.exiting.map(item => item.expires)) - Date.now()));
     return () => clearTimeout(timer);
   }, [snapshot.exiting]);
   const Tag = as,
