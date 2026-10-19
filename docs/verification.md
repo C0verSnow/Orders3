@@ -80,3 +80,13 @@ main 已通过67502aa（skip ci）恢复旧部署分支f8d1a45的代码快照，
 - README、使用手册和部署说明已同步新文件名及旧包排查。历史 Release 附件保留原名，不自动更名。DEB 内部版本与安装命令不变。
 - issue #35 已在 PR 关联：默认分支、latest 和部署条件的修复随 PR 一起等待 review，main 仍保留用户要求的旧部署快照；不提前宣称现有 latest 已更新。
 - 本地仅阅读、Python AST 静态语法与 `git diff --check`，没有本地编译、构建、类型检查、测试或服务启动，没有连接真实交易账户。PR 不合并，等待用户 review。
+
+
+## PR #34 Supabase 实际步长列修复
+
+- 用户确认真实列为 Supabase `public.orders.order_price_round`（下划线）。旧代码读取不存在的 `price_round`，导致合法来源提示“缺少有效 Supabase price_round”；同时 Gate 刷新会写入同名 `order_price_round`，不能在其后才读取来源步长。
+- 在 Supabase 入口将 `orders.order_price_round` 复制到独立内部 `price_round`，随后 Gate 的 `order_price_round` 仅用于独立校验。远端不存在或无效的真实列不会回退到旧 `price_round` 列或 Gate 步长；两列同时存在时真实列优先。无需改远端表结构；旧来源快照需要更新程序后刷新，不靠重启自动补值。
+- 先提交回归 `22045a5`，在 [远端39231136215](https://github.com/C0verSnow/Orders3/actions/runs/39231136215/job/117989096636) 的 `npm test` 复现相同缺失步长报错，且验证旧列误用会造成非零 POST。该轮检查任务明确失败，其余任务随后被新提交取消，不作为成功结果。
+- 修复源码 `94ef9b70fcc0a00631d3daef6dfa6c3a02668145` 的 [PR 远端39231260371](https://github.com/C0verSnow/Orders3/actions/runs/39231260371) 与 [分支远端39231254609](https://github.com/C0verSnow/Orders3/actions/runs/39231254609) 均全部成功：58 项 Node 回归、20 项宿主机/发布脚本回归、静态/类型/构建、HTTP 运行检查、六宽度双主题浏览器、Windows EXE、AMD64/ARM64 DEB 安装启动，以及两架构原生容器。
+- 同组断言未放宽：数字与文本来源步长保留、Gate 同名字段隔离、ETH_USDT 开仓 `100.125` 和保护 `101.125` 使用来源 `0.005`（Gate 为 `0.0001`）、原始数量为整数、错误旧列优先级、缺失/空值/无效/非正来源步长零 POST、原有高精度与冲突恢复均通过。README、手册、保护单说明和报告已同步真实列名及刷新步骤。
+- 本地仅阅读、文档及 git 差异检查，未编译、构建、类型检查、运行测试或启动服务。未连接真实交易账户，未发布 Release/GHCR、未生产部署、未移动 latest。PR 保持未合并，等待用户 review；issue #35 继续关联等待合并生效。后续记录提交仅改本文与 tasklist，标记 skip ci，运行代码与上述成功源码一致。
