@@ -128,12 +128,12 @@ try {
   await motion.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
   await motion.getByRole('cell', { name: 'UI00 / USDT', exact: true }).waitFor();
   assert.equal(await motion.getByText('服务端确认 · 十进制计算 · 原始记录可追溯', { exact: true }).count(), 0);
-  const titleStyles = await motion.locator('.panel-title .two-tone-title').first().evaluate(el => {
+  const titleStyles = await motion.locator('[data-ui="panel-title"] [data-ui="two-tone-title"]').first().evaluate(el => {
     const main = getComputedStyle(el.querySelector('h2')), secondary = getComputedStyle(el.querySelector('p'));
     return { main: main.color, secondary: secondary.color, size: main.fontSize === secondary.fontSize, weight: main.fontWeight === secondary.fontWeight };
   });
   assert.deepEqual(titleStyles, { main: 'rgb(29, 29, 31)', secondary: 'rgb(134, 134, 139)', size: true, weight: true });
-  const indicator = motion.locator('.nav-indicator');
+  const indicator = motion.locator('[data-ui="nav-indicator"]');
   await motion.getByRole('button', { name: '来源订单', exact: true }).hover();
   await motion.waitForTimeout(350);
   const firstIndicator = await indicator.boundingBox();
@@ -149,11 +149,11 @@ try {
   await motion.getByRole('button', { name: '来源订单', exact: true }).focus();
   await motion.waitForTimeout(250);
   assert.equal(await indicator.evaluate(el => getComputedStyle(el).opacity), '1', 'keyboard focus gets the same indicator');
-  const fade = motion.locator('.scroll-fade').first(), viewport = fade.locator('.fade-viewport');
-  await motion.waitForFunction(() => document.querySelector('.scroll-fade').classList.contains('has-more'));
-  assert.equal(await fade.locator('.bottom-fade').evaluate(el => getComputedStyle(el).pointerEvents), 'none');
+  const fade = motion.locator('[data-ui="scroll-fade"]').first(), viewport = fade.locator('[data-ui="fade-viewport"]');
+  await motion.waitForFunction(() => document.querySelector('[data-ui="scroll-fade"]').dataset.more === 'true');
+  assert.equal(await fade.locator('[data-ui="bottom-fade"]').evaluate(el => getComputedStyle(el).pointerEvents), 'none');
   await viewport.evaluate(el => { el.scrollTop = el.scrollHeight; });
-  await motion.waitForFunction(() => !document.querySelector('.scroll-fade').classList.contains('has-more'));
+  await motion.waitForFunction(() => document.querySelector('[data-ui="scroll-fade"]').dataset.more === 'false');
   await motion.getByRole('button', { name: '查看第 20 条记录详情', exact: true }).click();
   await motion.getByRole('dialog').waitFor(); await motion.keyboard.press('Escape');
   await motion.getByRole('button', { name: '下一页', exact: true }).click();
@@ -164,7 +164,7 @@ try {
   await motion.getByRole('searchbox', { name: '搜索来源订单', exact: true }).fill('UI44');
   await motion.getByRole('cell', { name: 'UI44 / USDT', exact: true }).waitFor();
   await motion.waitForTimeout(350);
-  assert.equal(await fade.getAttribute('class'), 'scroll-fade ', 'short filtered table has no bottom fade');
+  assert.equal(await fade.getAttribute('data-more'), 'false', 'short filtered table has no bottom fade');
   assert.equal((await viewport.boundingBox()).height, beforeFilter.height, 'filtering preserves viewport height');
   await motion.getByRole('searchbox', { name: '搜索来源订单', exact: true }).fill('no-such-contract');
   await motion.getByText('没有匹配的记录', { exact: true }).waitFor();
@@ -175,22 +175,24 @@ try {
   await motion.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); window.dispatchEvent(new Event('visibilitychange')); });
   await motion.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); window.dispatchEvent(new Event('visibilitychange')); });
   await motion.getByRole('cell', { name: '129.76', exact: true }).waitFor();
-  await motion.locator('.metric .value-in').filter({ hasText: /^-1\.86$/ }).waitFor();
-  const animated = motion.locator('.metric').nth(2);
-  assert.equal(await animated.locator('.value-out').getAttribute('aria-hidden'), 'true');
-  assert.equal(await animated.locator('.value-in').textContent(), '-1.86');
+  await motion.locator('[data-ui="metric"] [data-ui="value-in"]').filter({ hasText: /^-1\.86$/ }).waitFor();
+  const animated = motion.locator('[data-ui="metric"]').nth(2);
+  assert.equal(await animated.locator('[data-ui="value-out"]').getAttribute('aria-hidden'), 'true');
+  assert.equal(await animated.locator('[data-ui="value-in"]').textContent(), '-1.86');
   await motion.waitForTimeout(400);
-  assert.equal(await animated.locator('.value-out').evaluate(el => getComputedStyle(el).visibility), 'hidden');
+  assert.equal(await animated.locator('[data-ui="value-out"]').evaluate(el => getComputedStyle(el).opacity), '0');
+  await motion.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
+  assert.ok(await motion.locator('[data-ui="position-count"] [data-ui="animated-value"]>span').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 28), 'position count retains card typography');
   await motion.screenshot({ path: 'tests/artifacts/ui-motion-light.png', fullPage: true });
   await motion.getByRole('combobox', { name: '外观主题' }).selectOption('dark');
   await motion.screenshot({ path: 'tests/artifacts/ui-motion-dark.png', fullPage: true });
   await motion.emulateMedia({ reducedMotion: 'reduce' });
-  assert.equal(await animated.locator('.value-in').evaluate(el => getComputedStyle(el).animationName), 'none');
-  assert.equal(await animated.locator('.value-out').evaluate(el => getComputedStyle(el).display), 'none');
+  assert.equal(await animated.locator('[data-ui="value-in"]').evaluate(el => el.getAnimations().length), 0);
+  assert.equal(await animated.locator('[data-ui="value-out"]').evaluate(el => getComputedStyle(el).display), 'none');
   for (const name of ['来源订单', 'Gate 跟踪订单', '持仓', '真实入仓历史', '活动与运行状态']) {
     await motion.getByRole('button', { name, exact: true }).click();
     await motion.getByRole('heading', { name, exact: true, level: 1 }).waitFor();
-    assert.ok(await motion.locator('.scroll-fade').count() > 0, `${name} uses shared scroll behavior`);
+    assert.ok(await motion.locator('[data-ui="scroll-fade"]').count() > 0, `${name} uses shared scroll behavior`);
     assert.ok(await motion.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   }
   assert.deepEqual(motionErrors, []);
