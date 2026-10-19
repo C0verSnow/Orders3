@@ -40,6 +40,7 @@ export function DataTable<T extends object>({
       const record = row as Record<string, unknown>;
       return String(
         record.event_id ??
+          record.source_id ??
           record.id ??
           (record.record_position !== undefined
             ? `source-${record.record_position}-${record.order_index}`

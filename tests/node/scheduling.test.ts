@@ -100,3 +100,13 @@ test('unknown scheduled POST is reconciled from live reads but never automatical
   t.mock.timers.setTime(start + 120000); await restarted.tick();
   assert.equal(posts, 1); assert.equal(restarted.snapshot().opening?.result, 'failed');
 });
+
+test('source identity survives insertion before an existing source row', t => {
+  const f = fixture(t);
+  f.storage.saveSources([{ ...source, id: 'stable-order' }]);
+  const original = f.storage.sources().orders[0] as unknown as Record<string, unknown>;
+  f.storage.saveSources([{ ...source, id: 'new-order' }, { ...source, id: 'stable-order' }]);
+  const shifted = f.storage.sources().orders[1] as unknown as Record<string, unknown>;
+  assert.equal(original.source_id, 'stable-order'); assert.equal(shifted.source_id, original.source_id);
+  assert.notEqual(shifted.record_position, original.record_position);
+});

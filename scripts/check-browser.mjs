@@ -153,7 +153,7 @@ try {
   const fade = motion.locator('[data-ui="scroll-fade"]').first(), viewport = fade.locator('[data-ui="fade-viewport"]');
   await motion.waitForFunction(() => document.querySelector('[data-ui="scroll-fade"]').dataset.more === 'true');
   assert.equal(await fade.locator('[data-ui="bottom-fade"]').evaluate(el => getComputedStyle(el).pointerEvents), 'none');
-  await viewport.evaluate(el => { el.scrollTop = 24; });
+  await viewport.evaluate(el => { const row = el.querySelectorAll('tbody [data-ui="row"]')[8]; el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().bottom + 24; });
   await motion.waitForTimeout(50);
   const edgeRows = await viewport.locator('tbody [data-ui="row"]').evaluateAll(rows => rows.map(row => Number(row.style.getPropertyValue('--scroll-opacity'))));
   assert.ok(edgeRows.some(value => value > 0 && value < 1), 'row opacity follows its actual position in the bottom 48px');

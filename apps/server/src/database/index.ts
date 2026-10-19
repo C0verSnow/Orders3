@@ -110,7 +110,8 @@ export class Storage {
     if (this.exists('orders')) orders = this.rows('orders', 'record_position,order_index').map(row => {
       const price = String(row.activation_price ?? row.price ?? '').replace(/\s+USDT$/i, ''), amount = String(row.amount ?? row.size ?? '').replace(/\s+contracts?$/i, '');
       const time = row.timestamp ?? row.orders_time;
-      return { ...row, contract: row.contract ?? row.symbol, activation_price: price ? two(price) : null,
+      const sourceId = items[Number(row.record_position)]?.id;
+      return { ...row, ...(typeof sourceId === 'string' || typeof sourceId === 'number' ? { source_id: String(sourceId) } : {}), contract: row.contract ?? row.symbol, activation_price: price ? two(price) : null,
         amount: amount ? two(amount) : null, timestamp: time === null || time === undefined || !Number.isSafeInteger(Number(time)) ? null : Number(time),
         raw_activation_price: row.raw_activation_price ?? price, raw_amount: row.raw_amount ?? amount };
     }) as unknown as SourceOrder[];
