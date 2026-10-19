@@ -33,10 +33,3 @@ function orderPrice(price: Decimal, amount: string, rules: ContractRules, priceR
   if (rules.order_size_max && decimal(rules.order_size_max).gt(0) && size.abs().gt(decimal(rules.order_size_max))) throw new Error('数量超过 Gate 最大张数');
   return aligned.toFixed(step.decimalPlaces());
 }
-export function closePrice(entry: string, size: string, margin: string, multiplier: string, priceRound: string, gateTick: string): string {
-  const e = decimal(entry), s = decimal(integer(size)), m = decimal(margin), q = decimal(multiplier);
-  if (e.lte(0) || m.lt(0) || q.lte(0)) throw new Error('平仓计算参数无效');
-  const delta = m.times('3.1').div(s.abs().times(q));
-  const target = s.gt(0) ? e.plus(delta).times('1.01') : e.minus(delta).times('0.99');
-  return orderPrice(target, s.negated().toFixed(0), { name: '', quanto_multiplier: multiplier, order_price_round: gateTick }, priceRound);
-}

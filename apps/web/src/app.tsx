@@ -26,14 +26,14 @@ function columns(fields: [string, string][]): ColumnDef<Row>[] {
     if (key === 'reduce_only') return <span className="badge">{value ? '平仓保护' : '开仓追踪'}</span>;
     if (key === 'side') return String(value ?? '—');
     if (key === 'contract') return <strong className="contract">{String(value ?? '—').replace('_', ' / ')}</strong>;
-    const numeric = ['activation_price', 'amount', 'size', 'entry_price', 'mark_price', 'unrealised_pnl', 'realised_pnl', 'initial_margin', 'close_price', 'value', 'leverage_max'].includes(key);
+    const numeric = ['activation_price', 'amount', 'size', 'entry_price', 'mark_price', 'unrealised_pnl', 'realised_pnl', 'initial_margin', 'value', 'leverage_max'].includes(key);
     return <span className="numeric">{value == null ? '—' : numeric ? two(String(value)) : String(value)}</span>;
   } }));
 }
 const sourceColumns = columns([['contract', '合约'], ['activation_price', '激活价格'], ['amount', '数量 / 张'], ['side', '来源方向'], ['timestamp', '来源时间']]);
 const trailColumns = columns([['contract', '合约'], ['activation_price', '激活价格'], ['amount', '数量 / 张'], ['reduce_only', '用途'], ['original_status', '状态'], ['id', '订单编号'], ['timestamp', '更新时间']]);
 const positionColumns = columns([['contract', '合约'], ['size', '持仓 / 张'], ['entry_price', '入仓均价'], ['mark_price', '标记价格'], ['unrealised_pnl', '未实现盈亏'], ['realised_pnl', '已实现盈亏'], ['initial_margin', '持仓保证金']]);
-const historyColumns = columns([['contract', '合约'], ['side', '方向（1 多 / -1 空）'], ['initial_margin', '持仓保证金'], ['entry_time', '真实成交时间'], ['event_id', '成交编号']]);
+const historyColumns = columns([['contract', '合约'], ['side', '方向（1 多 / -1 空）'], ['initial_margin', '固定保证金'], ['entry_time', '真实成交时间'], ['event_id', '成交编号']]);
 
 export function App() {
   const themeState = useTheme();

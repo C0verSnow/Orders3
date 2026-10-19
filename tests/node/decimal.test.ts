@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decimal, two, closePrice, executionPrice } from '../../packages/decimal/index.ts';
+import { decimal, two, executionPrice } from '../../packages/decimal/index.ts';
 test('ROUND_HALF_UP handles decimal boundaries and signed values', () => {
   for (const [input, expected] of [['123.456','123.46'],['123.454','123.45'],['0.005','0.01'],['12','12.00'],['99.999','100.00'],['-1.235','-1.24'],['-0.0001','0.00'],['0','0.00'],['0.0000000001','0.00'],['999999999999999999999.995','1000000000000000000000.00']]) assert.equal(two(input), expected);
 });
@@ -20,12 +20,4 @@ test('Supabase alignment preserves precision and independently enforces Gate rul
   for (const [price, size] of [['0.0001','2'], ['0','2'], ['-1','2'], ['100.5','1'], ['100.5','101'], ['100.5','2.5']]) assert.throws(() => executionPrice(price, size, rules, '0.001'));
   for (const step of ['0', '-0.001', 'bad']) assert.throws(() => executionPrice('100.5', '2', rules, step));
   assert.throws(() => executionPrice('100.005', '2', { ...rules, order_price_round: '0.01' }, '0.001'), /精度冲突/);
-});
-test('legacy 3.1 margin formula retains high precision and Supabase half-even alignment', () => {
-  assert.equal(closePrice('100','2','1','0.1','0.5','0.5'), '116.5');
-  assert.equal(closePrice('100','-2','1','0.1','0.5','0.5'), '83.5');
-  assert.throws(() => closePrice('100','-2','100','0.1','0.5','0.5'));
-  assert.equal(closePrice('0.0001','2','0','1','0.00001','0.00001'), '0.00010');
-  assert.equal(closePrice('100.005','2','0','1','0.001','0.0001'), '101.005');
-  assert.equal(closePrice('100','3','1','0.1','0.001','0.0001'), '111.437');
 });
