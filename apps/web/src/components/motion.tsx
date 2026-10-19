@@ -159,12 +159,12 @@ export function MotionList({
   as?: 'tbody' | 'ol' | 'ul';
   className?: string;
 }) {
-  const [snapshot, setSnapshot] = useState({ items, exiting: [] as (MotionItem & { expires: number })[] });
+  const [snapshot, setSnapshot] = useState({ items, exiting: [] as (MotionItem & { expires: number; index: number })[] });
   if (snapshot.items !== items) {
     const ids = new Set(items.map((item) => item.id));
     setSnapshot({
       items,
-      exiting: [...snapshot.exiting, ...snapshot.items.filter((item) => !ids.has(item.id)).map(item => ({ ...item, expires: Date.now() + 750 }))].filter((item, index, all) => !ids.has(item.id) && all.findIndex(other => other.id === item.id) === index).slice(0, 40),
+      exiting: [...snapshot.exiting, ...snapshot.items.map((item, index) => ({ ...item, expires: Date.now() + 750, index })).filter(item => !ids.has(item.id))].filter((item, index, all) => !ids.has(item.id) && all.findIndex(other => other.id === item.id) === index).slice(0, 40),
     });
   }
   useEffect(() => {
@@ -174,17 +174,19 @@ export function MotionList({
   }, [snapshot.exiting]);
   const Tag = as,
     Item = as === 'tbody' ? 'tr' : 'li';
+  const display = items.map(item => ({ item, exiting: false }));
+  for (const item of [...snapshot.exiting].sort((a, b) => a.index - b.index)) {
+    display.splice(Math.min(item.index, display.length), 0, { item, exiting: true });
+  }
   return (
     <Tag className={className}>
-      {items.map((item, index) => (
-        <MotionItemView key={item.id} item={item} as={Item} index={index} />
-      ))}
-      {snapshot.exiting.map((item) => (
-        <MotionItemView key={`exit-${item.id}`} item={item} as={Item} exiting />
+      {display.map(({ item, exiting }, index) => (
+        <MotionItemView key={item.id} item={item} as={Item} index={index} exiting={exiting} />
       ))}
     </Tag>
   );
 }
+
 function MotionItemView({
   item,
   as: Tag,

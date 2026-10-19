@@ -63,7 +63,7 @@ async function main() {
       if (stopped) return; stopped = true;
       scheduler.stop(); credentials.stop(); http.controller.abort();
       await app.close();
-      while (dashboard.sourcesBusy || dashboard.gateBusy) await new Promise(resolve => setTimeout(resolve, 20));
+      while (scheduler.busy || dashboard.sourcesBusy || dashboard.gateBusy) await new Promise(resolve => setTimeout(resolve, 20));
       storage?.close(); storage = undefined; await release();
     };
     process.once('SIGINT', () => { void shutdown(); }); process.once('SIGTERM', () => { void shutdown(); });

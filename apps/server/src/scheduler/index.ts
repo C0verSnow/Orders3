@@ -61,6 +61,7 @@ export class Scheduler {
       return { value: { enabled: false, cron: '' }, next: new Date(8640000000000000), busy: false, result: 'invalid', error: safeError(error), last: null, generation: 0 };
     }
   }
+  get busy() { return this.ticking; }
   get value() { return this.tasks.schedule.value; }
   get next() { return this.tasks.schedule.next; }
   get result() { return this.tasks.schedule.result; }
