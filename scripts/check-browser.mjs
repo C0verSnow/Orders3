@@ -186,7 +186,9 @@ try {
   assert.ok(await motion.locator('[data-ui="position-count"] [data-ui="animated-value"]>span').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 28), 'position count retains card typography');
   await motion.screenshot({ path: 'tests/artifacts/ui-motion-light.png', fullPage: true });
   await motion.getByRole('combobox', { name: '外观主题' }).selectOption('dark');
-  assert.ok(await motion.locator('table td').first().evaluate(el => getComputedStyle(el).color === getComputedStyle(document.querySelector('main')).color), 'dark table inherits readable foreground');
+  await motion.locator('html[data-theme="dark"]').waitFor();
+  const tableForeground = await motion.locator('table td').first().evaluate(el => ({ cell: getComputedStyle(el).color, table: getComputedStyle(el.closest('table')).color, main: getComputedStyle(document.querySelector('main')).color }));
+  assert.equal(tableForeground.cell, tableForeground.main, `dark table inherits readable foreground: ${JSON.stringify(tableForeground)}`);
   assert.ok(await motion.locator('table').evaluate(el => getComputedStyle(el).fontFamily === getComputedStyle(document.querySelector('main')).fontFamily), 'table inherits the application sans font');
   await motion.screenshot({ path: 'tests/artifacts/ui-motion-dark.png', fullPage: true });
   await motion.emulateMedia({ reducedMotion: 'reduce' });

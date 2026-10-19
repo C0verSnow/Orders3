@@ -100,7 +100,7 @@ export function DataTable<T extends object>({
         </span>
       </div>
       <ScrollFade table compact={rows.length <= 3} label={`${label}表格，可横向或纵向滚动`}>
-        <table className="w-full font-sans text-inherit border-collapse text-left text-xs whitespace-nowrap [&_th]:border-y [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:px-4 [&_th]:py-1 [&_th]:font-medium [&_th]:text-zinc-500 [&_td]:max-w-[340px] [&_td]:overflow-hidden [&_td]:border-b [&_td]:border-zinc-200 [&_td]:px-4 [&_td]:py-4 [&_td]:text-ellipsis dark:[&_th]:border-zinc-800 dark:[&_th]:bg-zinc-950 dark:[&_td]:border-zinc-800 [&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-zinc-50 dark:[&_tbody_tr:hover]:bg-zinc-800/50">
+        <table className="w-full font-sans text-zinc-900 dark:text-zinc-100 border-collapse text-left text-xs whitespace-nowrap [&_th]:border-y [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:px-4 [&_th]:py-1 [&_th]:font-medium [&_th]:text-zinc-500 [&_td]:text-inherit [&_td]:font-sans [&_td]:max-w-[340px] [&_td]:overflow-hidden [&_td]:border-b [&_td]:border-zinc-200 [&_td]:px-4 [&_td]:py-4 [&_td]:text-ellipsis dark:[&_th]:border-zinc-800 dark:[&_th]:bg-zinc-950 dark:[&_td]:border-zinc-800 [&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-zinc-50 dark:[&_tbody_tr:hover]:bg-zinc-800/50">
           <caption className="sr-only">{label}</caption>
           <thead className="sticky top-0 z-10">
             {table.getHeaderGroups().map((group) => (
