@@ -18,6 +18,6 @@ export function fixture(t: TestContext, sender?: Sender) {
   t.after(() => { http.controller.abort(); storage.close(); rmSync(root, { recursive: true, force: true }); });
   return { root, config, storage, activity, log, http, gate, dashboard };
 }
-export const source = { id: '10000000000000000001', contract: 'BTC_USDT', activation_price: '100.50', amount: '2', side: 'buy', timestamp: 1700000000000, quanto_multiplier: '0.1', order_price_round: '0.5' };
+export const source = { id: '10000000000000000001', contract: 'BTC_USDT', activation_price: '100.50', amount: '2', side: 'buy', timestamp: 1700000000000, price_round: '0.5', quanto_multiplier: '0.1', order_price_round: '0.5' };
 export const response = (data: unknown, status = 200, headers: Record<string, string> = {}) => new Response(JSON.stringify(data), { status, headers });
 export const list = (orders: unknown[]) => ({ code: 0, timestamp: 1700000000000, data: { orders } });

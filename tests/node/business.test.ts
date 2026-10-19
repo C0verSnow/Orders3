@@ -26,7 +26,7 @@ test('Cron preserves day/week OR, Sunday 7, local-time next run and strict valid
 test('partial null source is invalid, explicit empty marker is valid, side never reverses signed size', () => {
   assert.equal(sourceOrder({ ...source, contract: null, activation_price: null, amount: null, side: null },0),null);
   assert.throws(() => sourceOrder({ ...source, contract: null },0));
-  assert.equal(sourceOrder({ ...source, amount:'-2',side:'buy' },0)?.amount,'-2.00');
+  assert.equal(sourceOrder({ ...source, amount:'-2',side:'buy' },0)?.amount,'-2');
 });
 test('matching keeps at most one active order per desired row and preserves numeric equality', () => {
   const old: TrailOrder = { id:'1',contract:'BTC_USDT',amount:'2',activation_price:'100.5',reduce_only:false,original_status:2,timestamp:0 };
@@ -50,8 +50,8 @@ test('failed history batch never advances watermark', async t => {
 });
 test('precision conflict stops the whole opening batch before any write', async t => {
   let posts=0;
-  const f=fixture(t,async(url,init)=> { if(init.method==='POST')posts++; return response({name:'BTC_USDT',quanto_multiplier:'0.1',order_price_round:'0.001'}); });
-  f.storage.saveSources([{ ...source,activation_price:'100.005' }]);
+  const f=fixture(t,async(url,init)=> { if(init.method==='POST')posts++; return response({name:'BTC_USDT',quanto_multiplier:'0.1',order_price_round:'0.005'}); });
+  f.storage.saveSources([{ ...source,activation_price:'100.005', price_round:'0.003' }]);
   await assert.rejects(openOrders(f.gate,f.storage),/精度冲突/); assert.equal(posts,0); assert.equal(f.storage.intents().length,0);
 });
 test('ambiguous POST is persisted and never retried by a later refresh', async t => {
@@ -85,6 +85,7 @@ test('close reconciliation preserves an equivalent manual protection order', asy
     if(url.pathname.endsWith('/list'))return response(list(url.searchParams.get('page_num')==='1'?[{id:'999',contract:'BTC_USDT',amount:'-2',activation_price:'116.5',reduce_only:true,original_status:1}]:[]));
     return response([]);
   });
+  f.storage.saveSources([source]);
   const result=await closeOrders(f.gate,f.storage);assert.equal(posts,0);assert.equal(result[0].action,'skipped');assert.equal(f.storage.positions()[0].close_price,'116.50');
 });
 test('acknowledged creation persists once and a repeated unchanged source does not create again', async t => {
@@ -92,7 +93,7 @@ test('acknowledged creation persists once and a repeated unchanged source does n
   const f = fixture(t, async (url, init) => {
     if (init.method === 'POST') {
       posts++; const payload = JSON.parse(String(init.body));
-      assert.equal(payload.amount, '2'); assert.equal(payload.activation_price, '100.50'); assert.equal(payload.is_gte, false); assert.equal(payload.price_type, 3);
+      assert.equal(payload.amount, '2'); assert.equal(payload.activation_price, '100.5'); assert.equal(payload.is_gte, false); assert.equal(payload.price_type, 3);
       assert.equal(payload.price_offset, '1%'); assert.equal(payload.position_mode, 'dual_plus'); assert.equal(payload.reduce_only, false);
       const saved = { ...payload, id: '999999999999999999', original_status: 1 };
       created = saved;

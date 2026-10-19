@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Activity, ArrowDownToLine, ArrowUpRight, CircleHelp, Clock3, Database, History, LayoutDashboard, ListOrdered, LogOut, Menu, Monitor, Moon, RefreshCw, Settings2, ShieldCheck, Sun, Wallet, X } from 'lucide-react';
 import type { ActivitySnapshot, SourceSnapshot, OrdersSnapshot, Intent, EntryEvent } from '../../../packages/shared/types.ts';
+import { two } from '../../../packages/decimal/index.ts';
 import { api, post } from './services/api';
 import { DataTable } from './components/data-table';
 import { SettingsPage } from './pages/settings';
@@ -25,7 +26,8 @@ function columns(fields: [string, string][]): ColumnDef<Row>[] {
     if (key === 'reduce_only') return <span className="badge">{value ? '平仓保护' : '开仓追踪'}</span>;
     if (key === 'side') return String(value ?? '—');
     if (key === 'contract') return <strong className="contract">{String(value ?? '—').replace('_', ' / ')}</strong>;
-    return <span className="numeric">{String(value ?? '—')}</span>;
+    const numeric = ['activation_price', 'amount', 'size', 'entry_price', 'mark_price', 'unrealised_pnl', 'realised_pnl', 'initial_margin', 'close_price', 'value', 'leverage_max'].includes(key);
+    return <span className="numeric">{value == null ? '—' : numeric ? two(String(value)) : String(value)}</span>;
   } }));
 }
 const sourceColumns = columns([['contract', '合约'], ['activation_price', '激活价格'], ['amount', '数量 / 张'], ['side', '来源方向'], ['timestamp', '来源时间']]);

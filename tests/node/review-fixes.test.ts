@@ -80,6 +80,7 @@ test('F06 changed protection stays intact with explicit manual-replacement failu
     if (url.pathname.endsWith('/list')) return response(list(url.searchParams.get('page_num') === '1' ? [{ id: '99', contract: 'BTC_USDT', amount: '-2', activation_price: '110', reduce_only: true, original_status: 1 }] : []));
     return response([]);
   });
+  f.storage.saveSources([source]);
   const result = await closeOrders(f.gate, f.storage);
   assert.equal(posts, 0); assert.equal(result[0].operation, 'replace'); assert.match(result[0].error!, /保留旧保护单/);
   assert.equal(f.storage.trailing()[0].original_status, 1);

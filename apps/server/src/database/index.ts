@@ -109,14 +109,14 @@ export class Storage {
     this.transaction(() => {
       this.db.exec(`DROP TABLE IF EXISTS orders; DROP TABLE IF EXISTS records;
         CREATE TABLE records (position INTEGER PRIMARY KEY,url TEXT,created_at TEXT,status_code INTEGER,error TEXT,data TEXT,data_format TEXT NOT NULL,extra_json TEXT NOT NULL,present_fields TEXT NOT NULL);
-        CREATE TABLE orders (record_position INTEGER NOT NULL REFERENCES records(position),order_index INTEGER NOT NULL,contract TEXT NOT NULL,activation_price TEXT,side TEXT,amount TEXT,timestamp INTEGER,quanto_multiplier TEXT,order_price_round TEXT,raw_activation_price TEXT,raw_amount TEXT,PRIMARY KEY(record_position,order_index));`);
-      const record = this.db.prepare('INSERT INTO records VALUES (?,?,?,?,?,?,?,?,?)'), order = this.db.prepare('INSERT INTO orders VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+        CREATE TABLE orders (record_position INTEGER NOT NULL REFERENCES records(position),order_index INTEGER NOT NULL,contract TEXT NOT NULL,activation_price TEXT,side TEXT,amount TEXT,timestamp INTEGER,quanto_multiplier TEXT,order_price_round TEXT,raw_activation_price TEXT,raw_amount TEXT,price_round TEXT,PRIMARY KEY(record_position,order_index));`);
+      const record = this.db.prepare('INSERT INTO records VALUES (?,?,?,?,?,?,?,?,?)'), order = this.db.prepare('INSERT INTO orders VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
       items.forEach((item, index) => {
         const extra = { ...item }; for (const name of fields) delete extra[name];
         record.run(index, item.url as string ?? null, item.created_at as string ?? null, item.status_code as string ?? null, item.error as string ?? null,
           typeof item.data === 'string' ? item.data : JSON.stringify(item.data ?? null), typeof item.data === 'string' ? 'text' : 'json', JSON.stringify(extra), JSON.stringify(fields.filter(name => Object.hasOwn(item, name))));
         const row = orders[index];
-        if (row) order.run(index, 0, row.contract, row.activation_price, row.side, row.amount, row.timestamp, row.quanto_multiplier ?? null, row.order_price_round ?? null, String(item.activation_price), String(item.amount));
+        if (row) order.run(index, 0, row.contract, row.activation_price, row.side, row.amount, row.timestamp, row.quanto_multiplier ?? null, row.order_price_round ?? null, String(item.activation_price), String(item.amount), row.price_round ?? null);
       });
       this.touch('sources');
     });

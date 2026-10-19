@@ -11,14 +11,20 @@ test('accumulation and order notional never pass through binary floats', () => {
 test('invalid and excessive decimal inputs are rejected', () => {
   for (const value of ['NaN', 'Infinity', '1e999999', '1e-999999', '', '1.2 USDT', '0x10']) assert.throws(() => decimal(value));
 });
-test('exchange rules reject changed trigger, incompatible tick, zero price and size bounds', () => {
-  const rules = { name: 'BTC_USDT', quanto_multiplier: '0.001', order_price_round: '0.5', order_size_min: '2', order_size_max: '100' };
-  assert.equal(executionPrice('100.5', '2', rules), '100.50');
-  for (const [price, size] of [['100.005','2'],['100.51','2'],['0.004','2'],['100.5','1'],['100.5','101'],['100.5','2.5']]) assert.throws(() => executionPrice(price, size, rules));
+test('Supabase alignment preserves precision and independently enforces Gate rules and integer size bounds', () => {
+  const rules = { name: 'BTC_USDT', quanto_multiplier: '0.001', order_price_round: '0.0001', order_size_min: '2', order_size_max: '100' };
+  for (const [raw, expected] of [['100.5','100.500'], ['100.005','100.005'], ['100.0001','100.000'], ['100.1234','100.123'], ['100.1225','100.122'], ['100.1235','100.124']]) {
+    assert.equal(executionPrice(raw, '2', rules, '0.001'), expected);
+  }
+  assert.equal(executionPrice('100.1234', '2', rules, '0.005'), '100.125');
+  for (const [price, size] of [['0.0001','2'], ['0','2'], ['-1','2'], ['100.5','1'], ['100.5','101'], ['100.5','2.5']]) assert.throws(() => executionPrice(price, size, rules, '0.001'));
+  for (const step of ['0', '-0.001', 'bad']) assert.throws(() => executionPrice('100.5', '2', rules, step));
+  assert.throws(() => executionPrice('100.005', '2', { ...rules, order_price_round: '0.01' }, '0.001'), /精度冲突/);
 });
-test('legacy 3.1 margin target and pullback compensation preserve contract tick rounding', () => {
-  assert.equal(closePrice('100','2','1','0.1','0.5'), '116.50');
-  assert.equal(closePrice('100','-2','1','0.1','0.5'), '83.50');
-  assert.throws(() => closePrice('100','-2','100','0.1','0.5'));
-  assert.throws(() => closePrice('0.0001','2','0','1','0.00001'), /精度冲突/);
+test('legacy 3.1 margin formula retains high precision and Supabase half-even alignment', () => {
+  assert.equal(closePrice('100','2','1','0.1','0.5','0.5'), '116.5');
+  assert.equal(closePrice('100','-2','1','0.1','0.5','0.5'), '83.5');
+  assert.throws(() => closePrice('100','-2','100','0.1','0.5','0.5'));
+  assert.equal(closePrice('0.0001','2','0','1','0.00001','0.00001'), '0.00010');
+  assert.equal(closePrice('100.005','2','0','1','0.001','0.0001'), '101.005');
 });
