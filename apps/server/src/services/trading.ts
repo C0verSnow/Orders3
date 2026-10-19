@@ -7,6 +7,13 @@ import { object, text } from '../exchange/http.ts';
 import { syncEntries } from './entry-history.ts';
 import { AppError, safeError } from '../utils/errors.ts';
 
+export type TradingAuthorization = { kind: 'manual' } | { kind: 'scheduled'; runId: string; assertAllowed: () => void };
+function checkAuthorization(storage: Storage, authorization?: TradingAuthorization) {
+  if (!authorization) throw new AppError('缺少开仓授权', 403);
+  if (authorization.kind === 'manual') return;
+  if (authorization.kind !== 'scheduled' || storage.run(authorization.runId)?.state !== 'running') throw new AppError('自动开仓执行记录无效', 403);
+  authorization.assertAllowed();
+}
 interface Desired { contract: string; amount: string; activation_price: string }
 export function sameOrder(old: TrailOrder, desired: Desired): boolean {
   const row = old as TrailOrder & { raw_activation_price?: string; raw_amount?: string };
@@ -23,7 +30,8 @@ export function matchOrders(desired: Desired[], trailing: TrailOrder[], reduceOn
   }
   return { retained, candidates, results };
 }
-async function writeExchange(gate: Gate, storage: Storage, operation: 'stop' | 'create', body: string, onSuccess: (data: Record<string, unknown>) => void) {
+async function writeExchange(gate: Gate, storage: Storage, operation: 'stop' | 'create', body: string, onSuccess: (data: Record<string, unknown>) => void, authorization: TradingAuthorization) {
+  checkAuthorization(storage, authorization);
   if (storage.intents().length) throw new AppError('存在结果未知的交易，已禁止自动重试。请先核对 Gate 并在运行状态中处理', 409);
   const requestId = `t-${randomUUID().replaceAll('-', '').slice(0, 28)}`;
   if (operation === 'create') body = JSON.stringify({ ...JSON.parse(body), text: requestId });
@@ -55,7 +63,7 @@ function requireStep(steps: Map<string, string>, contract: string): string {
   if (!step) throw new AppError(`${contract} 缺少 Supabase orders.order_price_round，请先刷新包含该合约的来源配置，已停止整批交易`);
   return step;
 }
-async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trailing: TrailOrder[], rules: Map<string, ContractRules>, steps: Map<string, string>): Promise<Execution[]> {
+async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trailing: TrailOrder[], rules: Map<string, ContractRules>, steps: Map<string, string>, authorization: TradingAuthorization): Promise<Execution[]> {
   // Complete parameter validation, including all stop IDs, before the first destructive operation.
   for (const entry of desired) {
     const rule = rules.get(entry.contract);
@@ -73,7 +81,7 @@ async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trail
       await writeExchange(gate, storage, 'stop', `{"id":${row.id}}`, () => {
         trailing[index] = { ...row, original_status: 5, timestamp: Date.now() };
         storage.saveTrailing(trailing);
-      });
+      }, authorization);
       results.push({ action: 'stopped', contract: row.contract, id: row.id });
     } catch (error) { results.push({ action: 'failed', operation: 'stop', contract: row.contract, id: row.id, error: safeError(error) }); return results; }
   }
@@ -91,13 +99,14 @@ async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trail
         exchangeId = id;
         trailing.push({ ...entry, id, reduce_only: false, original_status: 1, timestamp: Date.now() });
         storage.saveTrailing(trailing);
-      });
+      }, authorization);
       results.push({ action: 'created', contract: entry.contract, id: exchangeId });
     } catch (error) { results.push({ action: 'failed', operation: 'create', contract: entry.contract, error: safeError(error) }); return results; }
   }
   return results;
 }
-export async function openOrders(gate: Gate, storage: Storage): Promise<Execution[]> {
+export async function openOrders(gate: Gate, storage: Storage, authorization?: TradingAuthorization): Promise<Execution[]> {
+  checkAuthorization(storage, authorization);
   const sources = storage.sources().orders, rules = new Map<string, ContractRules>();
   gate.requireCredentials();
   const steps = sourceSteps(sources);
@@ -109,5 +118,6 @@ export async function openOrders(gate: Gate, storage: Storage): Promise<Executio
   }
   // Reconcile from live exchange data, so a stale cache cannot cause duplicate submissions.
   const trailing = await gate.trailing(); storage.saveTrailing(trailing);
-  return reconcile(gate, storage, desired, trailing, rules, steps);
+  if (authorization?.kind === 'scheduled' && !sources.length) throw new AppError('预测订单为空，自动开仓已停止');
+  return reconcile(gate, storage, desired, trailing, rules, steps, authorization!);
 }

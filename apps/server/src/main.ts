@@ -71,7 +71,7 @@ async function main() {
     const ready = credentials.refresh();
     void ready.then(async () => {
       if (stopped || values.cached) return;
-      // Preserve independent startup jobs; the shared gate lock serializes execution.
+      // Startup jobs only synchronize data; opening waits for its independent schedule.
       await Promise.allSettled([dashboard.refreshSources(), dashboard.refreshOrders()]);
     });
     if (!values['no-browser'] && (values.browser || (!container && process.env.ORDERS_NO_BROWSER !== '1'))) {

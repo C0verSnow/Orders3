@@ -140,8 +140,10 @@ export class Configuration {
     this.restartRequired = join(expand(next.ORDERS_DATA_DIR || this.defaultDataPath), 'data.db') !== this.databasePath;
     return this.snapshot();
   }
-  schedule(): Schedule {
-    const section = iniSection(this.text(), 'schedule');
-    return { enabled: section.enabled !== 'false', cron: section.cron ?? '*/15 * * * *' };
+  schedule(sectionName: 'schedule' | 'opening' = 'schedule'): Schedule {
+    const section = iniSection(this.text(), sectionName);
+    if (section.enabled !== undefined && !['true', 'false'].includes(section.enabled)) throw new AppError('定时开关只能为 true 或 false');
+    // Never migrate the old combined switch into permission to trade.
+    return { enabled: sectionName === 'opening' ? section.enabled === 'true' : section.enabled !== 'false', cron: section.cron ?? '*/15 * * * *' };
   }
 }

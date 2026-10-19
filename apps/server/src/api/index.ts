@@ -60,6 +60,7 @@ export function createServer(dashboard: Dashboard, scheduler: Scheduler, credent
   });
   app.get('/api/schedule', () => scheduler.snapshot());
   app.post('/api/schedule', request => scheduler.update(request.body));
+  app.post('/api/schedule/opening', request => scheduler.update(request.body, 'opening'));
   app.get('/api/download', (_request, reply) => reply.type('application/vnd.sqlite3').header('Content-Disposition', 'attachment; filename="data.db"').send(dashboard.storage.download()));
   app.post('/api/intents/resolve', async request => {
     const parsed = z.object({ id: z.string().uuid(), confirmed_exchange_review: z.literal(true), evidence: z.string().trim().min(8).max(2000) }).strict().safeParse(request.body);

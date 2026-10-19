@@ -72,6 +72,7 @@ export class Storage {
       CREATE TABLE IF NOT EXISTS position_entry_margin (owner TEXT NOT NULL,contract TEXT NOT NULL,side INTEGER NOT NULL,event_id TEXT NOT NULL,entry_time INTEGER NOT NULL,initial_margin TEXT,PRIMARY KEY(owner,contract,side));
       CREATE TABLE IF NOT EXISTS trade_intents (id TEXT PRIMARY KEY,operation TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL,exchange_id TEXT,created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS raw_positions (contract TEXT NOT NULL,size TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(contract,size));
+      CREATE TABLE IF NOT EXISTS scheduled_runs (id TEXT PRIMARY KEY,task TEXT NOT NULL,due_at INTEGER NOT NULL,state TEXT NOT NULL,error TEXT,finished_at INTEGER);
       CREATE TABLE IF NOT EXISTS snapshots (name TEXT PRIMARY KEY,updated_at TEXT NOT NULL);`);
     for (const [table, name] of [['position', 'quanto_multiplier'], ['position', 'order_price_round'], ['position_entry_history', 'initial_margin'], ['orderslist', 'raw_activation_price'], ['orderslist', 'raw_amount'], ['trade_intents', 'owner'], ['trade_intents', 'request_id'], ['trade_intents', 'review_evidence']]) {
       if (!this.columns(table).includes(name)) this.db.exec(`ALTER TABLE "${table}" ADD COLUMN "${name}" TEXT`);
@@ -80,6 +81,18 @@ export class Storage {
       // Old trigger_price was not the activation price. Never promote it into an execution parameter.
       if (!this.columns('orderslist').includes('activation_price')) this.db.exec('ALTER TABLE orderslist ADD COLUMN activation_price TEXT');
     }
+  }
+  claimRun(task: string, due: number): string | null {
+    const id = `${task}:${due}`;
+    return this.transaction(() => this.db.prepare('INSERT OR IGNORE INTO scheduled_runs(id,task,due_at,state) VALUES (?,?,?,?)').run(id, task, due, 'running').changes ? id : null);
+  }
+  finishRun(id: string, state: string, error: string | null = null) {
+    this.transaction(() => this.db.prepare('UPDATE scheduled_runs SET state=?,error=?,finished_at=? WHERE id=? AND state=?').run(state, error, Date.now(), id, 'running'));
+  }
+  run(id: string) { return this.db.prepare('SELECT * FROM scheduled_runs WHERE id=?').get(id); }
+  lastRun(task: string) { return this.db.prepare('SELECT * FROM scheduled_runs WHERE task=? ORDER BY due_at DESC LIMIT 1').get(task); }
+  recoverRuns() {
+    this.transaction(() => this.db.prepare("UPDATE scheduled_runs SET state='unknown',error='上次进程中断，已禁止补跑，请核对交易所记录',finished_at=? WHERE state='running'").run(Date.now()));
   }
   updated(name: string): string | null { return this.exists('snapshots') ? (this.db.prepare('SELECT updated_at FROM snapshots WHERE name=?').get(name)?.updated_at as string ?? null) : null; }
   touch(name: string) { this.db.prepare('INSERT OR REPLACE INTO snapshots VALUES (?,?)').run(name, new Date().toISOString()); }

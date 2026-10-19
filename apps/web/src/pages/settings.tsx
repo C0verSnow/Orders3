@@ -17,7 +17,7 @@ export function SettingsPage() {
   });
   const client = useQueryClient();
   const [settingsVersion, setSettingsVersion] = useState(0),
-    [scheduleVersion, setScheduleVersion] = useState(0);
+    [scheduleVersion, setScheduleVersion] = useState(0), [openingVersion, setOpeningVersion] = useState(0);
   const save = useMutation({
     mutationFn: (body: unknown) => post<Settings>('/api/settings', body),
     onSuccess: (data) => {
@@ -31,6 +31,10 @@ export function SettingsPage() {
       client.setQueryData(['schedule'], data);
       setScheduleVersion((value) => value + 1);
     },
+  });
+  const opening = useMutation({
+    mutationFn: (body: unknown) => post<Schedule>('/api/schedule/opening', body),
+    onSuccess: (data) => { client.setQueryData(['schedule'], data); setOpeningVersion(value => value + 1); },
   });
   if (settings.isPending || schedule.isPending) return <p role="status">正在读取配置…</p>;
   if (!settings.data || !schedule.data)
@@ -143,10 +147,11 @@ export function SettingsPage() {
       <Panel>
         <div className="mb-4 flex flex-wrap items-center gap-2 [&>svg]:size-[18px] [&>svg]:text-zinc-500">
           <Clock3 size={18} />
-          <TwoToneTitle title="来源自动追踪" description="定时与周期" />
+          <TwoToneTitle title="预测抓取" description="定时与周期" />
         </div>
         <ScheduleForm
           key={scheduleVersion}
+          label="启用预测订单定时抓取"
           value={schedule.data!}
           save={(body) => timer.mutate(body)}
           pending={timer.isPending}
@@ -154,6 +159,10 @@ export function SettingsPage() {
         <p role={timer.error ? 'alert' : 'status'}>
           {timer.error?.message || (timer.isSuccess ? '定时配置已保存。' : '')}
         </p>
+        <div className="mt-8 mb-5"><TwoToneTitle title="自动开仓" description="独立授权与周期" /></div>
+        <p className="mb-4 text-xs leading-relaxed text-zinc-500">默认关闭。启用后仅在计划时间使用已保存的有效预测订单交易；启动、刷新和预测抓取不会开仓。请先完成一次预测抓取。</p>
+        <ScheduleForm key={`opening-${openingVersion}`} label="启用自动开仓（涉及真实交易）" value={schedule.data.opening!} save={body => opening.mutate(body)} pending={opening.isPending} />
+        <p role={opening.error ? 'alert' : 'status'}>{opening.error?.message || (opening.isSuccess ? '自动开仓配置已保存。' : '')}</p>
         <div className="mt-8 rounded-xl border border-zinc-200 bg-zinc-50 p-5 text-xs leading-relaxed text-zinc-500 dark:border-zinc-700 dark:bg-zinc-950 [&_strong]:text-zinc-900 dark:[&_strong]:text-zinc-100 [&_p]:mt-2">
           <strong>独立的持仓同步</strong>
           <p>
@@ -169,7 +178,9 @@ function ScheduleForm({
   value,
   save,
   pending,
+  label,
 }: {
+  label: string;
   value: Schedule;
   save: (body: Schedule) => void;
   pending: boolean;
@@ -189,7 +200,7 @@ function ScheduleForm({
           checked={enabled}
           onChange={(event) => setEnabled(event.target.checked)}
         />
-        启用来源定时抓取与自动开仓
+        {label}
       </label>
       <label>
         快捷周期
@@ -217,6 +228,7 @@ function ScheduleForm({
       <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
         分 · 时 · 日 · 月 · 星期，按服务器本地时间执行。错过的任务不会补跑。
       </p>
+      <p role={value.error ? "alert" : "status"}>{value.error || `上次状态：${value.result ?? "idle"}`}</p>
       <p>下次执行：{value.next_run ? new Date(value.next_run).toLocaleString() : '已停用'}</p>
       <Button variant="primary" disabled={pending}>
         <Save size={16} />

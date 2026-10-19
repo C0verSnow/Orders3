@@ -35,7 +35,7 @@ test('F03 empty local cache still fetches and stops live opening order', async t
     return response(list(url.searchParams.get('page_num') === '1' ? [old] : []));
   });
   assert.equal(f.storage.trailing().length, 0);
-  assert.equal((await openOrders(f.gate, f.storage))[0].action, 'stopped');
+  assert.equal((await openOrders(f.gate, f.storage, { kind: 'manual' }))[0].action, 'stopped');
   assert.ok(calls.some(value => value.endsWith('/stop')));
 });
 test('F04 delayed fills behind watermark are added once even after display history pruning', async t => {
@@ -98,7 +98,7 @@ test('F07 unknown creation includes original credential fingerprint and unique G
     if (url.pathname.endsWith('/list')) return response(list([]));
     return response([]);
   });
-  f.storage.saveSources([source]); await openOrders(f.gate, f.storage);
+  f.storage.saveSources([source]); await openOrders(f.gate, f.storage, { kind: 'manual' });
   assert.equal(f.storage.intents()[0].state, 'unknown');
 });
 test('F07 wrong credential and legacy ownerless intent cannot be released; same identity records evidence without POST', async t => {

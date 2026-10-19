@@ -44,7 +44,7 @@ export function DataTable<T extends object>({
           (record.record_position !== undefined
             ? `source-${record.record_position}-${record.order_index}`
             : record.contract
-              ? `${record.contract}-${record.side ?? ''}`
+              ? `${record.contract}-${record.side ?? ''}-${record.size ?? ''}`
               : index),
       );
     },

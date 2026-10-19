@@ -8,7 +8,7 @@ import { syncEntries } from './entry-history.ts';
 import { Gate } from '../exchange/gate.ts';
 import { fetchSources } from '../exchange/supabase.ts';
 import { sourceOrder } from './source-parser.ts';
-import { openOrders } from './trading.ts';
+import { openOrders, type TradingAuthorization } from './trading.ts';
 import { syncPositions } from './positions.ts';
 import { AppError, safeError } from '../utils/errors.ts';
 
@@ -40,7 +40,6 @@ export class Dashboard {
     const release = this.config.acquireConnection();
     this.sourcesBusy = true; this.phase = 'fetching'; this.sourceError = null; this.execution = [];
     this.activity.begin('sources');
-    let saved = false, acquired = false;
     const config = this.config.connection();
     try {
       if (this.storage.schemaError) throw new AppError(this.storage.schemaError);
@@ -53,19 +52,30 @@ export class Dashboard {
         items[index].quanto_multiplier = rule.quanto_multiplier;
         items[index].order_price_round = rule.order_price_round;
       }
-      this.storage.saveSources(items); saved = true; this.phase = 'trading';
-      await this.gateWork;
-      this.gateBusy = true; acquired = true;
-      const work = openOrders(gate, this.storage); this.gateWork = work.catch(() => {});
-      this.execution = await work;
-      const failure = this.execution.find(row => row.action === 'failed');
-      if (failure) throw new AppError(failure.error || '交易执行失败', 502);
+      this.storage.saveSources(items);
       this.phase = 'completed'; this.activity.finish('sources', true);
     } catch (error) {
-      this.phase = 'failed'; this.sourceError = `${saved ? '来源已保存，自动下单暂停' : '抓取失败，保留上次数据'}：${safeError(error)}`;
+      this.phase = 'failed'; this.sourceError = `抓取失败，保留上次数据：${safeError(error)}`;
       this.activity.finish('sources', false);
       throw new AppError(this.sourceError, 502);
-    } finally { this.sourcesBusy = false; if (acquired) this.gateBusy = false; release(); }
+    } finally { this.sourcesBusy = false; release(); }
+  }
+  async executeOpening(authorization: TradingAuthorization) {
+    if (this.gateBusy || this.sourcesBusy) throw new AppError('数据任务正在运行，本次开仓跳过', 409);
+    if (this.storage.schemaError) throw new AppError(this.storage.schemaError);
+    const release = this.config.acquireConnection();
+    this.gateBusy = true; this.ordersError = null; this.execution = []; this.activity.begin('opening');
+    const work = (async () => {
+      try {
+        this.execution = await openOrders(new Gate(this.http, this.config.connection(), 'opening'), this.storage, authorization);
+        const failure = this.execution.find(row => row.action === 'failed');
+        if (failure) throw new AppError(failure.error || '开仓失败', 502);
+        this.activity.finish('opening', true);
+      } catch (error) { this.ordersError = safeError(error); this.activity.finish('opening', false); throw error; }
+      finally { this.gateBusy = false; release(); }
+    })();
+    this.gateWork = work.catch(() => {});
+    return work;
   }
   async resolveIntent(id: string, evidence: string) {
     if (this.gateBusy || this.sourcesBusy) throw new AppError('请等待当前任务完成', 409);

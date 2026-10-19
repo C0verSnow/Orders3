@@ -32,11 +32,11 @@ test('opening sends precise aligned price and integer size, then retains equival
     return response([]);
   });
   f.storage.saveSources([{ ...source, activation_price: '100.005', price_round: '0.001' }]);
-  assert.equal((await openOrders(f.gate, f.storage))[0].action, 'created');
+  assert.equal((await openOrders(f.gate, f.storage, { kind: 'manual' }))[0].action, 'created');
   assert.equal(posts[0].activation_price, '100.005'); assert.equal(posts[0].amount, '2');
   const row = f.storage.rows('orderslist', 'id')[0];
   assert.equal(row.raw_activation_price, '100.005'); assert.equal(row.activation_price, '100.01');
-  assert.equal((await openOrders(f.gate, f.storage))[0].action, 'skipped'); assert.equal(posts.length, 1);
+  assert.equal((await openOrders(f.gate, f.storage, { kind: 'manual' }))[0].action, 'skipped'); assert.equal(posts.length, 1);
 });
 
 test('missing, conflicting, invalid, zero-aligned and Gate-incompatible source steps block before any POST', async t => {
@@ -50,7 +50,7 @@ test('missing, conflicting, invalid, zero-aligned and Gate-incompatible source s
     let posts = 0;
     const f = fixture(t, async (url, init) => { if (init.method === 'POST') posts++; return response({ ...rule, order_price_round: '0.01' }); });
     f.storage.saveSources(orders);
-    await assert.rejects(openOrders(f.gate, f.storage)); assert.equal(posts, 0); assert.equal(f.storage.intents().length, 0);
+    await assert.rejects(openOrders(f.gate, f.storage, { kind: 'manual' })); assert.equal(posts, 0); assert.equal(f.storage.intents().length, 0);
   }
 });
 
@@ -94,6 +94,7 @@ test('full source refresh preserves JSON numeric Supabase step alongside indepen
     return response([]);
   });
   await f.dashboard.refreshSources();
+  await f.dashboard.executeOpening({ kind: 'manual' });
   assert.equal(posted?.activation_price, '100.005');
   const saved = f.storage.sources().orders[0];
   assert.equal(saved.price_round, '0.001'); assert.equal(saved.order_price_round, '0.0001');
@@ -113,13 +114,15 @@ test('full source refresh accepts sub-cent prices and clears a previous precisio
         return response([]);
       });
       // A real Gate conflict still pauses the whole batch, with the saved raw value intact.
-      await assert.rejects(f.dashboard.refreshSources(), /来源已保存，自动下单暂停：精度冲突/);
-      assert.equal(f.dashboard.sources().phase, 'failed');
+      await f.dashboard.refreshSources();
+      await assert.rejects(f.dashboard.executeOpening({ kind: 'manual' }), /精度冲突/);
+      assert.equal(f.dashboard.sources().phase, 'completed');
       assert.equal(posts.length, 0); assert.equal(f.storage.intents().length, 0);
       assert.equal(f.storage.rows('orders', 'record_position')[0].raw_activation_price, raw);
       // Once Gate accepts the Supabase step, display rounding cannot keep trading paused.
       tick = '0.0001';
       await f.dashboard.refreshSources();
+  await f.dashboard.executeOpening({ kind: 'manual' });
       const snapshot = f.dashboard.sources();
       assert.equal(snapshot.error, null); assert.equal(snapshot.phase, 'completed');
       assert.equal(snapshot.refreshing, false); assert.equal(snapshot.execution[0].action, 'created');
@@ -147,6 +150,7 @@ test('Supabase orders.order_price_round survives Gate enrichment and drives ETH 
     return response([]);
   });
   await f.dashboard.refreshSources();
+  await f.dashboard.executeOpening({ kind: 'manual' });
   const saved = f.storage.sources().orders[0];
   assert.equal(saved.price_round, '0.005'); assert.equal(saved.order_price_round, '0.0001');
   assert.equal(posts[0].activation_price, '100.125'); assert.equal(posts[0].amount, '2');
@@ -168,8 +172,9 @@ test('invalid or missing Supabase order_price_round never falls back to price_ro
       if (url.pathname.endsWith('/list')) return response(list([]));
       return response([]);
     });
-    await assert.rejects(f.dashboard.refreshSources());
-    assert.equal(f.dashboard.sources().phase, 'failed');
+    await f.dashboard.refreshSources();
+    await assert.rejects(f.dashboard.executeOpening({ kind: 'manual' }));
+    assert.equal(f.dashboard.sources().phase, 'completed');
     assert.equal(posts, 0); assert.equal(f.storage.intents().length, 0);
   }
 });

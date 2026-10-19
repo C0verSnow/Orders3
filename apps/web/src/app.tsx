@@ -1,4 +1,4 @@
-import { Button, Input, Select, Badge, Panel } from './components/ui';
+import { Button, Input, Badge, Panel } from './components/ui';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -42,11 +42,11 @@ type Row = Record<string, unknown>;
 type Page = 'overview' | 'sources' | 'trailing' | 'positions' | 'history' | 'activity' | 'settings';
 const pages = [
   { id: 'overview', label: '交易概览', icon: LayoutDashboard },
-  { id: 'sources', label: '来源订单', icon: Database },
-  { id: 'trailing', label: 'Gate 跟踪订单', icon: ListOrdered },
-  { id: 'positions', label: '持仓', icon: Wallet },
-  { id: 'history', label: '真实入仓历史', icon: History },
-  { id: 'activity', label: '活动与运行状态', icon: Activity },
+  { id: 'sources', label: '预测订单', icon: Database },
+  { id: 'trailing', label: '跟踪订单', icon: ListOrdered },
+  { id: 'positions', label: '当前持仓', icon: Wallet },
+  { id: 'history', label: '入仓历史', icon: History },
+  { id: 'activity', label: '运行状态', icon: Activity },
   { id: 'settings', label: '系统设置', icon: Settings2 },
 ] as const;
 const date = (value: unknown) => {
@@ -171,9 +171,9 @@ export function App() {
     return (
       <main className="mx-auto grid min-h-dvh max-w-xl place-content-center p-6 [&_form]:mt-6 [&_form]:grid [&_form]:gap-5 [&_label]:grid [&_label]:gap-2 [&_label]:text-sm [&_h1]:my-6 [&_h1]:text-2xl [&_h1]:font-semibold">
         <div className="mb-6 min-w-0 rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-sm md:p-6 dark:border-zinc-700 dark:bg-zinc-900">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-[22px] font-bold tracking-tighter text-white dark:bg-zinc-100 dark:text-zinc-900 [&>span]:mt-3 [&>span]:text-[11px]">
-            O<span>3</span>
-          </div>
+          <svg data-ui="brand-logo" viewBox="0 0 40 40" role="img" aria-label="Orders3" className="size-10 shrink-0 text-zinc-900 dark:text-zinc-100">
+            <circle cx="20" cy="20" r="14" fill="none" stroke="currentColor" strokeWidth="4" />
+          </svg>
           <h1>连接你的交易工作台</h1>
           <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
             输入服务启动时显示的登录令牌。凭证与交易调度由你的服务端管理。
@@ -386,10 +386,7 @@ function Workspace({
   const busy = refresh.isPending || source.data?.refreshing || orders.data?.refreshing;
   const heading = pages.find((item) => item.id === page)!;
   const requestRefresh = (which: 'all' | 'sources' | 'orders') => {
-    if (
-      which === 'orders' ||
-      confirm('刷新来源会同步真实订单，并可能停止旧开仓单、提交新开仓单。确认执行？')
-    ) {
+    {
       setNotice('正在同步，请等待服务端确认结果…');
       refresh.mutate(which);
     }
@@ -461,24 +458,15 @@ function Workspace({
           <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
             交易状态以 Gate 实际记录为准
           </p>
-          <label className="flex items-center gap-2 text-zinc-500 [&>select]:border-0 [&>select]:bg-transparent [&>select]:p-0 [&>select]:text-xs">
-            <span className="sr-only">外观主题</span>
-            {theme === 'dark' ? (
-              <Moon size={16} />
-            ) : theme === 'light' ? (
-              <Sun size={16} />
-            ) : (
-              <Monitor size={16} />
-            )}
-            <Select
-              value={theme}
-              onChange={(event) => setTheme(event.target.value as typeof theme)}
-            >
-              <option value="system">跟随系统</option>
-              <option value="light">浅色外观</option>
-              <option value="dark">深色外观</option>
-            </Select>
-          </label>
+          <div role="group" aria-label="外观主题" className="grid grid-cols-3 gap-1 rounded-xl bg-zinc-200/60 p-1 dark:bg-zinc-800">
+            {([{ value: 'light', label: '浅色模式', icon: Sun }, { value: 'dark', label: '深色模式', icon: Moon }, { value: 'system', label: '跟随系统', icon: Monitor }] as const).map(option => (
+              <Button key={option.value} aria-pressed={theme === option.value} aria-label={option.label}
+                variant="quiet" onClick={() => setTheme(option.value)}
+                className={`min-w-0 flex-col gap-1! px-1! py-2! text-[10px]! ${theme === option.value ? 'bg-white! text-zinc-900 shadow-sm dark:bg-zinc-600! dark:text-white' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                <option.icon size={14} aria-hidden="true" />{option.label}
+              </Button>
+            ))}
+          </div>
           <Button variant="text" onClick={() => logout.mutate()} disabled={logout.isPending}>
             <LogOut size={14} />
             退出工作台
@@ -500,12 +488,7 @@ function Workspace({
               <ArrowDownToLine size={16} />
               <span>下载数据库</span>
             </Button>
-            <span
-              className="grid size-7 shrink-0 place-items-center rounded-full bg-blue-50 text-xs font-semibold text-blue-600 dark:bg-blue-950 dark:text-blue-300"
-              aria-label="本地受信任会话"
-            >
-              T
-            </span>
+
           </div>
         </header>
         <main
@@ -598,7 +581,7 @@ function Workspace({
                 <strong>自动交易已暂停：有 {pending.data.pending.length} 笔请求结果需要核对</strong>
                 <p>
                   请先在 Gate
-                  查看真实订单与成交，确认后到“活动与运行状态”处理。系统不会自动重发这些请求。
+                  查看真实订单与成交，确认后到“运行状态”处理。系统不会自动重发这些请求。
                 </p>
                 <Button variant="text" onClick={() => setPage('activity')}>
                   查看待核对交易
@@ -611,7 +594,7 @@ function Workspace({
             <>
               <div className="mb-6 grid grid-cols-2 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm xl:grid-cols-4 dark:border-zinc-700 dark:bg-zinc-900">
                 <Metric
-                  label="来源订单"
+                  label="预测订单"
                   value={source.data ? String(source.data.orders.length) : '—'}
                   detail="完整分页后保存"
                 />
@@ -654,7 +637,7 @@ function Workspace({
                         : '所有请求已结束'}
                   </h2>
                   <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-                    来源抓取 → 成交核对 → 交易执行 → 持久化确认
+                    预测抓取与自动开仓独立调度
                   </p>
                 </div>
                 <div className="flex w-full flex-wrap justify-between gap-5 xl:w-auto [&>span]:flex [&>span]:flex-col [&>span]:gap-2 [&>span]:text-[10px] [&>span]:text-zinc-500 [&_strong]:whitespace-nowrap [&_strong]:text-sm [&_strong]:font-medium [&_strong]:text-zinc-900 dark:[&_strong]:text-zinc-100">
@@ -697,7 +680,7 @@ function Workspace({
                   loading={source.isPending}
                   rows={sourceRows}
                   columns={sourceColumns}
-                  label="来源订单"
+                  label="预测订单"
                 />
               </OrderPanel>
               <div className="grid gap-0 lg:grid-cols-[1fr_1.5fr] lg:gap-6">
@@ -717,7 +700,7 @@ function Workspace({
                     每分钟同步持仓，不再自动创建或调整保护单。
                   </p>
                   <Button variant="text" onClick={() => setPage('positions')}>
-                    查看持仓
+                    查看当前持仓
                     <ArrowUpRight size={14} />
                   </Button>
                 </Panel>
@@ -733,11 +716,11 @@ function Workspace({
           )}
           {page === 'sources' && (
             <OrderPanel
-              title="来源订单"
+              title="预测订单"
               description={`最近保存：${source.data?.updated_at ? new Date(source.data.updated_at).toLocaleString() : '尚未同步'} · 详情保留完整来源记录`}
               action={
                 <Button disabled={busy} onClick={() => requestRefresh('sources')}>
-                  刷新来源并执行策略
+                  刷新预测订单
                 </Button>
               }
             >
@@ -745,13 +728,13 @@ function Workspace({
                 loading={source.isPending}
                 rows={sourceRows}
                 columns={sourceColumns}
-                label="来源订单"
+                label="预测订单"
               />
             </OrderPanel>
           )}
           {page === 'trailing' && (
             <OrderPanel
-              title="Gate 跟踪订单"
+              title="跟踪订单"
               description={`状态 2 保留；状态 5 默认隐藏。订单最近同步：${date(orders.data?.trailing_updated_at)}`}
               action={
                 <label className="flex flex-row items-center gap-2 text-xs font-normal">
@@ -768,13 +751,13 @@ function Workspace({
                 loading={orders.isPending}
                 rows={trailingRows}
                 columns={trailColumns}
-                label="Gate 跟踪订单"
+                label="跟踪订单"
               />
             </OrderPanel>
           )}
           {page === 'positions' && (
             <OrderPanel
-              title="持仓"
+              title="当前持仓"
               description={`仅同步数据，自动保护单功能已取消。持仓最近同步：${date(orders.data?.position_updated_at)}；订单最近同步：${date(orders.data?.trailing_updated_at)}`}
               action={
                 <Button disabled={busy} onClick={() => requestRefresh('orders')}>
@@ -786,13 +769,13 @@ function Workspace({
                 loading={orders.isPending}
                 rows={positionRows}
                 columns={positionColumns}
-                label="持仓"
+                label="当前持仓"
               />
             </OrderPanel>
           )}
           {page === 'history' && (
             <OrderPanel
-              title="真实入仓历史"
+              title="入仓历史"
               description="仅记录真实开仓、加仓或反手新开方向；保留最近 100 条，用于 7 天限制。"
             >
               {entries.error && <p role="alert">{entries.error.message}</p>}
@@ -963,7 +946,7 @@ function ExecutionList({
         />
       ) : (
         <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-          尚无执行结果。刷新或自动任务完成后会在这里显示。
+          尚无执行结果。自动开仓任务完成后会在这里显示。
         </p>
       )}
     </ScrollFade>

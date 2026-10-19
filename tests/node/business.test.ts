@@ -53,7 +53,7 @@ test('precision conflict stops the whole opening batch before any write', async 
   let posts=0;
   const f=fixture(t,async(url,init)=> { if(init.method==='POST')posts++; return response({name:'BTC_USDT',quanto_multiplier:'0.1',order_price_round:'0.005'}); });
   f.storage.saveSources([{ ...source,activation_price:'100.008', price_round:'0.003' }]);
-  await assert.rejects(openOrders(f.gate,f.storage),/精度冲突/); assert.equal(posts,0); assert.equal(f.storage.intents().length,0);
+  await assert.rejects(openOrders(f.gate,f.storage, { kind: 'manual' }),/精度冲突/); assert.equal(posts,0); assert.equal(f.storage.intents().length,0);
 });
 test('ambiguous POST is persisted and never retried by a later refresh', async t => {
   let posts=0;
@@ -63,9 +63,9 @@ test('ambiguous POST is persisted and never retried by a later refresh', async t
     if(url.pathname.endsWith('/list'))return response(list([]));
     return response([]);
   });
-  f.storage.saveSources([source]); const result=await openOrders(f.gate,f.storage);
+  f.storage.saveSources([source]); const result=await openOrders(f.gate,f.storage, { kind: 'manual' });
   assert.equal(result[0].action,'failed'); assert.equal(f.storage.intents()[0].state,'unknown');
-  await assert.rejects(openOrders(f.gate,f.storage),/结果未知/); assert.equal(posts,1);
+  await assert.rejects(openOrders(f.gate,f.storage, { kind: 'manual' }),/结果未知/); assert.equal(posts,1);
 });
 test('empty sources stop only state 1 opening orders, preserving activated and protection orders', async t => {
   const orders: TrailOrder[] = [1,2,3].map((id,index)=>({ id:String(id),contract:'BTC_USDT',amount:'2',activation_price:'100.50',reduce_only:index===2,original_status:index===1?2:1,timestamp:0 }));
@@ -74,7 +74,7 @@ test('empty sources stop only state 1 opening orders, preserving activated and p
     if(init.method==='POST'){bodies.push(String(init.body));return response({code:0,data:{orders:[]}});}
     return response(list(new URL(url).searchParams.get('page_num')==='1'?orders:[]));
   });
-  f.storage.saveSources([]);f.storage.saveTrailing(orders); const result=await openOrders(f.gate,f.storage);
+  f.storage.saveSources([]);f.storage.saveTrailing(orders); const result=await openOrders(f.gate,f.storage, { kind: 'manual' });
   assert.deepEqual(bodies,['{"id":1}']); assert.equal(result[0].action,'stopped'); assert.equal(f.storage.trailing().find(row=>row.id==='2')?.original_status,2);
 });
 test('read-only position sync leaves manual protection orders untouched', async t => {
@@ -104,9 +104,9 @@ test('acknowledged creation persists once and a repeated unchanged source does n
     if (url.pathname.endsWith('/list')) return response(list(url.searchParams.get('page_num') === '1' && created ? [created] : []));
     return response([]);
   });
-  f.storage.saveSources([source]); assert.equal((await openOrders(f.gate, f.storage))[0].action, 'created');
+  f.storage.saveSources([source]); assert.equal((await openOrders(f.gate, f.storage, { kind: 'manual' }))[0].action, 'created');
   assert.equal(f.storage.trailing()[0].id, '999999999999999999'); assert.equal(f.storage.intents().length, 0);
-  assert.equal((await openOrders(f.gate, f.storage))[0].action, 'skipped'); assert.equal(posts, 1);
+  assert.equal((await openOrders(f.gate, f.storage, { kind: 'manual' }))[0].action, 'skipped'); assert.equal(posts, 1);
 });
 test('a stop failure ends the batch before any replacement creation', async t => {
   const posts: string[] = [];
@@ -117,7 +117,7 @@ test('a stop failure ends the batch before any replacement creation', async t =>
     if (url.pathname.endsWith('/list')) return response(list(url.searchParams.get('page_num') === '1' ? [old] : []));
     return response([]);
   });
-  f.storage.saveSources([source]); const result = await openOrders(f.gate, f.storage);
+  f.storage.saveSources([source]); const result = await openOrders(f.gate, f.storage, { kind: 'manual' });
   assert.equal(result[0].action, 'failed'); assert.equal(posts.length, 1); assert.match(posts[0], /\/stop$/);
   assert.doesNotMatch(result[0].error!, /private remote text/);
 });

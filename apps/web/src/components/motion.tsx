@@ -22,7 +22,7 @@ export function MotionProvider({ children }: { children: ReactNode }) {
   }, []);
   return <ReducedMotion value={reduced}>{children}</ReducedMotion>;
 }
-const easing = 'cubic-bezier(0.22,1,0.36,1)';
+const easing = 'cubic-bezier(0.22,0.61,0.36,1)';
 
 // Render exact latest values immediately; only the decorative outgoing layer holds old text.
 export function AnimatedValue({ value, text = false }: { value: string; text?: boolean }) {
@@ -37,24 +37,31 @@ export function AnimatedValue({ value, text = false }: { value: string; text?: b
       revision: frame.revision + 1,
       width: Math.max(frame.width, value.length),
     });
+  const interrupted = useRef<{ opacity: string; transform: string } | null>(null);
   useLayoutEffect(() => {
     if (!frame.revision || reduced) return;
-    const options = { duration: text ? 200 : 350, easing };
+    const options = { duration: text ? 550 : 850, easing, fill: 'both' as const };
     const enter = incoming.current?.animate(
       [
-        { opacity: 0, transform: text ? 'none' : 'translateY(65%)' },
+        interrupted.current ?? { opacity: 0, transform: text ? 'none' : 'translateY(65%)' },
         { opacity: 1, transform: 'none' },
       ],
       options,
     );
     const exit = outgoing.current?.animate(
       [
-        { opacity: 1, transform: 'none' },
+        interrupted.current ?? { opacity: 1, transform: 'none' },
         { opacity: 0, transform: text ? 'none' : 'translateY(-65%)' },
       ],
       options,
     );
+    interrupted.current = null;
+    if (enter) enter.onfinish = () => { interrupted.current = null; };
     return () => {
+      if (enter?.playState === 'running' && incoming.current) {
+        const current = getComputedStyle(incoming.current);
+        interrupted.current = { opacity: current.opacity, transform: current.transform };
+      }
       enter?.cancel();
       exit?.cancel();
     };
@@ -155,12 +162,12 @@ export function MotionList({
     const ids = new Set(items.map((item) => item.id));
     setSnapshot({
       items,
-      exiting: snapshot.items.filter((item) => !ids.has(item.id)).slice(0, 20),
+      exiting: [...snapshot.exiting, ...snapshot.items.filter((item) => !ids.has(item.id))].filter((item, index, all) => !ids.has(item.id) && all.findIndex(other => other.id === item.id) === index).slice(0, 40),
     });
   }
   useEffect(() => {
     if (!snapshot.exiting.length) return;
-    const timer = setTimeout(() => setSnapshot((current) => ({ ...current, exiting: [] })), 200);
+    const timer = setTimeout(() => setSnapshot((current) => ({ ...current, exiting: [] })), 750);
     return () => clearTimeout(timer);
   }, [snapshot.exiting]);
   const Tag = as,
@@ -204,8 +211,8 @@ function MotionItemView({
           ]
         : [{ opacity: 0.55 }, { opacity: 1 }];
     const animation = element.current?.animate(frames, {
-      duration: exiting ? 200 : 280,
-      delay: initial && !exiting ? Math.min(initialIndex.current, 5) * 25 : 0,
+      duration: initial || exiting ? 750 : 280,
+      delay: initial && !exiting ? Math.min(initialIndex.current, 5) * 90 : 0,
       easing: 'ease-out',
       fill: 'backwards',
     });
@@ -241,16 +248,30 @@ export function ScrollFade({
   useLayoutEffect(() => {
     const element = viewport.current!,
       body = content.current!;
-    const update = () =>
-      setMore(element.scrollHeight - element.clientHeight - element.scrollTop > 2);
+    let frame = 0;
+    const update = () => {
+      const remaining = element.scrollHeight - element.clientHeight - element.scrollTop;
+      const more = remaining > 2;
+      setMore(more);
+      const bottom = element.getBoundingClientRect().bottom;
+      for (const row of body.querySelectorAll<HTMLElement>('[data-ui="row"], [data-ui="row-exit"]')) {
+        const rect = row.getBoundingClientRect();
+        const opacity = more ? Math.max(0, Math.min(1, (bottom - rect.top) / 48)) : 1;
+        row.style.setProperty('--scroll-opacity', String(opacity));
+      }
+    };
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
+    const mutation = new MutationObserver(schedule);
+    mutation.observe(body, { childList: true, subtree: true });
     const observer = new ResizeObserver(update);
     observer.observe(element);
     observer.observe(body);
-    element.addEventListener('scroll', update, { passive: true });
+    element.addEventListener('scroll', schedule, { passive: true });
     update();
     return () => {
       observer.disconnect();
-      element.removeEventListener('scroll', update);
+      element.removeEventListener('scroll', schedule);
+      mutation.disconnect(); cancelAnimationFrame(frame);
     };
   }, []);
   const height = table ? (compact ? 'h-[180px]' : 'h-[clamp(240px,48vh,560px)]') : 'max-h-[560px]';
@@ -259,7 +280,7 @@ export function ScrollFade({
       <div
         ref={viewport}
         data-ui="fade-viewport"
-        className={`overflow-auto overscroll-contain [scrollbar-width:thin] [scrollbar-gutter:stable] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500 ${height}`}
+        className={`[&_tbody_td:not(:last-child)]:[filter:opacity(var(--scroll-opacity,1))] [&_li[data-ui]]:[filter:opacity(var(--scroll-opacity,1))] overflow-auto overscroll-contain [scrollbar-width:thin] [scrollbar-gutter:stable] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500 ${height}`}
         tabIndex={0}
         role="region"
         aria-label={label}
@@ -269,7 +290,7 @@ export function ScrollFade({
       <span
         data-ui="bottom-fade"
         aria-hidden="true"
-        className={`pointer-events-none absolute right-3 bottom-0 left-0 z-20 h-12 bg-linear-to-b from-transparent to-white transition-opacity duration-200 motion-reduce:transition-none dark:to-zinc-900 ${more ? 'opacity-100' : 'opacity-0'}`}
+        className={`pointer-events-none absolute right-3 bottom-0 left-0 z-20 h-12  transition-opacity duration-200 motion-reduce:transition-none  ${more ? 'opacity-100' : 'opacity-0'}`}
       />
     </div>
   );

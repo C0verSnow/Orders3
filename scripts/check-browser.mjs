@@ -58,7 +58,7 @@ try {
   const precision = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   await precision.goto(`${base}/#token=${token}`);
   await precision.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
-  for (const name of ['来源订单', 'Gate 跟踪订单', '持仓']) {
+  for (const name of ['预测订单', '跟踪订单', '当前持仓']) {
     await precision.getByRole('button', { name, exact: true }).click();
     await precision.getByRole('heading', { name, exact: true, level: 1 }).waitFor();
     await precision.getByRole('cell', { name: '100.01', exact: true }).waitFor();
@@ -76,7 +76,7 @@ try {
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no document overflow');
     await page.screenshot({path:`tests/artifacts/overview-${width}-light.png`,fullPage:true});
     if(width<=768)await page.getByRole('button',{name:'打开导航',exact:true}).click();
-    await page.getByRole('combobox',{name:'外观主题'}).selectOption('dark');
+    await page.getByRole('button', { name: '深色模式', exact: true }).click();
     await page.getByRole('button',{name:'系统设置',exact:true}).click();
     await page.getByRole('heading',{name:'连接与存储',exact:true}).waitFor();
     assert.equal(await page.locator('input[name="API_SECRET"]').inputValue(),'');
@@ -92,11 +92,11 @@ try {
       await detail.goto(`${base}/#token=${token}`);
       await detail.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
       if (width <= 768) await detail.getByRole('button', { name: '打开导航', exact: true }).click();
-      await detail.getByRole('combobox', { name: '外观主题' }).selectOption(theme);
-      await detail.getByRole('button', { name: '来源订单', exact: true }).click();
+      await detail.getByRole('button', { name: theme === 'dark' ? '深色模式' : '浅色模式', exact: true }).click();
+      await detail.getByRole('button', { name: '预测订单', exact: true }).click();
       const trigger = detail.getByRole('button', { name: '查看第 1 条记录详情', exact: true });
       await trigger.click();
-      const modal = detail.getByRole('dialog', { name: '来源订单详情', exact: true });
+      const modal = detail.getByRole('dialog', { name: '预测订单详情', exact: true });
       await modal.waitFor();
       await modal.getByRole('heading', { name: '原始值与精度', exact: true }).waitFor();
       assert.equal(await modal.locator('dd').filter({ hasText: /^100\.005$/ }).count(), 1);
@@ -134,10 +134,10 @@ try {
   });
   assert.deepEqual(titleStyles, { main: 'rgb(29, 29, 31)', secondary: 'rgb(134, 134, 139)', size: true, weight: true });
   const indicator = motion.locator('[data-ui="nav-indicator"]');
-  await motion.getByRole('button', { name: '来源订单', exact: true }).hover();
+  await motion.getByRole('button', { name: '预测订单', exact: true }).hover();
   await motion.waitForTimeout(350);
   const firstIndicator = await indicator.boundingBox();
-  await motion.getByRole('button', { name: '活动与运行状态', exact: true }).hover();
+  await motion.getByRole('button', { name: '运行状态', exact: true }).hover();
   await motion.waitForTimeout(100);
   const middleIndicator = await indicator.boundingBox();
   await motion.waitForTimeout(250);
@@ -147,7 +147,7 @@ try {
   await motion.mouse.move(1000, 20);
   await motion.waitForFunction(() => getComputedStyle(document.querySelector('[data-ui="nav-indicator"]')).opacity === '0');
   assert.equal(await indicator.evaluate(el => getComputedStyle(el).opacity), '0');
-  await motion.getByRole('button', { name: '来源订单', exact: true }).focus();
+  await motion.getByRole('button', { name: '预测订单', exact: true }).focus();
   await motion.waitForFunction(() => getComputedStyle(document.querySelector('[data-ui="nav-indicator"]')).opacity === '1');
   assert.equal(await indicator.evaluate(el => getComputedStyle(el).opacity), '1', 'keyboard focus gets the same indicator');
   const fade = motion.locator('[data-ui="scroll-fade"]').first(), viewport = fade.locator('[data-ui="fade-viewport"]');
@@ -159,17 +159,17 @@ try {
   await motion.getByRole('dialog').waitFor(); await motion.keyboard.press('Escape');
   await motion.getByRole('button', { name: '下一页', exact: true }).click();
   await motion.getByRole('cell', { name: 'UI20 / USDT', exact: true }).waitFor();
-  await motion.waitForTimeout(350);
+  await motion.waitForTimeout(850);
   assert.equal(await motion.getByRole('cell', { name: 'UI00 / USDT', exact: true }).count(), 0);
   const beforeFilter = await viewport.boundingBox();
-  await motion.getByRole('searchbox', { name: '搜索来源订单', exact: true }).fill('UI44');
+  await motion.getByRole('searchbox', { name: '搜索预测订单', exact: true }).fill('UI44');
   await motion.getByRole('cell', { name: 'UI44 / USDT', exact: true }).waitFor();
   await motion.waitForTimeout(350);
   assert.equal(await fade.getAttribute('data-more'), 'false', 'short filtered table has no bottom fade');
   assert.equal((await viewport.boundingBox()).height, beforeFilter.height, 'filtering preserves viewport height');
-  await motion.getByRole('searchbox', { name: '搜索来源订单', exact: true }).fill('no-such-contract');
+  await motion.getByRole('searchbox', { name: '搜索预测订单', exact: true }).fill('no-such-contract');
   await motion.getByText('没有匹配的记录', { exact: true }).waitFor();
-  await motion.getByRole('searchbox', { name: '搜索来源订单', exact: true }).fill('');
+  await motion.getByRole('searchbox', { name: '搜索预测订单', exact: true }).fill('');
   // A changed cache value must reach the UI immediately and trigger only a local animation.
   uiSources[0].activation_price = '129.755'; uiStore.saveSources(uiSources.slice(0, 44));
   uiStore.savePositions([{ ...seededPosition, unrealised_pnl: '-1.855' }], [{ ...seededPosition, unrealised_pnl: '-1.855' }]);
@@ -180,12 +180,12 @@ try {
   const animated = motion.locator('[data-ui="metric"]').nth(2);
   assert.equal(await animated.locator('[data-ui="value-out"]').getAttribute('aria-hidden'), 'true');
   assert.equal(await animated.locator('[data-ui="value-in"]').textContent(), '-1.86');
-  await motion.waitForTimeout(400);
+  await animated.evaluate(async el => { await Promise.allSettled(el.getAnimations({ subtree: true }).map(a => a.finished)); });
   assert.equal(await animated.locator('[data-ui="value-out"]').evaluate(el => getComputedStyle(el).opacity), '0');
   await motion.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
   assert.ok(await motion.locator('[data-ui="position-count"] [data-ui="animated-value"]>span').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 28), 'position count retains card typography');
   await motion.screenshot({ path: 'tests/artifacts/ui-motion-light.png', fullPage: true });
-  await motion.getByRole('combobox', { name: '外观主题' }).selectOption('dark');
+  await motion.getByRole('button', { name: '深色模式', exact: true }).click();
   await motion.locator('html[data-theme="dark"]').waitFor();
   const tableForeground = await motion.locator('table td').first().evaluate(el => ({ cell: getComputedStyle(el).color, table: getComputedStyle(el.closest('table')).color, main: getComputedStyle(document.querySelector('main')).color }));
   assert.equal(tableForeground.cell, tableForeground.main, `dark table inherits readable foreground: ${JSON.stringify(tableForeground)}`);
@@ -194,7 +194,7 @@ try {
   await motion.emulateMedia({ reducedMotion: 'reduce' });
   assert.equal(await animated.locator('[data-ui="value-in"]').evaluate(el => el.getAnimations().length), 0);
   assert.equal(await animated.locator('[data-ui="value-out"]').evaluate(el => getComputedStyle(el).display), 'none');
-  for (const name of ['来源订单', 'Gate 跟踪订单', '持仓', '真实入仓历史', '活动与运行状态']) {
+  for (const name of ['预测订单', '跟踪订单', '当前持仓', '入仓历史', '运行状态']) {
     await motion.getByRole('button', { name, exact: true }).click();
     await motion.getByRole('heading', { name, exact: true, level: 1 }).waitFor();
     assert.ok(await motion.locator('[data-ui="scroll-fade"]').count() > 0, `${name} uses shared scroll behavior`);
@@ -209,7 +209,7 @@ try {
   await page.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
   await page.getByRole('button', { name: '系统设置', exact: true }).click();
   await page.locator('input[name="API_KEY"]').fill('unsaved-key-draft');
-  await page.getByLabel('Cron 表达式', { exact: true }).fill('7 * * * *');
+  await page.getByLabel('Cron 表达式', { exact: true }).first().fill('7 * * * *');
   await page.waitForTimeout(1200);
   // Match Query's window listener and a full hidden/visible transition.
   await page.evaluate(() => {
@@ -224,9 +224,9 @@ try {
   });
   await Promise.all([settingsRead, scheduleRead]);
   assert.equal(await page.locator('input[name="API_KEY"]').inputValue(), 'unsaved-key-draft');
-  assert.equal(await page.getByLabel('Cron 表达式', { exact: true }).inputValue(), '7 * * * *');
+  assert.equal(await page.getByLabel('Cron 表达式', { exact: true }).first().inputValue(), '7 * * * *');
   await page.route('**/api/status', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'status fixture unavailable' }) }));
-  await page.getByRole('button', { name: '活动与运行状态', exact: true }).click();
+  await page.getByRole('button', { name: '运行状态', exact: true }).click();
   await page.getByText('无法确认当前阻断状态，请重试。', { exact: true }).waitFor();
   assert.equal(await page.getByText('当前没有待核对请求。', { exact: true }).count(), 0);
   await page.screenshot({ path: 'tests/artifacts/status-unavailable.png', fullPage: true });
