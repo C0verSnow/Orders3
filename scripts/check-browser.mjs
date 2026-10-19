@@ -102,7 +102,7 @@ try {
       assert.equal(await modal.locator('dd').filter({ hasText: /^100\.005$/ }).count(), 1);
       assert.equal(await modal.locator('dd').filter({ hasText: /^0\.001$/ }).count(), 1);
       assert.equal(await modal.locator('dd').filter({ hasText: /^0\.0001$/ }).count(), 1);
-      assert.ok(await modal.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
+      assert.ok(await modal.evaluate(el => { const r = el.getBoundingClientRect(); return el.scrollWidth <= el.clientWidth + 1 && Math.abs(r.left + r.width / 2 - innerWidth / 2) <= 2 && r.top >= 15 && r.bottom <= innerHeight - 15; }), 'dialog stays centered inside viewport');
       assert.ok(await detail.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       await detail.screenshot({ path: `tests/artifacts/details-${width}-${theme}.png`, fullPage: true });
       await detail.keyboard.press('Escape');
@@ -110,6 +110,9 @@ try {
       assert.ok(await trigger.evaluate(el => document.activeElement === el));
       await trigger.click();
       await modal.getByRole('button', { name: '关闭详情', exact: true }).first().click();
+      await modal.waitFor({ state: 'hidden' });
+      await trigger.click();
+      await detail.mouse.click(5, 5);
       await modal.waitFor({ state: 'hidden' });
       await detail.close();
     }
