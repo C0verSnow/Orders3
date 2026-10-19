@@ -97,3 +97,35 @@ test('full source refresh preserves JSON numeric Supabase step alongside indepen
   const saved = f.storage.sources().orders[0];
   assert.equal(saved.price_round, '0.001'); assert.equal(saved.order_price_round, '0.0001');
 });
+
+test('full source refresh accepts sub-cent prices and clears a previous precision pause', async t => {
+  for (const raw of ['100.005', '0.005']) {
+    await t.test(raw, async t => {
+      let tick = '0.01';
+      const posts: Record<string, unknown>[] = [];
+      const f = fixture(t, async (url, init) => {
+        if (url.hostname === 'supabase.invalid') return url.searchParams.get('offset') === '0'
+          ? response([{ ...source, activation_price: raw, price_round: '0.001' }]) : response([]);
+        if (init.method === 'POST') { posts.push(JSON.parse(String(init.body))); return response({ code: 0, data: { id: '789' } }); }
+        if (url.pathname.includes('/contracts/')) return response({ ...rule, order_price_round: tick });
+        if (url.pathname.endsWith('/list')) return response(list([]));
+        return response([]);
+      });
+      // A real Gate conflict still pauses the whole batch, with the saved raw value intact.
+      await assert.rejects(f.dashboard.refreshSources(), /来源已保存，自动下单暂停：精度冲突/);
+      assert.equal(f.dashboard.sources().phase, 'failed');
+      assert.equal(posts.length, 0); assert.equal(f.storage.intents().length, 0);
+      assert.equal(f.storage.rows('orders', 'record_position')[0].raw_activation_price, raw);
+      // Once Gate accepts the Supabase step, display rounding cannot keep trading paused.
+      tick = '0.0001';
+      await f.dashboard.refreshSources();
+      const snapshot = f.dashboard.sources();
+      assert.equal(snapshot.error, null); assert.equal(snapshot.phase, 'completed');
+      assert.equal(snapshot.refreshing, false); assert.equal(snapshot.execution[0].action, 'created');
+      assert.equal(posts.length, 1); assert.equal(posts[0].activation_price, raw); assert.equal(posts[0].amount, '2');
+      assert.equal(snapshot.orders[0].activation_price, two(raw));
+      assert.equal(f.storage.rows('orderslist', 'id')[0].raw_activation_price, raw);
+      assert.equal(f.storage.intents().length, 0);
+    });
+  }
+});
