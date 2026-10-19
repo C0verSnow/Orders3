@@ -5,7 +5,15 @@ import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import assert from 'node:assert/strict';
+import { Storage } from '../apps/server/src/database/index.ts';
 const directory = mkdtempSync(join(tmpdir(), 'orders-browser-'));
+// Persist high-precision fixtures before launching the real server; do not mock data APIs.
+const seed = new Storage(join(directory, 'data.db'));
+seed.saveSources([{ contract: 'BTC_USDT', activation_price: '100.005', amount: '2', price_round: '0.001', side: 'buy', timestamp: 1700000000000 }]);
+seed.saveTrailing([{ id: '123', contract: 'BTC_USDT', activation_price: '100.005', amount: '2', reduce_only: false, original_status: 1, timestamp: 1700000000000 }]);
+const seededPosition = { contract: 'BTC_USDT', size: '2', entry_price: '100.005', value: '20.001', leverage_max: '20', unrealised_pnl: '0.005', realised_pnl: '-0.004', initial_margin: '1.005', mark_price: '100.1234', close_price: '101.005', quanto_multiplier: '0.1', order_price_round: '0.0001' };
+seed.savePositions([seededPosition], [seededPosition]);
+seed.close();
 const token = 'ci-browser-access-token-at-least-32-characters';
 const child = spawn(process.execPath, [resolve('dist/server.cjs'), '--cached', '--no-browser', '--port', '18091'], { cwd: directory,
   env: { ...process.env, ORDERS_DATA_DIR: directory, ORDERS_CONFIG_PATH: join(directory, 'config'), ORDERS_ACCESS_TOKEN: token } });
@@ -47,6 +55,18 @@ try {
   await bootstrap.waitForTimeout(300);
   assert.ok(await bootstrap.getByRole('heading', { name: '交易概览', exact: true }).isVisible(), 'late anonymous session cannot undo login');
   await bootstrap.close();
+  const precision = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await precision.goto(`${base}/#token=${token}`);
+  await precision.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
+  for (const name of ['来源订单', 'Gate 跟踪订单', '持仓与保护']) {
+    await precision.getByRole('button', { name, exact: true }).click();
+    await precision.getByRole('heading', { name, exact: true }).waitFor();
+    await precision.getByRole('cell', { name: '100.01', exact: true }).waitFor();
+    await precision.getByRole('cell', { name: '2.00', exact: true }).waitFor();
+    assert.equal(await precision.getByRole('cell', { name: '100.005', exact: true }).count(), 0);
+  }
+  await precision.screenshot({ path: 'tests/artifacts/precision-positions.png', fullPage: true });
+  await precision.close();
   for(const width of [1920,1440,1280,1024,768,390]) {
     const page=await browser.newPage({viewport:{width,height:1000},reducedMotion:'reduce'}), errors=[];
     page.on('pageerror',error=>errors.push(error.message));

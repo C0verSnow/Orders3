@@ -81,3 +81,19 @@ test('missing protection step preserves the last snapshot and every live order w
   await assert.rejects(closeOrders(f.gate, f.storage), /price_round/);
   assert.equal(posts, 0); assert.equal(f.storage.updated('positions'), null);
 });
+
+test('full source refresh preserves JSON numeric Supabase step alongside independent Gate rules', async t => {
+  let posted: Record<string, unknown> | undefined;
+  const f = fixture(t, async (url, init) => {
+    if (url.hostname === 'supabase.invalid') return url.searchParams.get('offset') === '0'
+      ? new Response('[{"id":1,"contract":"BTC_USDT","activation_price":100.005,"amount":2,"price_round":0.001,"side":null,"timestamp":1700000000000}]') : response([]);
+    if (init.method === 'POST') { posted = JSON.parse(String(init.body)); return response({ code: 0, data: { id: '456' } }); }
+    if (url.pathname.includes('/contracts/')) return response(rule);
+    if (url.pathname.endsWith('/list')) return response(list([]));
+    return response([]);
+  });
+  await f.dashboard.refreshSources();
+  assert.equal(posted?.activation_price, '100.005');
+  const saved = f.storage.sources().orders[0];
+  assert.equal(saved.price_round, '0.001'); assert.equal(saved.order_price_round, '0.0001');
+});
