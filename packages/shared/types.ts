@@ -2,7 +2,9 @@ export type DecimalText = string;
 export interface SourceOrder {
   record_position: number; order_index: number; contract: string;
   activation_price: DecimalText; amount: DecimalText; side: string | null; timestamp: number;
-  quanto_multiplier?: string; order_price_round?: string; price_round?: string;
+  quanto_multiplier?: string;
+  order_price_round?: string; // Gate tick after source enrichment.
+  price_round?: string; // Internal snapshot of Supabase orders.order_price_round.
 }
 export interface TrailOrder {
   id: string; contract: string; amount: DecimalText; activation_price: DecimalText;

@@ -28,7 +28,7 @@ function orderPrice(price: Decimal, amount: string, rules: ContractRules, priceR
   if (price.lte(0) || step.lte(0) || tick.lte(0)) throw new Error('价格和步长必须大于零');
   const aligned = price.div(step).toDecimalPlaces(0, D.ROUND_HALF_EVEN).times(step);
   if (aligned.lte(0)) throw new Error('精度冲突：对齐后的激活价格必须大于零');
-  if (!aligned.mod(step).isZero() || !aligned.mod(tick).isZero()) throw new Error('精度冲突：Supabase price_round 对齐结果不符合 Gate 合约步长，已禁止交易');
+  if (!aligned.mod(step).isZero() || !aligned.mod(tick).isZero()) throw new Error('精度冲突：Supabase orders.order_price_round 对齐结果不符合 Gate 合约步长，已禁止交易');
   if (rules.order_size_min && size.abs().lt(decimal(rules.order_size_min))) throw new Error('数量小于 Gate 最小张数');
   if (rules.order_size_max && decimal(rules.order_size_max).gt(0) && size.abs().gt(decimal(rules.order_size_max))) throw new Error('数量超过 Gate 最大张数');
   return aligned.toFixed(step.decimalPlaces());

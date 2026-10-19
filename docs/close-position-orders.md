@@ -13,7 +13,7 @@
    - 多仓：`close_price = entry_price + 3.1 × initial_margin / (abs(size) × quanto_multiplier)`。
    - 空仓：`close_price = entry_price - 3.1 × initial_margin / (abs(size) × quanto_multiplier)`。
    - `value = size × quanto_multiplier × entry_price`，保留方向符号。
-   - 全部使用精确十进制运算，最后取最近的 `order_price_round` 整数倍；中点取偶数倍，步长 0.5 等非十进制幂也支持。无效参数、非正结果、重复合约方向会在撤单前中止整批。步长舍入会让毛收益略偏离目标。
+   - 全部使用精确十进制运算，最后取最近的 Supabase `orders.order_price_round` 整数倍（读取时独立保存为内部 `price_round`），并用 Gate 的 `order_price_round` 校验；中点取偶数倍，步长 0.5 等非十进制幂也支持。无效参数、非正结果、重复合约方向会在撤单前中止整批。步长舍入会让毛收益略偏离目标。
    - 在原始目标价上，多仓乘 `1.01`，空仓乘 `0.99`，然后统一对齐真实价格步长，五成双舍入。`close_price` 保存这个调整后的激活价。
    - 例如 entry_price=100、size=2、乘数=0.1、固定 initial_margin=1、步长=0.5 时，多仓原始目标=115.5，调整并舍入后=116.5；size=-2 时空仓原始目标=84.5，调整并舍入后=83.5。
 3. 在一个 SQLite 事务内更新 `data.db` 的 `position` 表。保存原有十个字段以及 `quanto_multiplier`、`order_price_round`；旧表通过增加两列兼容。十进制字段为文本，张数为整数。同合约的多空仓分别保留；来源表不受影响；入仓历史的固定保证金按上面的规则保存。

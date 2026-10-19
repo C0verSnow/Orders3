@@ -43,16 +43,16 @@ async function writeExchange(gate: Gate, storage: Storage, operation: 'stop' | '
 function sourceSteps(sources: SourceOrder[]): Map<string, string> {
   const steps = new Map<string, string>();
   for (const source of sources) {
-    if (!source.price_round || decimal(source.price_round).lte(0)) throw new AppError(`${source.contract} 缺少有效 Supabase price_round，已停止整批交易`);
+    if (!source.price_round || decimal(source.price_round).lte(0)) throw new AppError(`${source.contract} 缺少有效 Supabase orders.order_price_round，已停止整批交易`);
     const previous = steps.get(source.contract);
-    if (previous && !decimal(previous).eq(source.price_round)) throw new AppError(`${source.contract} 的 Supabase price_round 冲突，已停止整批交易`);
+    if (previous && !decimal(previous).eq(source.price_round)) throw new AppError(`${source.contract} 的 Supabase orders.order_price_round 冲突，已停止整批交易`);
     steps.set(source.contract, source.price_round);
   }
   return steps;
 }
 function requireStep(steps: Map<string, string>, contract: string): string {
   const step = steps.get(contract);
-  if (!step) throw new AppError(`${contract} 缺少 Supabase price_round，请先刷新包含该合约的来源配置，已停止整批交易`);
+  if (!step) throw new AppError(`${contract} 缺少 Supabase orders.order_price_round，请先刷新包含该合约的来源配置，已停止整批交易`);
   return step;
 }
 async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trailing: TrailOrder[], reduceOnly: boolean, rules: Map<string, ContractRules>, steps: Map<string, string>): Promise<Execution[]> {

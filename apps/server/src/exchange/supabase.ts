@@ -26,6 +26,10 @@ export async function fetchSources(http: HttpClient, config: Connection): Promis
       return rows;
     }
     for (const row of page) {
+      // Supabase orders.order_price_round is the source step. Copy it before
+      // Dashboard enriches order_price_round with the independent Gate tick.
+      // Never fall back to a stale price_round alias or to the Gate value.
+      row.price_round = row.order_price_round;
       sourceOrder(row, rows.length);
       if (row.id !== undefined) { const id = String(row.id); if (ids.has(id)) throw new AppError('来源订单分页重复 ID', 502); ids.add(id); }
       rows.push(row);
