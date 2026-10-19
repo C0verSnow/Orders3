@@ -17,3 +17,41 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",
 .detail-grid pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0 0;font-size:11px;font-weight:400}.detail-grid summary{cursor:pointer;color:var(--accent)}
 
 @media(min-width:521px){.detail-grid>div:last-child:nth-child(odd){grid-column:1/-1}}
+
+/* Shared motion language: presentation only; business values remain untouched. */
+:root{--title:#1d1d1f;--subtitle:#86868b;--motion-ease:cubic-bezier(.22,1,.36,1);--motion-fast:200ms;--motion-normal:300ms}
+:root[data-theme=dark]{--title:#f5f5f7;--subtitle:#a1a1a6}
+.two-tone-title{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 12px;min-width:0;color:var(--title)}
+.two-tone-title>h1,.two-tone-title>h2{color:var(--title);flex-shrink:0}
+.two-tone-title>p{color:var(--subtitle);font-size:15px;font-weight:620;line-height:1.5;letter-spacing:-.02em;margin:0;overflow-wrap:anywhere}
+.two-tone-title.title-level-1>p{font-size:clamp(24px,2vw,30px);font-weight:650;letter-spacing:-.045em;line-height:1.2}
+.two-tone-title.title-level-1>h1{font-size:clamp(24px,2vw,30px)}
+.panel-title .two-tone-title>p{margin:0}.panel-heading .two-tone-title{gap:4px 10px}.panel-heading{flex-wrap:wrap}
+button{transition:background-color var(--motion-normal) var(--motion-ease),color var(--motion-fast) ease-out,border-color var(--motion-fast) ease-out,transform var(--motion-normal) var(--motion-ease)}
+.sidebar nav{position:relative;isolation:isolate}
+.sidebar nav button{position:relative;z-index:1;transition:color var(--motion-fast) ease-out,border-color var(--motion-fast) ease-out}
+.sidebar nav button.selected{background:transparent;box-shadow:none;border-color:transparent;color:var(--accent);font-weight:650}
+.sidebar nav button.selected::after{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:3px;background:var(--accent)}
+.nav-indicator{position:absolute;left:0;top:0;z-index:0;pointer-events:none;border-radius:10px;background:var(--hover);transition:transform var(--motion-normal) var(--motion-ease),width var(--motion-normal) var(--motion-ease),height var(--motion-normal) var(--motion-ease),opacity var(--motion-fast) ease-out}
+@media(hover:hover) and (pointer:fine){.sidebar nav button:hover:not(:disabled){background:transparent;color:var(--title)}}
+.animated-value{display:inline-grid;vertical-align:bottom;overflow:hidden;line-height:1.25;font-variant-numeric:tabular-nums;text-align:inherit}
+.animated-value>span{grid-area:1/1;white-space:nowrap}.value-in{animation:value-in 350ms var(--motion-ease) both}.value-out{pointer-events:none;animation:value-out 350ms var(--motion-ease) forwards}
+.text-transition .value-in{animation-name:text-in;animation-duration:200ms}.text-transition .value-out{animation-name:text-out;animation-duration:200ms}
+.feature-number>.animated-value{font-size:inherit;color:inherit;margin:0}
+@keyframes value-in{from{opacity:0;transform:translateY(65%)}to{opacity:1;transform:translateY(0)}}
+@keyframes value-out{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-65%);visibility:hidden}}
+@keyframes text-in{from{opacity:0}to{opacity:1}}@keyframes text-out{to{opacity:0;visibility:hidden}}
+.row-enter{animation:row-in 280ms ease-out backwards}.row-exit{animation:row-out 200ms ease-out forwards;pointer-events:none}
+@keyframes row-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes row-out{to{opacity:0}}
+.empty{animation:row-in 280ms ease-out both}
+.scroll-fade{position:relative;min-width:0;isolation:isolate}
+.fade-viewport{overflow:auto;max-height:560px;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-gutter:stable}
+.table-scroll{height:clamp(240px,48vh,560px);min-height:240px}
+.table-scroll thead{position:sticky;top:0;z-index:2}
+.bottom-fade{position:absolute;left:0;right:12px;bottom:0;height:48px;z-index:3;pointer-events:none;opacity:0;background:linear-gradient(to bottom,transparent,var(--surface));transition:opacity 200ms ease-out}
+.scroll-fade.has-more>.bottom-fade{opacity:1}
+.event-list,.execution-list{max-height:none;overflow:visible}
+.execution-panel .two-tone-title>p{font-size:17px}.execution-stats strong{white-space:nowrap}
+@media(max-width:768px){.table-scroll{max-height:440px}.two-tone-title>h2,.two-tone-title>p{font-size:14px}.two-tone-title.title-level-1>h1,.two-tone-title.title-level-1>p{font-size:26px}.execution-stats{flex-wrap:wrap}}
+@media(prefers-reduced-motion:reduce){.value-out,.row-exit{display:none}.value-in{transform:none;opacity:1}}

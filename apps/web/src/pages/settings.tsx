@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, Save, Clock3 } from 'lucide-react';
 import type { Settings, Schedule } from '../../../../packages/shared/types.ts';
+import { TwoToneTitle } from '../components/motion';
 import { api, post } from '../services/api';
 
 export function SettingsPage() {
@@ -13,7 +14,7 @@ export function SettingsPage() {
   const timer = useMutation({ mutationFn: (body: unknown) => post<Schedule>('/api/schedule', body), onSuccess: data => { client.setQueryData(['schedule'], data); setScheduleVersion(value => value + 1); } });
   if (settings.isPending || schedule.isPending) return <p role="status">正在读取配置…</p>;
   if (!settings.data || !schedule.data) return <p role="alert">{(settings.error || schedule.error)?.message}</p>;
-  return <div className="settings-grid"><section className="panel"><div className="panel-heading"><KeyRound size={18}/><h2>连接与存储</h2></div><p className="caption">凭证仅在服务端保存。留空保留现有密钥，勾选清除后才会删除本地值。</p>
+  return <div className="settings-grid"><section className="panel"><div className="panel-heading"><KeyRound size={18}/><TwoToneTitle title="连接与存储" description="凭证与数据"/></div><p className="caption">凭证仅在服务端保存。留空保留现有密钥，勾选清除后才会删除本地值。</p>
     <form key={settingsVersion} onSubmit={(event: FormEvent<HTMLFormElement>) => {
       event.preventDefault(); const form = event.currentTarget, values = new FormData(form), body: Record<string, unknown> = {}, clear: string[] = [];
       for (const name of ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_KEY', 'API_SECRET', 'ORDERS_DATA_DIR', 'ORDERS_ALLOWED_ORIGIN']) {
@@ -30,7 +31,7 @@ export function SettingsPage() {
       {settings.data?.restart_required && <p className="notice">数据目录将在重启后生效，请先备份并手动搬移旧数据库。</p>}
       <button className="primary" disabled={save.isPending}><Save size={16}/>{save.isPending ? '正在保存…' : '保存程序配置'}</button>
       <p role={save.error ? 'alert' : 'status'}>{save.error?.message || (save.isSuccess ? '配置已保存，备用凭证在后台刷新。' : '')}</p>
-    </form></section><section className="panel"><div className="panel-heading"><Clock3 size={18}/><h2>来源自动追踪</h2></div><ScheduleForm key={scheduleVersion} value={schedule.data!} save={body => timer.mutate(body)} pending={timer.isPending}/><p role={timer.error ? 'alert' : 'status'}>{timer.error?.message || (timer.isSuccess ? '定时配置已保存。' : '')}</p><div className="note"><strong>独立的持仓保护</strong><p>Gate 持仓与平仓保护单每 60 秒检查一次，不受来源定时开关影响。停用来源定时不会中断正在运行的任务。</p></div></section></div>;
+    </form></section><section className="panel"><div className="panel-heading"><Clock3 size={18}/><TwoToneTitle title="来源自动追踪" description="定时与周期"/></div><ScheduleForm key={scheduleVersion} value={schedule.data!} save={body => timer.mutate(body)} pending={timer.isPending}/><p role={timer.error ? 'alert' : 'status'}>{timer.error?.message || (timer.isSuccess ? '定时配置已保存。' : '')}</p><div className="note"><strong>独立的持仓同步</strong><p>Gate 持仓与订单每 60 秒只读同步一次，不受来源定时开关影响；不会创建、修改或撤销保护单。停用来源定时不会中断正在运行的任务。</p></div></section></div>;
 }
 function ScheduleForm({ value, save, pending }: { value: Schedule; save: (body: Schedule) => void; pending: boolean }) {
   const [enabled, setEnabled] = useState(value.enabled), [cron, setCron] = useState(value.cron);

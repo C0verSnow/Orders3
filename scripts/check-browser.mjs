@@ -117,6 +117,85 @@ try {
       await detail.close();
     }
   }
+  // Latest UI comment: real production UI + SQLite, no exchange access.
+  const uiStore = new Storage(join(directory, 'data.db'));
+  const uiSources = Array.from({ length: 45 }, (_, index) => ({ contract: `UI${String(index).padStart(2, '0')}_USDT`, activation_price: '100.005', amount: '2', price_round: '0.001', side: 'buy', timestamp: 1700000000000 + index }));
+  uiStore.saveSources(uiSources);
+  const motion = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const motionErrors = [];
+  motion.on('pageerror', error => motionErrors.push(error.message));
+  await motion.goto(`${base}/#token=${token}`);
+  await motion.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
+  await motion.getByRole('cell', { name: 'UI00 / USDT', exact: true }).waitFor();
+  assert.equal(await motion.getByText('服务端确认 · 十进制计算 · 原始记录可追溯', { exact: true }).count(), 0);
+  const titleStyles = await motion.locator('.panel-title .two-tone-title').first().evaluate(el => {
+    const main = getComputedStyle(el.querySelector('h2')), secondary = getComputedStyle(el.querySelector('p'));
+    return { main: main.color, secondary: secondary.color, size: main.fontSize === secondary.fontSize, weight: main.fontWeight === secondary.fontWeight };
+  });
+  assert.deepEqual(titleStyles, { main: 'rgb(29, 29, 31)', secondary: 'rgb(134, 134, 139)', size: true, weight: true });
+  const indicator = motion.locator('.nav-indicator');
+  await motion.getByRole('button', { name: '来源订单', exact: true }).hover();
+  await motion.waitForTimeout(350);
+  const firstIndicator = await indicator.boundingBox();
+  await motion.getByRole('button', { name: '活动与运行状态', exact: true }).hover();
+  await motion.waitForTimeout(100);
+  const middleIndicator = await indicator.boundingBox();
+  await motion.waitForTimeout(250);
+  const finalIndicator = await indicator.boundingBox();
+  assert.ok(middleIndicator.y > firstIndicator.y && middleIndicator.y < finalIndicator.y, 'one shared indicator moves continuously');
+  assert.equal(await indicator.count(), 1);
+  await motion.mouse.move(1000, 20); await motion.waitForTimeout(250);
+  assert.equal(await indicator.evaluate(el => getComputedStyle(el).opacity), '0');
+  await motion.getByRole('button', { name: '来源订单', exact: true }).focus();
+  await motion.waitForTimeout(250);
+  assert.equal(await indicator.evaluate(el => getComputedStyle(el).opacity), '1', 'keyboard focus gets the same indicator');
+  const fade = motion.locator('.scroll-fade').first(), viewport = fade.locator('.fade-viewport');
+  await motion.waitForFunction(() => document.querySelector('.scroll-fade').classList.contains('has-more'));
+  assert.equal(await fade.locator('.bottom-fade').evaluate(el => getComputedStyle(el).pointerEvents), 'none');
+  await viewport.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await motion.waitForFunction(() => !document.querySelector('.scroll-fade').classList.contains('has-more'));
+  await motion.getByRole('button', { name: '查看第 20 条记录详情', exact: true }).click();
+  await motion.getByRole('dialog').waitFor(); await motion.keyboard.press('Escape');
+  await motion.getByRole('button', { name: '下一页', exact: true }).click();
+  await motion.getByRole('cell', { name: 'UI20 / USDT', exact: true }).waitFor();
+  await motion.waitForTimeout(350);
+  assert.equal(await motion.getByRole('cell', { name: 'UI00 / USDT', exact: true }).count(), 0);
+  const beforeFilter = await viewport.boundingBox();
+  await motion.getByRole('searchbox', { name: '搜索来源订单', exact: true }).fill('UI44');
+  await motion.getByRole('cell', { name: 'UI44 / USDT', exact: true }).waitFor();
+  await motion.waitForTimeout(350);
+  assert.equal(await fade.getAttribute('class'), 'scroll-fade ', 'short filtered table has no bottom fade');
+  assert.equal((await viewport.boundingBox()).height, beforeFilter.height, 'filtering preserves viewport height');
+  await motion.getByRole('searchbox', { name: '搜索来源订单', exact: true }).fill('no-such-contract');
+  await motion.getByText('没有匹配的记录', { exact: true }).waitFor();
+  await motion.getByRole('searchbox', { name: '搜索来源订单', exact: true }).fill('');
+  // A changed cache value must reach the UI immediately and trigger only a local animation.
+  uiSources[0].activation_price = '129.755'; uiStore.saveSources(uiSources.slice(0, 44));
+  uiStore.savePositions([{ ...seededPosition, unrealised_pnl: '-1.855' }], [{ ...seededPosition, unrealised_pnl: '-1.855' }]);
+  await motion.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); window.dispatchEvent(new Event('visibilitychange')); });
+  await motion.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); window.dispatchEvent(new Event('visibilitychange')); });
+  await motion.getByRole('cell', { name: '129.76', exact: true }).waitFor();
+  await motion.locator('.metric .value-in').filter({ hasText: /^-1\.86$/ }).waitFor();
+  const animated = motion.locator('.metric').nth(2);
+  assert.equal(await animated.locator('.value-out').getAttribute('aria-hidden'), 'true');
+  assert.equal(await animated.locator('.value-in').textContent(), '-1.86');
+  await motion.waitForTimeout(400);
+  assert.equal(await animated.locator('.value-out').evaluate(el => getComputedStyle(el).visibility), 'hidden');
+  await motion.screenshot({ path: 'tests/artifacts/ui-motion-light.png', fullPage: true });
+  await motion.getByRole('combobox', { name: '外观主题' }).selectOption('dark');
+  await motion.screenshot({ path: 'tests/artifacts/ui-motion-dark.png', fullPage: true });
+  await motion.emulateMedia({ reducedMotion: 'reduce' });
+  assert.equal(await animated.locator('.value-in').evaluate(el => getComputedStyle(el).animationName), 'none');
+  assert.equal(await animated.locator('.value-out').evaluate(el => getComputedStyle(el).display), 'none');
+  for (const name of ['来源订单', 'Gate 跟踪订单', '持仓', '真实入仓历史', '活动与运行状态']) {
+    await motion.getByRole('button', { name, exact: true }).click();
+    await motion.getByRole('heading', { name, exact: true, level: 1 }).waitFor();
+    assert.ok(await motion.locator('.scroll-fade').count() > 0, `${name} uses shared scroll behavior`);
+    assert.ok(await motion.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  }
+  assert.deepEqual(motionErrors, []);
+  await motion.close(); uiStore.close();
+
   // Fault-injection regressions: production UI + real server, only /api/status failure is intercepted.
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   await page.goto(`${base}/#token=${token}`);
