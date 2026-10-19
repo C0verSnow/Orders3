@@ -20,7 +20,10 @@ export function integer(value: unknown, allowZero = false): string {
 export interface ContractRules { name: string; quanto_multiplier: string; order_price_round: string; order_size_min?: string; order_size_max?: string }
 // Supabase controls final alignment; Gate independently validates the submitted price.
 export function executionPrice(raw: string, amount: string, rules: ContractRules, priceRound: string): string {
-  const price = decimal(raw), size = decimal(integer(amount));
+  return orderPrice(decimal(raw), amount, rules, priceRound);
+}
+function orderPrice(price: Decimal, amount: string, rules: ContractRules, priceRound: string): string {
+  const size = decimal(integer(amount));
   const step = decimal(priceRound), tick = decimal(rules.order_price_round);
   if (price.lte(0) || step.lte(0) || tick.lte(0)) throw new Error('价格和步长必须大于零');
   const aligned = price.div(step).toDecimalPlaces(0, D.ROUND_HALF_EVEN).times(step);
@@ -35,5 +38,5 @@ export function closePrice(entry: string, size: string, margin: string, multipli
   if (e.lte(0) || m.lt(0) || q.lte(0)) throw new Error('平仓计算参数无效');
   const delta = m.times('3.1').div(s.abs().times(q));
   const target = s.gt(0) ? e.plus(delta).times('1.01') : e.minus(delta).times('0.99');
-  return executionPrice(target.toFixed(), s.negated().toFixed(0), { name: '', quanto_multiplier: multiplier, order_price_round: gateTick }, priceRound);
+  return orderPrice(target, s.negated().toFixed(0), { name: '', quanto_multiplier: multiplier, order_price_round: gateTick }, priceRound);
 }

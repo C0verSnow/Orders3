@@ -27,4 +27,5 @@ test('legacy 3.1 margin formula retains high precision and Supabase half-even al
   assert.throws(() => closePrice('100','-2','100','0.1','0.5','0.5'));
   assert.equal(closePrice('0.0001','2','0','1','0.00001','0.00001'), '0.00010');
   assert.equal(closePrice('100.005','2','0','1','0.001','0.0001'), '101.005');
+  assert.equal(closePrice('100','3','1','0.1','0.001','0.0001'), '111.437');
 });

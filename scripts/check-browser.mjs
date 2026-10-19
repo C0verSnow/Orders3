@@ -60,7 +60,7 @@ try {
   await precision.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
   for (const name of ['来源订单', 'Gate 跟踪订单', '持仓与保护']) {
     await precision.getByRole('button', { name, exact: true }).click();
-    await precision.getByRole('heading', { name, exact: true }).waitFor();
+    await precision.getByRole('heading', { name, exact: true, level: 1 }).waitFor();
     await precision.getByRole('cell', { name: '100.01', exact: true }).waitFor();
     await precision.getByRole('cell', { name: '2.00', exact: true }).waitFor();
     assert.equal(await precision.getByRole('cell', { name: '100.005', exact: true }).count(), 0);
