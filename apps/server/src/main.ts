@@ -72,7 +72,7 @@ async function main() {
     void ready.then(async () => {
       if (stopped || values.cached) return;
       // Startup jobs only synchronize data; opening waits for its independent schedule.
-      await Promise.allSettled([dashboard.refreshSources(), dashboard.refreshOrders()]);
+      await Promise.allSettled([dashboard.refreshOrders(), ...(scheduler.value.enabled ? [dashboard.refreshSources()] : [])]);
     });
     if (!values['no-browser'] && (values.browser || (!container && process.env.ORDERS_NO_BROWSER !== '1'))) {
       const target = `${url}/#token=${encodeURIComponent(sessions.token)}`;

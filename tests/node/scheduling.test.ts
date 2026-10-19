@@ -81,3 +81,22 @@ test('turning off opening during live reads revokes permission immediately befor
   assert.equal(posts, 0); assert.equal(f.storage.intents().length, 0);
   assert.equal(scheduler.snapshot().opening?.result, 'failed');
 });
+
+test('unknown scheduled POST is reconciled from live reads but never automatically repeated in a later slot', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: start });
+  let posts = 0;
+  const f = fixture(t, async (url, init) => {
+    if (init.method === 'POST') { posts++; throw new Error('exchange response lost'); }
+    if (url.pathname.includes('/contracts/')) return response(rule);
+    if (url.pathname.endsWith('/list')) return response(list([]));
+    return response([]);
+  });
+  f.storage.saveSources([source]); const scheduler = new Scheduler(f.config, f.dashboard);
+  scheduler.update({ enabled: false, cron: '* * * * *' });
+  scheduler.update({ enabled: true, cron: '* * * * *' }, 'opening');
+  t.mock.timers.setTime(start + 60000); await scheduler.tick();
+  assert.equal(posts, 1); assert.equal(f.storage.intents()[0].state, 'unknown');
+  const restarted = new Scheduler(f.config, f.dashboard);
+  t.mock.timers.setTime(start + 120000); await restarted.tick();
+  assert.equal(posts, 1); assert.equal(restarted.snapshot().opening?.result, 'failed');
+});

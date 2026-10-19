@@ -165,12 +165,12 @@ try {
   await motion.getByRole('dialog').waitFor(); await motion.keyboard.press('Escape');
   await motion.getByRole('button', { name: '下一页', exact: true }).click();
   await motion.getByRole('cell', { name: 'UI20 / USDT', exact: true }).waitFor();
-  await motion.waitForTimeout(850);
+  await motion.waitForFunction(() => document.querySelectorAll('[data-ui="row-exit"]').length === 0);
   assert.equal(await motion.getByRole('cell', { name: 'UI00 / USDT', exact: true }).count(), 0);
   const beforeFilter = await viewport.boundingBox();
   await motion.getByRole('searchbox', { name: '搜索预测订单', exact: true }).fill('UI44');
   await motion.getByRole('cell', { name: 'UI44 / USDT', exact: true }).waitFor();
-  await motion.waitForTimeout(350);
+  await motion.waitForFunction(() => document.querySelectorAll('[data-ui="row-exit"]').length === 0 && document.querySelector('[data-ui="scroll-fade"]').dataset.more === 'false');
   assert.equal(await fade.getAttribute('data-more'), 'false', 'short filtered table has no bottom fade');
   assert.equal((await viewport.boundingBox()).height, beforeFilter.height, 'filtering preserves viewport height');
   await motion.getByRole('searchbox', { name: '搜索预测订单', exact: true }).fill('no-such-contract');
