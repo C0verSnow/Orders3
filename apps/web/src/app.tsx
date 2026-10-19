@@ -328,6 +328,12 @@ function Workspace({
         void client.invalidateQueries({ queryKey: [key] });
     },
   });
+  const manualOpening = useMutation({
+    mutationFn: () => post('/api/opening/manual', { confirmed_trade_execution: true }),
+    onSuccess: () => setNotice('手动开仓完成，请核对执行结果。'),
+    onError: error => setNotice(error.message),
+    onSettled: () => { for (const key of ['sources', 'orders', 'pending', 'history']) void client.invalidateQueries({ queryKey: [key] }); },
+  });
   const resolve = useMutation({
     mutationFn: (input: { id: string; evidence: string }) =>
       post('/api/intents/resolve', { ...input, confirmed_exchange_review: true }),
@@ -383,7 +389,7 @@ function Workspace({
     [entries.data],
   );
   const activityItems = useMemo(() => eventItems(activity.data), [activity.data]);
-  const busy = refresh.isPending || source.data?.refreshing || orders.data?.refreshing;
+  const busy = manualOpening.isPending || refresh.isPending || source.data?.refreshing || orders.data?.refreshing;
   const heading = pages.find((item) => item.id === page)!;
   const requestRefresh = (which: 'all' | 'sources' | 'orders') => {
     {
@@ -719,9 +725,12 @@ function Workspace({
               title="预测订单"
               description={`最近保存：${source.data?.updated_at ? new Date(source.data.updated_at).toLocaleString() : '尚未同步'} · 详情保留完整来源记录`}
               action={
-                <Button disabled={busy} onClick={() => requestRefresh('sources')}>
-                  刷新预测订单
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={busy} onClick={() => requestRefresh('sources')}>刷新预测订单</Button>
+                  <Button disabled={busy || !sourceRows.length} onClick={() => {
+                    if (confirm('手动开仓将使用当前保存的预测订单，按策略停止旧开仓单并提交新开仓单；不受自动开仓开关限制。确认操作真实账户？')) manualOpening.mutate();
+                  }}>手动开仓</Button>
+                </div>
               }
             >
               <DataTable

@@ -51,6 +51,13 @@ export function createServer(dashboard: Dashboard, scheduler: Scheduler, credent
   app.get('/api/activity', () => dashboard.activity.snapshot());
   app.get('/api/status', () => ({ pending: dashboard.storage.intents(), database_error: dashboard.storage.schemaError }));
   app.post('/api/refresh', async () => { await dashboard.refreshSources(); return dashboard.sources(); });
+  app.post('/api/opening/manual', async request => {
+    const parsed = z.object({ confirmed_trade_execution: z.literal(true) }).strict().safeParse(request.body);
+    if (!parsed.success) throw new AppError('请明确确认手动开仓会操作真实订单');
+    if (!dashboard.storage.sources().orders.length) throw new AppError('预测订单为空，请先刷新有效数据');
+    await dashboard.executeOpening({ kind: 'manual' });
+    return dashboard.sources();
+  });
   app.post('/api/orders/refresh', async () => { await dashboard.refreshOrders(); return dashboard.orders(); });
   app.get('/api/settings', () => dashboard.config.snapshot());
   app.post('/api/settings', request => {
