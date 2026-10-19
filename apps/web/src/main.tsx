@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './app';
-import './styles.css';
+import './tailwind.css';
 import { MotionProvider } from './components/motion';
 const client = new QueryClient({
   defaultOptions: {

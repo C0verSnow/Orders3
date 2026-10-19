@@ -11,7 +11,7 @@ import {
   type SortingState,
 } from '@tanstack/react-table';
 import { ArrowDownUp, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import { MotionList, ScrollFade } from './motion';
+import { FadeIn, MotionList, ScrollFade } from './motion';
 import { OrderDetails } from './order-details';
 
 export function DataTable<T extends object>({
@@ -133,19 +133,19 @@ export function DataTable<T extends object>({
           <MotionList items={items} />
         </table>
         {loading && (
-          <div
+          <FadeIn
             className="flex min-h-36 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-zinc-500 [&>strong]:font-medium [&>strong]:text-zinc-900 dark:[&>strong]:text-zinc-100 [&>p]:text-xs"
             role="status"
           >
             正在读取{label}…
-          </div>
+          </FadeIn>
         )}
         {!loading && !table.getRowModel().rows.length && (
-          <div className="flex min-h-36 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-zinc-500 [&>strong]:font-medium [&>strong]:text-zinc-900 dark:[&>strong]:text-zinc-100 [&>p]:text-xs">
+          <FadeIn className="flex min-h-36 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-zinc-500 [&>strong]:font-medium [&>strong]:text-zinc-900 dark:[&>strong]:text-zinc-100 [&>p]:text-xs">
             <Search size={24} aria-hidden="true" />
             <strong>{filter ? '没有匹配的记录' : '还没有订单数据'}</strong>
             <p>{filter ? '试试其他合约或清除搜索。' : '配置连接后刷新，即可同步真实订单。'}</p>
-          </div>
+          </FadeIn>
         )}
       </ScrollFade>
       <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3 text-[10px] text-zinc-500 md:px-6 dark:border-zinc-700 [&>div]:flex [&>div]:gap-2 [&_button]:min-h-8 [&_button]:p-1.5">

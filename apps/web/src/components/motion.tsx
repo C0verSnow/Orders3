@@ -111,6 +111,35 @@ export function TwoToneTitle({
   );
 }
 
+export function FadeIn({
+  children,
+  className = '',
+  role,
+}: {
+  children: ReactNode;
+  className?: string;
+  role?: 'status';
+}) {
+  const reduced = useContext(ReducedMotion),
+    element = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (reduced) return;
+    const animation = element.current?.animate(
+      [
+        { opacity: 0, transform: 'translateY(6px)' },
+        { opacity: 1, transform: 'none' },
+      ],
+      { duration: 280, easing },
+    );
+    return () => animation?.cancel();
+  }, [reduced]);
+  return (
+    <div ref={element} className={className} role={role}>
+      {children}
+    </div>
+  );
+}
+
 type MotionItem = { id: string; version: string; content: ReactNode };
 export function MotionList({
   items,
@@ -160,7 +189,8 @@ function MotionItemView({
 }) {
   const reduced = useContext(ReducedMotion),
     element = useRef<HTMLTableRowElement & HTMLLIElement>(null),
-    mounted = useRef(false);
+    mounted = useRef(false),
+    initialIndex = useRef(index);
   useLayoutEffect(() => {
     const initial = !mounted.current;
     mounted.current = true;
@@ -175,12 +205,12 @@ function MotionItemView({
         : [{ opacity: 0.55 }, { opacity: 1 }];
     const animation = element.current?.animate(frames, {
       duration: exiting ? 200 : 280,
-      delay: initial && !exiting ? Math.min(index, 5) * 25 : 0,
+      delay: initial && !exiting ? Math.min(initialIndex.current, 5) * 25 : 0,
       easing: 'ease-out',
       fill: 'backwards',
     });
     return () => animation?.cancel();
-  }, [item.version, reduced, exiting, index]);
+  }, [item.version, reduced, exiting]);
   return (
     <Tag
       ref={element}
