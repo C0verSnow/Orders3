@@ -1,3 +1,4 @@
+import { StableText } from './components/stable-text';
 import { t, useLanguage, dateLocale } from './i18n';
 import { Button, Input, Badge, Panel, BrandLogo } from './components/ui';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -430,7 +431,7 @@ function Workspace({
           <BrandLogo />
           <div>
             <strong>Orders3</strong>
-            <span>{t('特洛伊资本 · 交易工作台')}</span>
+            <span><StableText text={t('特洛伊资本 · 交易工作台')} /></span>
           </div>
           <Button className="md:hidden" aria-label={t('关闭导航')} onClick={() => setMenu(false)}>
             <X size={18} />
@@ -452,7 +453,7 @@ function Workspace({
               }}
             >
               <item.icon size={17} strokeWidth={1.7} />
-              {t(item.label)}
+              <StableText text={t(item.label)} />
               {item.id === 'activity' && !!pending.data?.pending.length && (
                 <span className="ml-auto rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] text-red-700 dark:bg-red-950 dark:text-red-300">
                   {pending.data.pending.length}
@@ -466,22 +467,22 @@ function Workspace({
             <span
               className={`inline-block size-1.5 shrink-0 rounded-full ${activity.error ? 'bg-red-500' : 'bg-emerald-500'}`}
             />
-            <span>{activity.error ? t('连接中断，正在重连') : t('服务端已连接')}</span>
+            <StableText text={activity.error ? t('连接中断，正在重连') : t('服务端已连接')} />
           </div>
           <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-            {t('交易状态以 Gate 实际记录为准')}
+            <StableText text={t('交易状态以 Gate 实际记录为准')} />
           </p>
           <Button
             variant="quiet"
             onClick={download}
             data-ui="download-database"
-            className="w-full justify-start!"
+            className="h-10 w-full justify-start! gap-2! px-3! py-2!"
           >
             <ArrowDownToLine size={16} />
-            <span>{t('下载数据库')}</span>
+            <StableText text={t('下载数据库')} />
           </Button>
-          <Button variant="text" onClick={() => logout.mutate()} disabled={logout.isPending}>
-            <LogOut size={14} />
+          <Button variant="quiet" data-ui="logout" className="h-10 w-full justify-start! gap-2! px-3! py-2!" onClick={() => logout.mutate()} disabled={logout.isPending}>
+            <LogOut size={16} />
             {t('退出工作台')}
           </Button>
         </div>
@@ -494,7 +495,7 @@ function Workspace({
             </Button>
             <span className="hidden md:inline">{t('工作空间')}</span>
             <span className="hidden opacity-40 md:inline">/</span>
-            <strong className="hidden sm:block">{t(heading.label)}</strong>
+            <strong className="hidden sm:block"><StableText text={t(heading.label)} /></strong>
           </div>
           <Preferences theme={theme} setTheme={setTheme} />
         </header>
@@ -829,7 +830,7 @@ function Workspace({
               />
             </OrderPanel>
           )}
-          {page === 'settings' && <SettingsPage />}
+          {page === 'settings' && <SettingsPage theme={theme} setTheme={setTheme} />}
           {page === 'activity' && (
             <>
               <Panel>

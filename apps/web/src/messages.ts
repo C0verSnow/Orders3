@@ -1,5 +1,8 @@
 // UI translations only. API field names, source records and trading values stay unchanged.
 export const english: Record<string, string> = {
+  切换主题: 'Toggle theme',
+  界面偏好: 'Interface preferences',
+  主题模式: 'Theme mode',
   浅色: 'Light',
   深色: 'Dark',
   系统: 'System',

@@ -75,7 +75,7 @@ try {
     assert.equal(await page.evaluate(()=>location.hash),'');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no document overflow');
     await page.screenshot({path:`tests/artifacts/overview-${width}-light.png`,fullPage:true});
-    await page.getByRole('button', { name: '深色模式', exact: true }).click();
+    await page.locator('[data-ui="theme-switch"]').click();
     if(width<=768)await page.getByRole('button',{name:'打开导航',exact:true}).click();
     await page.getByRole('button',{name:'系统设置',exact:true}).click();
     await page.getByRole('heading',{name:'连接与存储',exact:true}).waitFor();
@@ -91,7 +91,7 @@ try {
       const detail = await browser.newPage({ viewport: { width, height: 850 } });
       await detail.goto(`${base}/#token=${token}`);
       await detail.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
-      await detail.getByRole('button', { name: theme === 'dark' ? '深色模式' : '浅色模式', exact: true }).click();
+      if (theme === 'dark') await detail.locator('[data-ui="theme-switch"]').click();
       if (width <= 768) await detail.getByRole('button', { name: '打开导航', exact: true }).click();
       await detail.getByRole('button', { name: '预测订单', exact: true }).click();
       const trigger = detail.getByRole('button', { name: '查看第 1 条记录详情', exact: true });
@@ -217,7 +217,7 @@ try {
   await motion.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
   assert.ok(await motion.locator('[data-ui="position-count"] [data-ui="animated-value"]>span').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 28), 'position count retains card typography');
   await motion.screenshot({ path: 'tests/artifacts/ui-motion-light.png', fullPage: true });
-  await motion.getByRole('button', { name: '深色模式', exact: true }).click();
+  await motion.locator('[data-ui="theme-switch"]').click();
   await motion.locator('html[data-theme="dark"]').waitFor();
   const tableForeground = await motion.locator('table td').first().evaluate(el => ({ cell: getComputedStyle(el).color, table: getComputedStyle(el.closest('table')).color, main: getComputedStyle(document.querySelector('main')).color }));
   assert.equal(tableForeground.cell, tableForeground.main, `dark table inherits readable foreground: ${JSON.stringify(tableForeground)}`);
@@ -241,16 +241,17 @@ try {
   await appearance.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
   assert.equal(await appearance.locator('header [aria-label="本地受信任会话"]').count(), 0);
   assert.equal(await appearance.locator('svg[data-ui="brand-logo"]').count(), 1);
-  await appearance.getByRole('button', { name: '跟随系统', exact: true }).click();
+  await appearance.getByRole('button', { name: '系统设置', exact: true }).click();
+  await appearance.locator('[data-ui="theme-select"]').selectOption('system');
   await appearance.emulateMedia({ colorScheme: 'dark' });
   await appearance.locator('html[data-theme="dark"]').waitFor();
   await appearance.emulateMedia({ colorScheme: 'light' });
   await appearance.locator('html[data-theme="light"]').waitFor();
-  await appearance.getByRole('button', { name: '深色模式', exact: true }).click();
+  await appearance.locator('[data-ui="theme-switch"]').click();
   await appearance.emulateMedia({ colorScheme: 'light' });
   await appearance.locator('html[data-theme="dark"]').waitFor();
   assert.equal(await appearance.locator('html').getAttribute('data-theme'), 'dark');
-  assert.equal(await appearance.getByRole('button', { name: '深色模式', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.equal(await appearance.locator('[data-ui="theme-select"]').inputValue(), 'dark');
   await appearance.getByRole('button', { name: '系统设置', exact: true }).click();
   assert.equal(await appearance.getByLabel('启用自动开仓（涉及真实交易）', { exact: true }).isChecked(), false);
   await appearance.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
@@ -269,6 +270,8 @@ try {
     await reveal.goto(`${base}/#token=${token}`);
     await reveal.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
     assert.equal(await reveal.locator('header [data-ui="preferences"]').count(), 1);
+    assert.equal(await reveal.locator('header [data-ui="theme-switch"]').count(), 1);
+    assert.equal(await reveal.locator('header [data-ui="preferences"] button').count(), 2);
     assert.equal(await reveal.locator('aside [data-ui="download-database"]').count(), 1);
     assert.equal(await reveal.locator('header [data-ui="download-database"]').count(), 0);
     await reveal.getByRole('cell', { name: 'UI00 / USDT', exact: true }).waitFor();
@@ -302,9 +305,9 @@ try {
       await reveal.evaluate(() => document.getAnimations().find(a => a.animationName === 'circular-reveal').finish());
       await reveal.waitForFunction(() => !document.documentElement.dataset.revealing);
     };
-    await runReveal(reveal.getByRole('button', { name: '深色模式', exact: true }), 'dark');
+    await runReveal(reveal.locator('[data-ui="theme-switch"]'), 'dark');
     assert.equal(await reveal.locator('html').getAttribute('data-theme'), 'dark');
-    await runReveal(reveal.getByRole('button', { name: '浅色模式', exact: true }), 'light');
+    await runReveal(reveal.locator('[data-ui="theme-switch"]'), 'light');
     assert.equal(await reveal.locator('html').getAttribute('data-theme'), 'light');
     if (width <= 768) await reveal.getByRole('button', { name: '打开导航', exact: true }).click();
     await reveal.getByRole('button', { name: '系统设置', exact: true }).click();
@@ -313,9 +316,22 @@ try {
     await reveal.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
     const formBefore = await reveal.locator('input[name="API_KEY"]').evaluate(el => { window.originalDraftInput = el; return true; });
     assert.ok(formBefore);
+    const layout = () => reveal.evaluate(() => {
+      const rect = el => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(n => Math.round(n * 10) / 10); };
+      return [...document.querySelectorAll('#main [data-ui="two-tone-title"], #main input, header [data-ui="preferences"], aside nav button, aside [data-ui="download-database"], aside [data-ui="logout"]')].map(rect);
+    });
+    const chineseLayout = await layout();
+    // Mobile drawer is closed but still laid out, so its two actions can be compared.
+    const actions = await reveal.locator('aside [data-ui="download-database"], aside [data-ui="logout"]').evaluateAll(elements => elements.map(el => {
+      const button = el.getBoundingClientRect(), icon = el.querySelector('svg').getBoundingClientRect();
+      return [button.x, button.width, button.height, icon.x, icon.width, icon.height];
+    }));
+    assert.deepEqual(actions[0], actions[1], 'sidebar actions have identical dimensions, icon size and alignment');
+    assert.equal(await reveal.locator('[data-ui="theme-select"]').inputValue(), 'light');
     const coloursBefore = await reveal.locator('#main').evaluate(el => ({ background: getComputedStyle(el).backgroundColor, colour: getComputedStyle(el).color }));
     await runReveal(reveal.locator('[data-ui="language-switch"]'), 'english');
     await reveal.getByRole('heading', { name: 'Connections and storage', exact: true }).waitFor();
+    assert.deepEqual(await layout(), chineseLayout, 'English and Chinese keep title, field, navigation and toolbar positions');
     assert.equal(await reveal.locator('html').getAttribute('lang'), 'en');
     assert.equal(await reveal.locator('html').getAttribute('data-theme'), 'light');
     assert.equal(await reveal.locator('input[name="API_KEY"]').inputValue(), 'unsaved-language-draft');

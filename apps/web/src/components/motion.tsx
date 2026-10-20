@@ -1,3 +1,4 @@
+import { StableText } from './stable-text';
 import { t, useLanguage } from '../i18n';
 import {
   createContext,
@@ -138,10 +139,10 @@ export function TwoToneTitle({
   return (
     <div
       data-ui="two-tone-title"
-      className={`flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 ${typography}`}
+      className={`grid min-w-0 gap-1 ${typography}`}
     >
-      <Heading className="shrink-0 text-[#1d1d1f] dark:text-zinc-100">{title}</Heading>
-      <p className="text-[#86868b] dark:text-zinc-400 [overflow-wrap:anywhere]">{description}</p>
+      <Heading className="min-w-0 text-[#1d1d1f] dark:text-zinc-100"><StableText text={title} /></Heading>
+      <p className="min-w-0 text-[#86868b] dark:text-zinc-400 [overflow-wrap:anywhere]"><StableText text={description} /></p>
     </div>
   );
 }
