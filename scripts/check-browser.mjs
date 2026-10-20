@@ -69,7 +69,7 @@ try {
   assert.equal(await precision.getByRole('columnheader', { name: '保护激活价', exact: true }).count(), 0);
   await precision.screenshot({ path: 'tests/artifacts/precision-positions.png', fullPage: true });
   await precision.close();
-  for(const width of [1920,1440,1280,1024,768,390]) {
+  for(const width of [1920,1440,1280]) {
     const page=await browser.newPage({viewport:{width,height:1000},reducedMotion:'reduce'}), errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(`${base}/#token=${token}`);await page.getByRole('heading',{name:'交易概览',exact:true}).waitFor();
@@ -87,8 +87,8 @@ try {
     assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');assert.deepEqual(errors,[]);
     await page.close();
   }
-  // Production UI + SQLite: grouped details, full precision, keyboard and mobile scrolling.
-  for (const width of [1440, 390]) {
+  // Production UI + SQLite: desktop grouped details, full precision and keyboard.
+  for (const width of [1440]) {
     for (const theme of ['light', 'dark']) {
       const detail = await browser.newPage({ viewport: { width, height: 850 } });
       await detail.goto(`${base}/#token=${token}`);
@@ -281,7 +281,7 @@ try {
 
   // Latest comment: real two-snapshot circular reveals, both directions, at the
   // actual trigger centre. No second app tree, API writes or reset form drafts.
-  for (const width of [1440, 390]) {
+  for (const width of [1440]) {
     const reveal = await browser.newPage({ viewport: { width, height: 1000 } });
     const errors = [], writes = [];
     reveal.on('pageerror', error => errors.push(error.message));
@@ -439,7 +439,7 @@ try {
   await page.screenshot({ path: 'tests/artifacts/status-unavailable.png', fullPage: true });
   await page.close();
   await checkSettings(browser, base, token, 'tests/artifacts');
-  console.log('Browser checks passed at six widths, both themes, session bootstrap, settings and secret fields');
+  console.log('Browser checks passed at three desktop widths, both themes, session bootstrap, settings and secret fields');
 } finally {
   await browser?.close();child.kill('SIGTERM');
   if(child.exitCode===null)await new Promise(resolve=>{child.once('exit',resolve);setTimeout(()=>{child.kill('SIGKILL');resolve();},5000).unref();});

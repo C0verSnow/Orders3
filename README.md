@@ -81,7 +81,7 @@ Vite 默认代理 `/api` 到 8090；开发环境打开启动页后输入服务�
 
 以下由**远端 CI**执行，代理不得在本地运行构建/类型检查：`npm run typecheck`、`npm test`、`npm run build`、`npm run package:exe`、`npm run package:deb`。`npm run check` 只解析语法和检查架构，不发出或编译代码。
 
-Actions 验证精度、历史、匹配、未知交易、旧库、事务预算、配置脱敏、会话与 Origin；构建 React 后检查 1920/1440/1280/1024/768/390 六种宽度，双主题、登录、设置和页面溢出，并上传截图。Windows 与 Linux 两架构原生 Runner 制作、安装/启动真实 exe/deb，容器两架构分别启动后才合并 manifest。CI 不连接真实账户或下真实订单。
+Actions 验证精度、历史、匹配、未知交易、旧库、事务预算、配置脱敏、会话与 Origin；构建 React 后检查 1920/1440/1280 三种桌面宽度，双主题、登录、设置和页面溢出，并上传截图。Windows 与 Linux 两架构原生 Runner 制作、安装/启动真实 exe/deb，容器两架构分别启动后才合并 manifest。CI 不连接真实账户或下真实订单。
 
 正式 `v*` 标签与默认分支 main 自动发布；手动运行工作流并勾选 `publish_preview` 可为 feature 分支当前 SHA 发布预发布版本，不更新 latest 或部署生产。Release 包含 exe、两种 deb、SHA256SUMS、源提交与容器 digest。默认分支的 Tailscale/SSH 自动部署使用本次验证的不可变 digest。工作流读取 GitHub 默认分支，后续改名不用再改发布条件。详情见 [部署说明](docs/deployment.md)。
 
@@ -120,4 +120,6 @@ cron = */15 * * * *
 
 操作按钮统一采用 180ms 悬停上移 2px、按压缩放至 94% 的动效。异步操作在按钮内显示加载、成功或失败状态，成功/失败反馈 1.8 秒后恢复；保留可访问错误原因，禁用时阻止重复提交。预留各状态及中英文尺寸，避免标签切换推动相邻元素；减少动态效果时关闭位移。
 
-远端 CI 分别启动真实 Windows EXE 与 Linux Docker，固定 Chromium、字体、数据、UTC、缩放和视口，捕获 96 个场景，比较全表视口和底部 48px 两个区域。精确像素差异和预设容差结果分别报告：单通道差异超过 32/255 的像素不得超过比较区域的 2%。Artifacts 中的 `platform-windows`、`platform-docker` 保存原图与环境清单，`platform-visual-comparison` 保存差异 PNG、JSON 和 Markdown 报告。运行状态见 [PR #37](https://github.com/C0verSnow/Orders3/pull/37/checks)，尚未完成的运行不代表已验证。
+远端 CI 分别启动真实 Windows EXE 与 Linux Docker，固定 Chromium、字体、数据、UTC、缩放和桌面视口（1440/1280px），捕获 96 个场景，比较全表视口和底部 48px 两个区域。精确像素差异和预设容差结果分别报告：单通道差异超过 32/255 的像素不得超过比较区域的 2%。Artifacts 中的 `platform-windows`、`platform-docker` 保存原图与环境清单，`platform-visual-comparison` 保存差异 PNG、JSON 和 Markdown 报告。运行状态见 [PR #37](https://github.com/C0verSnow/Orders3/pull/37/checks)，尚未完成的运行不代表已验证。
+
+用户于 2026-10-20 要求跳过手机和平板检查。当前 CI 仅验收桌面（1920/1440/1280px），历史手机或平板截图不作为本次交付的通过结论。

@@ -39,7 +39,7 @@ try {
       let ready=false;
       for(let i=0;i<150;i++) { if(child.exitCode!==null)throw new Error(logs);try{if((await fetch(base+'/health')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,200)); }
       assert.ok(ready,logs);
-      for(const width of [1440,390]) for(const language of ['zh','en']) for(const theme of ['light','dark']) {
+      for(const width of [1440,1280]) for(const language of ['zh','en']) for(const theme of ['light','dark']) {
         const page=await browser.newPage({viewport:{width,height:1000},deviceScaleFactor:1,reducedMotion:'reduce',timezoneId:'UTC',locale:'en-US',bypassCSP:true});
         await page.addInitScript(({language,theme})=>{localStorage.setItem('orders-language',language);localStorage.setItem('orders-theme',theme);},{language,theme});
         // Serve identical font bytes locally; external dependencies never reach the application.

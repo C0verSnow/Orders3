@@ -1,7 +1,7 @@
 // Runs only in remote CI against an already built server. No exchange access.
 import assert from 'node:assert/strict';
 export async function checkSettings(browser, base, token, output) {
-  for (const width of [1440, 390]) for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) {
+  for (const width of [1440]) for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) {
     const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
