@@ -1,4 +1,4 @@
-import { Button, Input, Badge, Panel } from './components/ui';
+import { Button, Input, Badge, Panel, BrandLogo } from './components/ui';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -171,9 +171,7 @@ export function App() {
     return (
       <main className="mx-auto grid min-h-dvh max-w-xl place-content-center p-6 [&_form]:mt-6 [&_form]:grid [&_form]:gap-5 [&_label]:grid [&_label]:gap-2 [&_label]:text-sm [&_h1]:my-6 [&_h1]:text-2xl [&_h1]:font-semibold">
         <div className="mb-6 min-w-0 rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-sm md:p-6 dark:border-zinc-700 dark:bg-zinc-900">
-          <svg data-ui="brand-logo" viewBox="0 0 40 40" role="img" aria-label="Orders3" className="size-10 shrink-0 text-zinc-900 dark:text-zinc-100">
-            <circle cx="20" cy="20" r="14" fill="none" stroke="currentColor" strokeWidth="4" />
-          </svg>
+          <BrandLogo />
           <h1>连接你的交易工作台</h1>
           <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
             输入服务启动时显示的登录令牌。凭证与交易调度由你的服务端管理。
@@ -418,9 +416,7 @@ function Workspace({
         className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-zinc-200 bg-zinc-100/95 px-4 pt-7 pb-5 backdrop-blur-xl transition-transform duration-300 motion-reduce:transition-none md:w-[212px] md:translate-x-0 lg:w-[238px] dark:border-zinc-800 dark:bg-zinc-900/95 ${menu ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="flex items-center gap-3 px-2 pb-8 [&_strong]:text-lg [&_strong]:font-semibold [&_strong]:tracking-tight [&>div>span]:mt-1 [&>div>span]:block [&>div>span]:text-[10px] [&>div>span]:text-zinc-500 [&>button]:ml-auto">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-[22px] font-bold tracking-tighter text-white dark:bg-zinc-100 dark:text-zinc-900 [&>span]:mt-3 [&>span]:text-[11px]">
-            O<span>3</span>
-          </div>
+          <BrandLogo />
           <div>
             <strong>Orders3</strong>
             <span>特洛伊资本 · 交易工作台</span>

@@ -69,3 +69,11 @@ export function Badge({
     </span>
   );
 }
+
+export function BrandLogo() {
+  return (
+    <svg data-ui="brand-logo" viewBox="0 0 40 40" role="img" aria-label="Orders3" className="size-10 shrink-0 text-zinc-900 dark:text-zinc-100">
+      <circle cx="20" cy="20" r="14" fill="none" stroke="currentColor" strokeWidth="4" />
+    </svg>
+  );
+}
