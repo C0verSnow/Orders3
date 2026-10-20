@@ -16,6 +16,7 @@ export async function checkRefresh(browser, base, token, output) {
       if (width <= 768) await page.getByRole('button', { name: '打开导航', exact: true }).click();
       await page.getByRole('button', { name, exact: true }).click();
       await page.getByRole('heading', { name, exact: true, level: 1 }).waitFor();
+      if (width <= 768) await page.waitForFunction(() => document.querySelector('aside').getBoundingClientRect().right <= 1);
     };
     const all = page.locator('[data-ui=refresh-all]');
     const source = page.getByRole('button').filter({ hasText: '刷新来源' });
