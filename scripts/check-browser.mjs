@@ -224,6 +224,7 @@ try {
   assert.ok(await motion.locator('table').evaluate(el => getComputedStyle(el).fontFamily === getComputedStyle(document.querySelector('main')).fontFamily), 'table inherits the application sans font');
   await motion.screenshot({ path: 'tests/artifacts/ui-motion-dark.png', fullPage: true });
   await motion.emulateMedia({ reducedMotion: 'reduce' });
+  await motion.waitForFunction(el => el.getAnimations().length === 0, await pnl.elementHandle());
   assert.equal(await animated.locator('[data-ui="value-in"]').evaluate(el => el.getAnimations().length), 0);
   assert.equal(await animated.locator('[data-ui="value-out"]').evaluate(el => getComputedStyle(el).display), 'none');
   for (const name of ['预测订单', '跟踪订单', '当前持仓', '入仓历史', '运行状态']) {
@@ -247,6 +248,7 @@ try {
   await appearance.locator('html[data-theme="light"]').waitFor();
   await appearance.getByRole('button', { name: '深色模式', exact: true }).click();
   await appearance.emulateMedia({ colorScheme: 'light' });
+  await appearance.locator('html[data-theme="dark"]').waitFor();
   assert.equal(await appearance.locator('html').getAttribute('data-theme'), 'dark');
   assert.equal(await appearance.getByRole('button', { name: '深色模式', exact: true }).getAttribute('aria-pressed'), 'true');
   await appearance.getByRole('button', { name: '系统设置', exact: true }).click();
@@ -270,6 +272,7 @@ try {
     assert.equal(await reveal.locator('aside [data-ui="download-database"]').count(), 1);
     assert.equal(await reveal.locator('header [data-ui="download-database"]').count(), 0);
     const runReveal = async (button, name) => {
+      await button.scrollIntoViewIfNeeded();
       const bounds = await button.boundingBox();
       await button.click();
       await reveal.waitForFunction(() => document.getAnimations().some(a => a.animationName === 'circular-reveal'));
@@ -291,7 +294,7 @@ try {
       assert.ok(animation.radius >= Math.hypot(Math.max(animation.x, width - animation.x), Math.max(animation.y, 1000 - animation.y)) - 1);
       assert.match(animation.frames[0].clipPath, /^circle\(0px at /);
       assert.equal(animation.oldOpacity, '1'); assert.equal(animation.newOpacity, '1');
-      assert.equal(animation.groupTransform, 'none');
+      assert.ok(['none', 'matrix(1, 0, 0, 1, 0, 0)'].includes(animation.groupTransform), 'snapshot group does not move or scale');
       await reveal.screenshot({ path: `tests/artifacts/reveal-${width}-${name}-midpoint.png` });
       await reveal.evaluate(() => document.getAnimations().find(a => a.animationName === 'circular-reveal').finish());
       await reveal.waitForFunction(() => !document.documentElement.dataset.revealing);
@@ -326,6 +329,12 @@ try {
     await reveal.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
     assert.equal(await reveal.locator('html').getAttribute('lang'), 'en');
     assert.ok(await reveal.getByRole('columnheader', { name: 'Activation price', exact: true }).count());
+    for (const name of ['Overview', 'Predicted orders', 'Trailing orders', 'Positions', 'Entry history', 'Activity']) {
+      if (width <= 768) await reveal.getByRole('button', { name: 'Open navigation', exact: true }).click();
+      await reveal.getByRole('button', { name, exact: true }).click();
+      await reveal.getByRole('heading', { name, exact: true, level: 1 }).waitFor();
+      assert.doesNotMatch(await reveal.locator('body').innerText(), /[\u3400-\u9fff]/, name + ' UI is translated');
+    }
     if (width <= 768) await reveal.getByRole('button', { name: 'Open navigation', exact: true }).click();
     await reveal.getByRole('button', { name: 'Predicted orders', exact: true }).click();
     await reveal.getByRole('button', { name: 'View details for record 1', exact: true }).click();
