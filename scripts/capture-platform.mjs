@@ -56,11 +56,11 @@ try {
         const cdp = await page.context().newCDPSession(page);
         await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
         const {root} = await cdp.send('DOM.getDocument');
-        const {nodeId} = await cdp.send('DOM.querySelector',{nodeId:root.nodeId,selector:'table th [data-ui="stable-text"] > span:last-child'});
+        const {nodeId} = await cdp.send('DOM.querySelector',{nodeId:root.nodeId,selector:'table th button'});
         assert.ok(nodeId,'inspect the actual rendered table font');
         const {fonts} = await cdp.send('CSS.getPlatformFontsForNode',{nodeId});
-        assert.ok(fonts.length && fonts.every(font => font.isCustomFont),'table uses the pinned custom font rather than a system fallback');
         manifest.renderedFonts.push({count,width,language,theme,fonts});
+        assert.ok(fonts.length && fonts.every(font => font.isCustomFont),`table uses the pinned custom font rather than a system fallback: ${JSON.stringify(fonts)}`);
         await cdp.detach();
         await viewport.scrollIntoViewIfNeeded();
         // Keep the content on a whole device pixel before rasterization. A
