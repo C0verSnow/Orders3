@@ -20,6 +20,20 @@ export async function checkRefresh(browser, base, token, output) {
     const all = page.locator('[data-ui=refresh-all]');
     const source = page.getByRole('button').filter({ hasText: '刷新来源' });
     const predicted = page.getByRole('button').filter({ hasText: '刷新预测订单' });
+    const logout = async () => {
+      if (width <= 768) await page.getByRole('button', {name:'打开导航',exact:true}).click();
+      const response = page.waitForResponse(response => response.url().endsWith('/api/session') && response.request().method() === 'DELETE');
+      await page.locator('[data-ui=logout]').click();
+      assert.equal((await response).status(), 200, 'logout API succeeds');
+      try {
+        await page.getByRole('button', {name:/连接工作台/}).waitFor({timeout:4000});
+      } catch (error) {
+        await page.screenshot({path:`${output}/logout-failure-${width}-${theme}.png`,fullPage:true});
+        const session = await page.evaluate(async () => (await fetch('/api/session')).json());
+        console.log('Logout diagnostic', {session, headings:await page.locator('h1').allTextContents()});
+        throw error;
+      }
+    };
     const state = async (button, expected) => {
       await page.waitForFunction(({el, expected}) => el.dataset.feedback === expected,
         {el: await button.elementHandle(), expected}, {timeout: 2500});
@@ -148,9 +162,7 @@ export async function checkRefresh(browser, base, token, output) {
     await page.route('**/api/refresh', route => route.fulfill({json:{error:null}}));
     await all.click();
     await state(all, 'success');
-    if (width <= 768) await page.getByRole('button', {name:'打开导航',exact:true}).click();
-    await page.locator('[data-ui=logout]').click();
-    await page.getByRole('button', {name:/连接工作台/}).waitFor();
+    await logout();
     await page.waitForTimeout(1100);
     await page.getByLabel('工作台登录令牌', {exact:true}).fill(token);
     await page.getByRole('button', {name:/连接工作台/}).click();
@@ -167,9 +179,7 @@ export async function checkRefresh(browser, base, token, output) {
     });
     await source.click();
     await state(source, 'pending');
-    if (width <= 768) await page.getByRole('button', {name:'打开导航',exact:true}).click();
-    await page.locator('[data-ui=logout]').click();
-    await page.getByRole('button', {name:/连接工作台/}).waitFor();
+    await logout();
     release();
     await finished;
     await page.getByLabel('工作台登录令牌', {exact:true}).fill(token);
