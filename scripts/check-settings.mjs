@@ -59,6 +59,9 @@ export async function checkSettings(browser, base, token, output) {
         const dimensions = () => button.evaluate(el => { const r=el.getBoundingClientRect(); return [r.width,r.height]; });
         const initial = await dimensions();
         await button.click(); await started;
+        // React Query batches observer notifications. Keep the real response
+        // held while waiting for the pending render, then verify its state.
+        await page.waitForFunction(() => [...document.querySelectorAll('[data-ui=settings] button[data-feedback=pending]')].some(el => el.checkVisibility() && el.disabled));
         assert.equal(await button.getAttribute('data-feedback'), 'pending', `${width}/${language}/${theme}/${section}: pending feedback, disabled=${await button.isDisabled()}`);
         assert.equal(await button.isDisabled(), true);
         assert.deepEqual(await dimensions(), initial);

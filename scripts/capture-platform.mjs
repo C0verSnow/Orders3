@@ -33,7 +33,7 @@ try {
     let child;
     const name='orders-platform-visual';
     if(platform==='windows') child=spawn(resolve('dist/orders-win32-x64.exe'),['--cached','--no-browser','--host','127.0.0.1','--port','18093'],{cwd:directory,env:{...process.env,ORDERS_DATA_DIR:directory,ORDERS_CONFIG_PATH:join(directory,'config'),ORDERS_ACCESS_TOKEN:token}});
-    else child=spawn('docker',['run','--rm','--name',name,'-p','127.0.0.1:18093:8090','-v',`${directory}:/data`,'-e',`ORDERS_ACCESS_TOKEN=${token}`,'orders-dashboard:ci','--cached']);
+    else child=spawn('docker',['run','--rm','--name',name,'-p','127.0.0.1:18093:8090','-v',`${directory}:/data`,'-e',`ORDERS_ACCESS_TOKEN=${token}`,'-e',`ORDERS_ALLOWED_ORIGIN=${base}`,'orders-dashboard:ci','--cached']);
     let logs='';child.stdout.on('data',b=>{logs+=b;});child.stderr.on('data',b=>{logs+=b;});
     try {
       let ready=false;
@@ -44,7 +44,8 @@ try {
         await page.addInitScript(({language,theme})=>{localStorage.setItem('orders-language',language);localStorage.setItem('orders-theme',theme);},{language,theme});
         // Serve identical font bytes locally; external dependencies never reach the application.
         await page.route('**/__ci_font.ttf',route=>route.fulfill({contentType:'font/ttf',body:font}));
-        await page.goto(`${base}/#token=${token}`);
+        const documentResponse = await page.goto(`${base}/#token=${token}`);
+        assert.equal(documentResponse.status(),200,'actual artifact serves the trusted browser origin');
         await page.getByRole('heading',{name:language==='zh'?'交易概览':'Overview',exact:true}).waitFor();
         await page.addStyleTag({content:"@font-face { font-family: CIVisual; src: url('/__ci_font.ttf'); font-weight: 100 900; } *, *::before, *::after { font-family: CIVisual !important; }"});
         await page.evaluate(()=>document.fonts.ready);
