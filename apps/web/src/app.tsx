@@ -197,8 +197,8 @@ export function App() {
                 autoFocus
               />
             </label>
-            <Button variant="primary" disabled={login.isPending}>
-              {login.isPending ? t('连接中…') : t('连接工作台')}
+            <Button variant="primary" status={login.isPending ? 'pending' : login.isError ? 'error' : 'idle'} disabled={login.isPending}>
+              {t('连接工作台')}
               <ArrowUpRight size={16} />
             </Button>
             <p role="alert">{login.error?.message || session.error?.message}</p>
@@ -321,10 +321,15 @@ function Workspace({
   }, [source.error, orders.error, activity.error, client]);
   const refresh = useMutation({
     mutationFn: async (which: 'all' | 'sources' | 'orders') => {
-      if (which !== 'orders') await post('/api/refresh');
-      if (which !== 'sources') await post('/api/orders/refresh');
+      if (which !== 'orders') {
+        const result = await post<SourceSnapshot>('/api/refresh');
+        if (result.error) throw new Error(result.error);
+      }
+      if (which !== 'sources') {
+        const result = await post<OrdersSnapshot>('/api/orders/refresh');
+        if (result.error) throw new Error(result.error);
+      }
     },
-    onSuccess: () => setNotice('刷新完成，以下为服务端确认的数据。'),
     onError: (error) => setNotice(error.message),
     onSettled: () => {
       for (const key of ['sources', 'orders', 'pending'])
@@ -354,8 +359,8 @@ function Workspace({
     onSuccess: onLogout,
     onError: (error) => setNotice(error.message),
   });
-  const download = async () => {
-    try {
+  const download = useMutation({
+    mutationFn: async () => {
       const response = await fetch('/api/download', { credentials: 'same-origin' });
       if (!response.ok) {
         const data = await response.json();
@@ -367,10 +372,9 @@ function Workspace({
       link.download = 'data.db';
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : t('下载失败'));
-    }
-  };
+    },
+    onError: (error) => setNotice(error.message),
+  });
   const sourceRows = useMemo(
     () =>
       source.data?.orders.map((row) => ({
@@ -400,10 +404,11 @@ function Workspace({
     refresh.isPending ||
     source.data?.refreshing ||
     orders.data?.refreshing;
+  const refreshStatus = refresh.isPending ? 'pending' : refresh.isError ? 'error' : refresh.isSuccess ? 'success' : 'idle';
   const heading = pages.find((item) => item.id === page)!;
   const requestRefresh = (which: 'all' | 'sources' | 'orders') => {
     {
-      setNotice('正在同步，请等待服务端确认结果…');
+      setNotice('');
       refresh.mutate(which);
     }
   };
@@ -474,14 +479,15 @@ function Workspace({
           </p>
           <Button
             variant="quiet"
-            onClick={download}
+            onClick={() => download.mutate()}
+            status={download.isPending ? 'pending' : download.isError ? 'error' : download.isSuccess ? 'success' : 'idle'}
             data-ui="download-database"
             className="h-10 w-full justify-start! gap-2! px-3! py-2!"
           >
             <ArrowDownToLine size={16} />
             <StableText text={t('下载数据库')} />
           </Button>
-          <Button variant="quiet" data-ui="logout" className="h-10 w-full justify-start! gap-2! px-3! py-2!" onClick={() => logout.mutate()} disabled={logout.isPending}>
+          <Button variant="quiet" data-ui="logout" className="h-10 w-full justify-start! gap-2! px-3! py-2!" onClick={() => logout.mutate()} status={logout.isPending ? 'pending' : logout.isError ? 'error' : 'idle'} disabled={logout.isPending}>
             <LogOut size={16} />
             {t('退出工作台')}
           </Button>
@@ -522,12 +528,12 @@ function Workspace({
               />
             </div>
             {page !== 'settings' && (
-              <Button variant="primary" disabled={busy} onClick={() => requestRefresh('all')}>
+              <Button data-ui="refresh-all" status={refreshStatus} variant="primary" disabled={busy} onClick={() => requestRefresh('all')}>
                 <RefreshCw
                   size={16}
                   className={busy ? 'animate-spin motion-reduce:animate-none' : ''}
                 />
-                {busy ? t('正在同步…') : t('统一刷新')}
+                {t('统一刷新')}
               </Button>
             )}
           </div>
@@ -685,7 +691,7 @@ function Workspace({
                 title={t('订单工作台')}
                 description={t('来源信号与 Gate 跟踪单，共用同一套交易规则。')}
                 action={
-                  <Button variant="quiet" disabled={busy} onClick={() => requestRefresh('sources')}>
+                  <Button status={refreshStatus} variant="quiet" disabled={busy} onClick={() => requestRefresh('sources')}>
                     <RefreshCw size={14} />
                     {t('刷新来源')}
                   </Button>
@@ -739,10 +745,11 @@ function Workspace({
               ])}
               action={
                 <div className="flex flex-wrap gap-2">
-                  <Button disabled={busy} onClick={() => requestRefresh('sources')}>
+                  <Button status={refreshStatus} disabled={busy} onClick={() => requestRefresh('sources')}>
                     {t('刷新预测订单')}
                   </Button>
                   <Button
+                    status={manualOpening.isPending ? 'pending' : manualOpening.isError ? 'error' : manualOpening.isSuccess ? 'success' : 'idle'}
                     disabled={busy || !sourceRows.length}
                     onClick={() => {
                       if (
@@ -801,7 +808,7 @@ function Workspace({
                 [date(orders.data?.position_updated_at), date(orders.data?.trailing_updated_at)],
               )}
               action={
-                <Button disabled={busy} onClick={() => requestRefresh('orders')}>
+                <Button status={refreshStatus} disabled={busy} onClick={() => requestRefresh('orders')}>
                   {t('同步持仓与订单')}
                 </Button>
               }
@@ -872,6 +879,7 @@ function Workspace({
                       {intent.request_id || t('旧版记录缺失')}
                     </p>
                     <Button
+                      status={resolve.variables?.id === intent.id ? (resolve.isPending ? 'pending' : resolve.isError ? 'error' : resolve.isSuccess ? 'success' : 'idle') : 'idle'}
                       disabled={resolve.isPending || !intent.owner}
                       onClick={() => {
                         if (

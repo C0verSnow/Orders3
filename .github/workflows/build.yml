@@ -136,6 +136,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Directory -Force dist/release | Out-Null
           Copy-Item $target dist/release/
+      - name: Capture actual Windows EXE browser
+        if: matrix.os == 'windows'
+        run: |
+          npx playwright install chromium
+          node scripts/capture-platform.mjs windows
+      - uses: actions/upload-artifact@v7.0.1
+        if: always() && matrix.os == 'windows'
+        with:
+          name: platform-windows
+          path: tests/artifacts/platform-windows/
+          if-no-files-found: error
       - name: Build, install and run the actual Debian package
         if: matrix.os == 'linux'
         env:
@@ -212,6 +223,21 @@ jobs:
           trap 'docker logs orders-ci-random; docker rm -f orders-ci-random' EXIT
           bash start-docker.sh --cached
           test -s docker.md
+      - uses: actions/setup-node@v6
+        if: matrix.arch == 'amd64'
+        with: { node-version: '24.22.0', cache: npm }
+      - name: Capture actual Linux Docker browser
+        if: matrix.arch == 'amd64'
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          node scripts/capture-platform.mjs docker
+      - uses: actions/upload-artifact@v7.0.1
+        if: always() && matrix.arch == 'amd64'
+        with:
+          name: platform-docker
+          path: tests/artifacts/platform-docker/
+          if-no-files-found: error
       - uses: docker/login-action@v4.6.0
         if: needs.publication.outputs.enabled == 'true'
         with:
@@ -246,8 +272,31 @@ jobs:
           path: digests/*
           if-no-files-found: error
 
+  visual-comparison:
+    name: Windows EXE vs Linux Docker pixels
+    needs: [packages, container-build]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/download-artifact@v8.0.1
+        with: { pattern: platform-*, path: tests/artifacts/ }
+      - uses: actions/setup-python@v6
+        with: { python-version: '3.12' }
+      - run: python -m pip install Pillow==11.3.0
+      - run: python scripts/compare-platforms.py
+      - name: Add visual report to run summary
+        if: always()
+        run: cat tests/artifacts/platform-diff/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: platform-visual-comparison
+          path: tests/artifacts/platform-diff/
+          if-no-files-found: error
+
   container:
-    needs: [publication, container-build]
+    needs: [publication, container-build, visual-comparison]
     if: needs.publication.outputs.enabled == 'true'
     runs-on: ubuntu-24.04
     permissions: { contents: read, packages: write }

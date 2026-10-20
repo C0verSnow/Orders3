@@ -1,5 +1,6 @@
 // Remote CI only, against the built production server; no exchange calls or mocked API.
 import { chromium } from 'playwright';
+import { checkSettings } from './check-settings.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -78,6 +79,7 @@ try {
     await page.locator('[data-ui="theme-switch"]').click();
     if(width<=768)await page.getByRole('button',{name:'打开导航',exact:true}).click();
     await page.getByRole('button',{name:'系统设置',exact:true}).click();
+    await page.locator('[data-settings-section=connections]').click();
     await page.getByRole('heading',{name:'连接与存储',exact:true}).waitFor();
     assert.equal(await page.locator('input[name="API_SECRET"]').inputValue(),'');
     await page.screenshot({path:`tests/artifacts/settings-${width}-dark.png`,fullPage:true});
@@ -242,6 +244,7 @@ try {
   assert.equal(await appearance.locator('header [aria-label="本地受信任会话"]').count(), 0);
   assert.equal(await appearance.locator('svg[data-ui="brand-logo"]').count(), 1);
   await appearance.getByRole('button', { name: '系统设置', exact: true }).click();
+  await appearance.locator('[data-settings-section=appearance]').click();
   await appearance.locator('[data-ui="theme-select"]').selectOption('system');
   await appearance.waitForFunction(() => !document.documentElement.dataset.revealing);
   await appearance.emulateMedia({ colorScheme: 'dark' });
@@ -266,8 +269,11 @@ try {
   await appearance.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
   await appearance.locator('html[data-theme="dark"]').waitFor();
   await appearance.getByRole('button', { name: '系统设置', exact: true }).click();
+  await appearance.locator('[data-settings-section=opening]').click();
   assert.equal(await appearance.getByLabel('启用自动开仓（涉及真实交易）', { exact: true }).isChecked(), false);
   await appearance.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
+  await appearance.locator('[data-ui=settings-back]').click();
+  await appearance.locator('[data-settings-section=prediction]').click();
   await appearance.getByLabel('Cron 表达式', { exact: true }).first().fill('7 * * * *');
   assert.equal(await appearance.getByLabel('Cron 表达式', { exact: true }).nth(1).inputValue(), '3 * * * *');
   await appearance.screenshot({ path: 'tests/artifacts/independent-schedules-dark.png', fullPage: true });
@@ -324,9 +330,12 @@ try {
     assert.equal(await reveal.locator('html').getAttribute('data-theme'), 'light');
     if (width <= 768) await reveal.getByRole('button', { name: '打开导航', exact: true }).click();
     await reveal.getByRole('button', { name: '系统设置', exact: true }).click();
+    await reveal.locator('[data-settings-section=opening]').click();
+    await reveal.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
+    await reveal.locator('[data-ui=settings-back]').click();
+    await reveal.locator('[data-settings-section=connections]').click();
     await reveal.getByRole('heading', { name: '连接与存储', exact: true }).waitFor();
     await reveal.locator('input[name="API_KEY"]').fill('unsaved-language-draft');
-    await reveal.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
     const formBefore = await reveal.locator('input[name="API_KEY"]').evaluate(el => { window.originalDraftInput = el; return true; });
     assert.ok(formBefore);
     const layout = () => reveal.evaluate(() => {
@@ -358,6 +367,10 @@ try {
     assert.ok(await reveal.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'English has no page overflow');
     assert.doesNotMatch(await reveal.locator('body').innerText(), /[\u3400-\u9fff]/, 'all visible settings UI is translated');
     await runReveal(reveal.locator('[data-ui="language-switch"]'), 'chinese');
+    await reveal.locator('[data-settings-section=opening]').click();
+    await reveal.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
+    await reveal.locator('[data-ui=settings-back]').click();
+    await reveal.locator('[data-settings-section=connections]').click();
     await reveal.getByRole('heading', { name: '连接与存储', exact: true }).waitFor();
     assert.equal(await reveal.locator('input[name="API_KEY"]').inputValue(), 'unsaved-language-draft');
     await runReveal(reveal.locator('[data-ui="language-switch"]'), 'english-again');
@@ -397,8 +410,11 @@ try {
   await page.goto(`${base}/#token=${token}`);
   await page.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
   await page.getByRole('button', { name: '系统设置', exact: true }).click();
-  await page.locator('input[name="API_KEY"]').fill('unsaved-key-draft');
+  await page.locator('[data-settings-section=prediction]').click();
   await page.getByLabel('Cron 表达式', { exact: true }).first().fill('7 * * * *');
+  await page.locator('[data-ui=settings-back]').click();
+  await page.locator('[data-settings-section=connections]').click();
+  await page.locator('input[name="API_KEY"]').fill('unsaved-key-draft');
   await page.waitForTimeout(1200);
   // Match Query's window listener and a full hidden/visible transition.
   await page.evaluate(() => {
@@ -420,6 +436,7 @@ try {
   assert.equal(await page.getByText('当前没有待核对请求。', { exact: true }).count(), 0);
   await page.screenshot({ path: 'tests/artifacts/status-unavailable.png', fullPage: true });
   await page.close();
+  await checkSettings(browser, base, token, 'tests/artifacts');
   console.log('Browser checks passed at six widths, both themes, session bootstrap, settings and secret fields');
 } finally {
   await browser?.close();child.kill('SIGTERM');
