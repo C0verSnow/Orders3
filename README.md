@@ -120,6 +120,8 @@ cron = */15 * * * *
 
 操作按钮统一采用 180ms 悬停上移 2px、按压缩放至 94% 的动效。异步操作在按钮内显示加载、成功或失败状态，成功/失败反馈 1.8 秒后恢复；保留可访问错误原因，禁用时阻止重复提交。预留各状态及中英文尺寸，避免标签切换推动相邻元素；减少动态效果时关闭位移。
 
-远端 CI 分别启动真实 Windows EXE 与 Linux Docker，固定 Chromium、字体、数据、UTC、缩放和桌面视口（1440/1280px），捕获 96 个场景，比较全表视口和底部 48px 两个区域。精确像素差异和预设容差结果分别报告：单通道差异超过 32/255 的像素不得超过比较区域的 2%。Artifacts 中的 `platform-windows`、`platform-docker` 保存原图与环境清单，`platform-visual-comparison` 保存差异 PNG、JSON 和 Markdown 报告。运行状态见 [PR #37](https://github.com/C0verSnow/Orders3/pull/37/checks)，尚未完成的运行不代表已验证。
+可选远端视觉验收分别启动真实 Windows EXE 与 Linux Docker，固定 Chromium、字体、数据、UTC、缩放和桌面视口（1440/1280px），捕获 96 个场景，比较全表视口和底部 48px 两个区域。精确像素差异和预设容差结果分别报告：单通道差异超过 32/255 的像素不得超过比较区域的 2%。Artifacts 中的 `platform-windows`、`platform-docker` 保存原图与环境清单，`platform-visual-comparison` 保存差异 PNG、JSON 和 Markdown 报告。运行状态见 [PR #37](https://github.com/C0verSnow/Orders3/pull/37/checks)，尚未完成的运行不代表已验证。
 
 用户于 2026-10-20 要求跳过手机和平板检查。当前 CI 仅验收桌面（1920/1440/1280px），历史手机或平板截图不作为本次交付的通过结论。
+
+按用户后续要求，跨平台截图、字体诊断和像素比较默认跳过。只有手动运行工作流并明确勾选 `run_visual_checks` 才执行；本次交付不把视觉一致性标记为通过。业务、桌面功能、类型、构建、安装包和容器检查继续执行。

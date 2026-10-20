@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      run_visual_checks:
+        description: Run optional EXE/Docker screenshot, font and pixel diagnostics
+        type: boolean
+        default: false
       publish_preview:
         description: Publish a verified prerelease for this exact branch SHA
         type: boolean
@@ -137,12 +141,12 @@ jobs:
           New-Item -ItemType Directory -Force dist/release | Out-Null
           Copy-Item $target dist/release/
       - name: Capture actual Windows EXE browser
-        if: matrix.os == 'windows'
+        if: inputs.run_visual_checks && matrix.os == 'windows'
         run: |
           npx playwright install chromium
           node scripts/capture-platform.mjs windows
       - uses: actions/upload-artifact@v7.0.1
-        if: always() && matrix.os == 'windows'
+        if: always() && inputs.run_visual_checks && matrix.os == 'windows'
         with:
           name: platform-windows
           path: tests/artifacts/platform-windows/
@@ -224,16 +228,16 @@ jobs:
           bash start-docker.sh --cached
           test -s docker.md
       - uses: actions/setup-node@v6
-        if: matrix.arch == 'amd64'
+        if: inputs.run_visual_checks && matrix.arch == 'amd64'
         with: { node-version: '24.22.0', cache: npm }
       - name: Capture actual Linux Docker browser
-        if: matrix.arch == 'amd64'
+        if: inputs.run_visual_checks && matrix.arch == 'amd64'
         run: |
           npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium
           node scripts/capture-platform.mjs docker
       - uses: actions/upload-artifact@v7.0.1
-        if: always() && matrix.arch == 'amd64'
+        if: always() && inputs.run_visual_checks && matrix.arch == 'amd64'
         with:
           name: platform-docker
           path: tests/artifacts/platform-docker/
@@ -273,6 +277,7 @@ jobs:
           if-no-files-found: error
 
   visual-comparison:
+    if: inputs.run_visual_checks
     name: Windows EXE vs Linux Docker pixels
     needs: [packages, container-build]
     runs-on: ubuntu-24.04
@@ -297,7 +302,11 @@ jobs:
 
   container:
     needs: [publication, checks, packages, container-build, visual-comparison]
-    if: needs.publication.outputs.enabled == 'true'
+    if: >-
+      !cancelled() && needs.publication.outputs.enabled == 'true' &&
+      needs.checks.result == 'success' && needs.packages.result == 'success' &&
+      needs['container-build'].result == 'success' &&
+      (needs['visual-comparison'].result == 'success' || needs['visual-comparison'].result == 'skipped')
     runs-on: ubuntu-24.04
     permissions: { contents: read, packages: write }
     outputs:
