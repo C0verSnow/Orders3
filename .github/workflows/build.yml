@@ -81,7 +81,7 @@ jobs:
           ORDERS_VERSION: ci-${{ github.run_id }}
           ORDERS_COMMIT: ${{ github.sha }}
       - run: node scripts/smoke-runtime.mjs
-      - name: Browser checks at desktop sizes (phone and tablet skipped)
+      - name: Desktop browser checks and targeted phone refresh regression
         run: |
           npx playwright install --with-deps chromium
           sudo apt-get install -y fonts-noto-cjk

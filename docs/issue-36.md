@@ -35,6 +35,18 @@ ScrollFade 的底部 48px 层使用透明到当前主题表格表面的渐变；
 - 手机、平板、跨平台截图、字体诊断与像素差异检查按用户要求跳过；不将这些项记为通过，不宣称跨平台视觉一致性已经验证。此前桌面像素比较仍有文字区域超出容差，见[历史报告](https://github.com/C0verSnow/Orders3/actions/runs/39384722331)，本次没有放宽阈值。
 - [Issue #36](https://github.com/C0verSnow/Orders3/issues/36) 已按完成状态关闭；[PR #37](https://github.com/C0verSnow/Orders3/pull/37) 保持开放待审阅。没有合并、发布、部署或使用真实资金。
 
+## PR #37 最新评论：刷新反馈与持仓按钮
+
+需求：[最新评论](https://github.com/C0verSnow/Orders3/pull/37#issuecomment-6290581621)。只改前端反馈、按钮渲染与颜色过渡，不改后端 API、查询轮询或交易行为。
+
+根因：多个刷新按钮共用 Mutation 状态，Button 内部只临时隐藏结果，未清除上层历史成功状态；页面重新挂载后会重新展示。现由 Workspace 中的 `useRefreshFeedback` 记录发起按钮和反馈有效期，与 Mutation 结果解耦。成功 900ms、失败 1800ms 后明确回到 idle；重新请求前取消旧计时器，用请求序号拒绝旧回调，组件卸载时清理。刷新按钮关闭组件内部的二次计时；其他保存按钮维持原有反馈。背景、边框、文字颜色统一采用 180ms 过渡，并保留减少动态效果选项。
+
+持仓页移除同步按钮及 action，沿用原表头布局、数据查询、后台同步和全局刷新。
+
+远端复现命令为 `node scripts/check-browser.mjs`，调用 `scripts/check-refresh.mjs`。旧源码新增回归的[运行 39422424353](https://github.com/C0verSnow/Orders3/actions/runs/39422424353)明确失败：`source refresh must not animate Refresh all`，实际 pending、预期 idle。修复后的远端结果待补。
+
+新增专项覆盖桌面 1440px 和手机 390px、明暗主题，包括按钮隔离、重复点击、切页前后与未挂载期间的反馈到期、双请求完成前保持 pending、旧计时器不能结束新请求、背景色真实过渡、持仓页按钮移除且数据继续重新查询、HTTP/业务失败原因及退出重登后的状态。仅此专项恢复手机视口，其余移动端与可选跨平台视觉检查仍跳过。
+
 ## 源码定位
 
 以下位置以已验证源码提交 `e24c98f06164e3724257c71f8c2fa88ac77d1003` 为准。

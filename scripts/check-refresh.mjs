@@ -53,6 +53,10 @@ export async function checkRefresh(browser, base, token, output) {
     await page.waitForTimeout(100);
     assert.equal(await source.getAttribute('data-feedback'), 'idle');
     assert.equal(await all.getAttribute('data-feedback'), 'idle');
+    await navigate('系统设置');
+    assert.equal(await all.count(), 0);
+    await navigate('交易概览');
+    assert.equal(await all.getAttribute('data-feedback'), 'idle', 'global button cannot replay expired success after remount');
     // A page-local request keeps its owner while its button is unmounted.
     await navigate('预测订单');
     gate = new Promise(resolve => { release = resolve; });
@@ -150,6 +154,26 @@ export async function checkRefresh(browser, base, token, output) {
     await page.waitForTimeout(1100);
     await page.goto(`${base}/#token=${token}`);
     await page.getByRole('heading', {name:'交易概览',exact:true}).waitFor();
+    assert.equal(await all.getAttribute('data-feedback'), 'idle');
+    assert.equal(await source.getAttribute('data-feedback'), 'idle');
+    // Also resolve a request after Workspace has actually unmounted.
+    let finishRequest;
+    const finished = new Promise(resolve => { finishRequest = resolve; });
+    gate = new Promise(resolve => { release = resolve; });
+    await page.route('**/api/refresh', async route => {
+      await gate;
+      try { await route.fulfill({json:{error:null}}); } finally { finishRequest(); }
+    });
+    await source.click();
+    await state(source, 'pending');
+    if (width <= 768) await page.getByRole('button', {name:'打开导航',exact:true}).click();
+    await page.locator('[data-ui=logout]').click();
+    await page.getByRole('button', {name:/连接工作台/}).waitFor();
+    release();
+    await finished;
+    await page.goto(`${base}/#token=${token}`);
+    await page.getByRole('heading', {name:'交易概览',exact:true}).waitFor();
+    await page.waitForTimeout(1100);
     assert.equal(await all.getAttribute('data-feedback'), 'idle');
     assert.equal(await source.getAttribute('data-feedback'), 'idle');
     assert.deepEqual(errors, []);
