@@ -152,7 +152,8 @@ export async function checkRefresh(browser, base, token, output) {
     await page.locator('[data-ui=logout]').click();
     await page.getByRole('button', {name:/连接工作台/}).waitFor();
     await page.waitForTimeout(1100);
-    await page.goto(`${base}/#token=${token}`);
+    await page.getByLabel('工作台登录令牌', {exact:true}).fill(token);
+    await page.getByRole('button', {name:/连接工作台/}).click();
     await page.getByRole('heading', {name:'交易概览',exact:true}).waitFor();
     assert.equal(await all.getAttribute('data-feedback'), 'idle');
     assert.equal(await source.getAttribute('data-feedback'), 'idle');
@@ -171,7 +172,8 @@ export async function checkRefresh(browser, base, token, output) {
     await page.getByRole('button', {name:/连接工作台/}).waitFor();
     release();
     await finished;
-    await page.goto(`${base}/#token=${token}`);
+    await page.getByLabel('工作台登录令牌', {exact:true}).fill(token);
+    await page.getByRole('button', {name:/连接工作台/}).click();
     await page.getByRole('heading', {name:'交易概览',exact:true}).waitFor();
     await page.waitForTimeout(1100);
     assert.equal(await all.getAttribute('data-feedback'), 'idle');
