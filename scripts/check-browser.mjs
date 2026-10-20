@@ -346,11 +346,17 @@ try {
     await reveal.locator('input[name="API_KEY"]').fill('unsaved-language-draft');
     const formBefore = await reveal.locator('input[name="API_KEY"]').evaluate(el => { window.originalDraftInput = el; return true; });
     assert.ok(formBefore);
-    const layout = () => reveal.evaluate(() => {
+    const layout = async () => {
+      await reveal.locator('aside').evaluate(async el => {
+        await Promise.allSettled(el.getAnimations({subtree:true})
+          .filter(animation => animation.effect?.getComputedTiming().endTime !== Infinity)
+          .map(animation => animation.finished));
+      });
+      return reveal.evaluate(() => {
       const rect = el => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(n => Math.round(n * 10) / 10); };
       return [...document.querySelectorAll('#main [data-ui="two-tone-title"], #main input, header [data-ui="preferences"], aside nav button, aside [data-ui="download-database"], aside [data-ui="logout"]')].map(rect);
-    });
-    await reveal.locator('aside').evaluate(async el => { await Promise.allSettled(el.getAnimations().map(a => a.finished)); });
+      });
+    };
     await reveal.evaluate(() => window.scrollTo(0, 0));
     const chineseLayout = await layout();
     // Mobile drawer is closed but still laid out, so its two actions can be compared.
