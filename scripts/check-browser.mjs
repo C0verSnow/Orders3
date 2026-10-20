@@ -1,6 +1,7 @@
 // Remote CI only, against the built production server; no exchange calls or mocked API.
 import { chromium } from 'playwright';
 import { checkSettings } from './check-settings.mjs';
+import { checkRefresh } from './check-refresh.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -26,6 +27,7 @@ try {
   for(let index=0;index<100;index++) { if(child.exitCode!==null)throw new Error(output); try {if((await fetch(base+'/health')).ok){ready=true;break;}}catch{} await new Promise(resolve=>setTimeout(resolve,100)); }
   assert.ok(ready);
   browser=await chromium.launch();mkdirSync('tests/artifacts',{recursive:true});
+  await checkRefresh(browser, base, token, 'tests/artifacts');
   // Hold an anonymous session GET until after the real login POST succeeds.
   // A late anonymous response must never replace the authenticated cache.
   const bootstrap = await browser.newPage();
