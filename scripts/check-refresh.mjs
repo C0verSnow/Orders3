@@ -111,7 +111,7 @@ export async function checkRefresh(browser, base, token, output) {
     assert.equal(await all.getAttribute('data-feedback'), 'pending', 'old success timeout cannot finish a new request');
     await navigate('当前持仓');
     assert.equal(await page.getByRole('button').filter({hasText:'同步持仓与订单'}).count(), 0);
-    await page.getByRole('cell', {name:'BTC_USDT',exact:true}).waitFor();
+    await page.getByRole('cell', {name:'BTC / USDT',exact:true}).waitFor();
     release();
     await state(all, 'success');
     await state(all, 'idle');
@@ -123,7 +123,7 @@ export async function checkRefresh(browser, base, token, output) {
     await state(all, 'success');
     assert.ok(orderRequests >= 4, 'global refresh continues to sync positions and orders');
     assert.ok(positionReads.includes(200), 'position snapshot is reloaded');
-    await page.getByRole('cell', {name:'BTC_USDT',exact:true}).waitFor();
+    await page.getByRole('cell', {name:'BTC / USDT',exact:true}).waitFor();
     await state(all, 'idle');
 
     // Transport and business errors retain their explanation; business
