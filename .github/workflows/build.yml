@@ -168,7 +168,7 @@ jobs:
 
   container-build:
     name: Native ${{ matrix.arch }} container
-    needs: [checks, packages, publication]
+    needs: [publication]
     strategy:
       fail-fast: false
       matrix:
@@ -296,7 +296,7 @@ jobs:
           if-no-files-found: error
 
   container:
-    needs: [publication, container-build, visual-comparison]
+    needs: [publication, checks, packages, container-build, visual-comparison]
     if: needs.publication.outputs.enabled == 'true'
     runs-on: ubuntu-24.04
     permissions: { contents: read, packages: write }

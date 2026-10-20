@@ -298,8 +298,14 @@ try {
     await reveal.locator('tbody').first().evaluate(async el => { await Promise.allSettled(el.getAnimations({ subtree: true }).map(a => a.finished)); });
     const runReveal = async (button, name) => {
       await button.scrollIntoViewIfNeeded();
-      const bounds = await button.boundingBox();
+      // Measure at the actual click: shared hover/press motion moves the trigger
+      // between Playwright's pre-click bounding box and the React click handler.
+      await button.evaluate(el => el.addEventListener('click', () => {
+        const rect = el.getBoundingClientRect();
+        window.revealClickBounds = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      }, { capture: true, once: true }));
       await button.click();
+      const bounds = await reveal.evaluate(() => window.revealClickBounds);
       await reveal.waitForFunction(() => document.getAnimations().some(a => a.animationName === 'circular-reveal'));
       const animation = await reveal.evaluate(() => {
         const a = document.getAnimations().find(a => a.animationName === 'circular-reveal');
