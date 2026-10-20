@@ -1,7 +1,7 @@
 // Remote CI only: real standalone Windows EXE or real Linux Docker image.
 import { chromium } from 'playwright';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, chmodSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -24,7 +24,12 @@ try {
     const directory=mkdtempSync(join(tmpdir(),'orders-platform-'));
     const seed=new Storage(join(directory,'data.db'));
     seed.saveSources(Array.from({length:count},(_,i)=>({contract:`VIS${String(i).padStart(2,'0')}_USDT`,activation_price:'100.005',amount:'2',price_round:'0.001',side:'buy',timestamp:1700000000000+i})));
-    seed.close();chmodSync(directory,0o777);chmodSync(join(directory,'data.db'),0o666);
+    seed.close();
+    if(platform==='docker') {
+      // The production image runs as uid 1000 and hardens its data permissions.
+      // Give that user ownership of the real seeded volume, matching deployment.
+      assert.equal(spawnSync('sudo',['chown','-R','1000:1000',directory],{stdio:'inherit'}).status,0);
+    }
     let child;
     const name='orders-platform-visual';
     if(platform==='windows') child=spawn(resolve('dist/orders-win32-x64.exe'),['--cached','--no-browser','--host','127.0.0.1','--port','18093'],{cwd:directory,env:{...process.env,ORDERS_DATA_DIR:directory,ORDERS_CONFIG_PATH:join(directory,'config'),ORDERS_ACCESS_TOKEN:token}});
@@ -65,11 +70,15 @@ try {
         }
         await page.close();
       }
+    } catch(error) {
+      writeFileSync(join(out,`failure-${count}.log`), `${error.stack}\n${logs}`);
+      throw error;
     } finally {
       if(platform==='docker') spawnSync('docker',['stop',name],{stdio:'inherit'});
       else child.kill('SIGTERM');
       if(child.exitCode===null)await new Promise(r=>{child.once('exit',r);setTimeout(()=>{child.kill('SIGKILL');r();},5000).unref();});
-      rmSync(directory,{recursive:true,force:true});
+      if(platform==='docker') assert.equal(spawnSync('sudo',['rm','-rf','--',directory],{stdio:'inherit'}).status,0);
+      else rmSync(directory,{recursive:true,force:true});
     }
   }
 } finally {
