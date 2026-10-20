@@ -53,6 +53,11 @@ try {
         await page.getByRole('button',{name:language==='zh'?'预测订单':'Predicted orders',exact:true}).click();
         const fade=page.locator('[data-ui=scroll-fade]').first(), viewport=fade.locator('[data-ui=fade-viewport]');
         await viewport.waitFor();await page.waitForTimeout(300);
+        await viewport.scrollIntoViewIfNeeded();
+        // Keep the content on a whole device pixel before rasterization. A
+        // fractional page offset can otherwise add a crop row and change glyph AA.
+        const initialBox = await viewport.boundingBox();
+        await fade.evaluate((el, offset) => { el.style.transform = `translate(${offset.x}px, ${offset.y}px)`; }, {x:Math.round(initialBox.x)-initialBox.x,y:Math.round(initialBox.y)-initialBox.y});
         for(const [position,ratio] of [['top',0],['quarter',.25],['middle',.5],['bottom',1]]) {
           await viewport.evaluate((el,ratio)=>{el.scrollTop=(el.scrollHeight-el.clientHeight)*ratio;},ratio);
           await page.waitForTimeout(250);
@@ -65,8 +70,8 @@ try {
           const id=`${count}-${width}-${language}-${theme}-${position}`;
           const box=await viewport.boundingBox();
           // Keep the full viewport and a separately identified bottom 48px comparison region.
-          await viewport.screenshot({path:join(out,`${id}.png`)});
-          await page.screenshot({path:join(out,`${id}-fade.png`),clip:{x:box.x,y:box.y+metrics.height-48,width:metrics.width,height:48}});
+          await page.screenshot({path:join(out,`${id}.png`),clip:{x:Math.round(box.x),y:Math.round(box.y),width:Math.round(box.width),height:Math.round(box.height)}});
+          await page.screenshot({path:join(out,`${id}-fade.png`),clip:{x:Math.round(box.x),y:Math.round(box.y)+metrics.height-48,width:metrics.width,height:48}});
           manifest.cases.push({id,count,width,language,theme,position,metrics,more,region:{width:metrics.width,height:48}});
         }
         await page.close();

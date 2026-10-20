@@ -116,6 +116,7 @@ export async function checkSettings(browser, base, token, output) {
       await page.mouse.up();
     } else await refresh.click();
     await hit;
+    await page.waitForFunction(() => document.querySelector('[data-ui=refresh-all]').dataset.feedback === 'pending');
     assert.equal(await refresh.getAttribute('data-feedback'),'pending');
     assert.equal(await refresh.isDisabled(),true);
     unblock();
