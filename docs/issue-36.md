@@ -45,7 +45,7 @@ ScrollFade 的底部 48px 层使用透明到当前主题表格表面的渐变；
 
 卸载回归另发现：退出接口成功且服务端已注销，前端仍显示交易概览。原先只调用 `client.clear()`，未通知挂载的会话观察者。现成功退出时先取消旧查询，明确写入未登录状态，再删除业务查询和 Mutation 缓存，确保工作台真正卸载；不改后端会话接口。
 
-远端复现命令为 `node scripts/check-browser.mjs`，调用 `scripts/check-refresh.mjs`。旧源码新增回归的[运行 39422424353](https://github.com/C0verSnow/Orders3/actions/runs/39422424353)明确失败：`source refresh must not animate Refresh all`，实际 pending、预期 idle。修复后的远端结果待补。
+远端复现命令为 `node scripts/check-browser.mjs`，调用 `scripts/check-refresh.mjs`。旧源码新增回归的[运行 39422424353](https://github.com/C0verSnow/Orders3/actions/runs/39422424353)明确失败：`source refresh must not animate Refresh all`，实际 pending、预期 idle。修复后的最终源码 `0e0145a63fcf15ac5682044afe54decaba24bee8` 的[远端 CI](https://github.com/C0verSnow/Orders3/actions/runs/39427476306)整体成功：66 项业务回归、20 项脚本回归、静态/类型检查、构建、真实服务、完整桌面和新增手机刷新专项、Windows EXE、两种 Debian 包及双架构真实容器全部通过。桌面持仓按钮删除和刷新恢复截图已查看。后续提交仅补文档与任务记录。
 
 新增专项覆盖桌面 1440px 和手机 390px、明暗主题，包括按钮隔离、重复点击、切页前后与未挂载期间的反馈到期、双请求完成前保持 pending、旧计时器不能结束新请求、背景色真实过渡、持仓页按钮移除且数据继续重新查询、HTTP/业务失败原因及退出重登后的状态。仅此专项恢复手机视口，其余移动端与可选跨平台视觉检查仍跳过。
 
