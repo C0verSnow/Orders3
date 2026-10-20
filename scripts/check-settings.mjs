@@ -59,7 +59,7 @@ export async function checkSettings(browser, base, token, output) {
         const dimensions = () => button.evaluate(el => { const r=el.getBoundingClientRect(); return [r.width,r.height]; });
         const initial = await dimensions();
         await button.click(); await started;
-        assert.equal(await button.getAttribute('data-feedback'), 'pending');
+        assert.equal(await button.getAttribute('data-feedback'), 'pending', `${width}/${language}/${theme}/${section}: pending feedback, disabled=${await button.isDisabled()}`);
         assert.equal(await button.isDisabled(), true);
         assert.deepEqual(await dimensions(), initial);
         await button.evaluate(el => el.click());
