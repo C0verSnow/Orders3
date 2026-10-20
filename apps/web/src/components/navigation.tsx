@@ -1,6 +1,8 @@
+import { t, useLanguage } from '../i18n';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 export function Navigation({ children }: { children: ReactNode }) {
+  useLanguage();
   const nav = useRef<HTMLElement>(null),
     target = useRef<HTMLElement | null>(null);
   const [indicator, setIndicator] = useState({ x: 0, y: 0, width: 0, height: 0, visible: false });
@@ -31,7 +33,7 @@ export function Navigation({ children }: { children: ReactNode }) {
     <nav
       className="relative isolate grid gap-1.5"
       ref={nav}
-      aria-label="主要导航"
+      aria-label={t('主要导航')}
       onPointerOver={(event) => {
         if (event.pointerType === 'mouse' || event.pointerType === 'pen')
           move(event.target as HTMLElement);

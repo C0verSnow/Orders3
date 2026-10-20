@@ -1,3 +1,4 @@
+import { t, useLanguage, dateLocale } from './i18n';
 import { Button, Input, Badge, Panel, BrandLogo } from './components/ui';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -14,12 +15,9 @@ import {
   ListOrdered,
   LogOut,
   Menu,
-  Monitor,
-  Moon,
   RefreshCw,
   Settings2,
   ShieldCheck,
-  Sun,
   Wallet,
   X,
 } from 'lucide-react';
@@ -37,6 +35,7 @@ import { AnimatedValue, MotionList, ScrollFade, TwoToneTitle } from './component
 import { Navigation } from './components/navigation';
 import { SettingsPage } from './pages/settings';
 import { useTheme } from './hooks/use-theme';
+import { Preferences } from './components/preferences';
 
 type Row = Record<string, unknown>;
 type Page = 'overview' | 'sources' | 'trailing' | 'positions' | 'history' | 'activity' | 'settings';
@@ -51,15 +50,18 @@ const pages = [
 ] as const;
 const date = (value: unknown) => {
   const time = typeof value === 'string' ? Date.parse(value) : value;
-  return typeof time === 'number' && Number.isFinite(time) ? new Date(time).toLocaleString() : '—';
+  return typeof time === 'number' && Number.isFinite(time)
+    ? new Date(time).toLocaleString(dateLocale())
+    : '—';
 };
 const status = (value: unknown) =>
-  (({ 1: '等待激活', 2: '已激活', 5: '已停止' }) as Record<string, string>)[String(value)] ??
-  `状态 ${value}`;
+  (({ 1: t('等待激活'), 2: t('已激活'), 5: t('已停止') }) as Record<string, string>)[
+    String(value)
+  ] ?? t('状态 {0}', [value]);
 function columns(fields: [string, string][]): ColumnDef<Row>[] {
   return fields.map(([key, label]) => ({
     accessorKey: key,
-    header: label,
+    header: () => t(label),
     cell: (info) => {
       const value = info.getValue();
       if (key === 'timestamp' || key === 'entry_time')
@@ -70,7 +72,7 @@ function columns(fields: [string, string][]): ColumnDef<Row>[] {
         );
       if (key === 'original_status')
         return <Badge tone={value === 1 ? 'blue' : 'neutral'}>{status(value)}</Badge>;
-      if (key === 'reduce_only') return <Badge>{value ? '平仓保护' : '开仓追踪'}</Badge>;
+      if (key === 'reduce_only') return <Badge>{value ? t('平仓保护') : t('开仓追踪')}</Badge>;
       if (key === 'side') return String(value ?? '—');
       if (key === 'contract')
         return (
@@ -132,6 +134,7 @@ const historyColumns = columns([
 ]);
 
 export function App() {
+  useLanguage();
   const themeState = useTheme();
   const [token, setToken] = useState(''),
     [initialToken] = useState(() => new URLSearchParams(location.hash.slice(1)).get('token'));
@@ -164,7 +167,7 @@ export function App() {
   if (session.isPending)
     return (
       <main className="mx-auto grid min-h-dvh max-w-xl place-content-center p-6 [&_form]:mt-6 [&_form]:grid [&_form]:gap-5 [&_label]:grid [&_label]:gap-2 [&_label]:text-sm [&_h1]:my-6 [&_h1]:text-2xl [&_h1]:font-semibold">
-        <p role="status">正在连接工作台…</p>
+        <p role="status">{t('正在连接工作台…')}</p>
       </main>
     );
   if (!session.data?.authenticated)
@@ -172,9 +175,9 @@ export function App() {
       <main className="mx-auto grid min-h-dvh max-w-xl place-content-center p-6 [&_form]:mt-6 [&_form]:grid [&_form]:gap-5 [&_label]:grid [&_label]:gap-2 [&_label]:text-sm [&_h1]:my-6 [&_h1]:text-2xl [&_h1]:font-semibold">
         <div className="mb-6 min-w-0 rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-sm md:p-6 dark:border-zinc-700 dark:bg-zinc-900">
           <BrandLogo />
-          <h1>连接你的交易工作台</h1>
+          <h1>{t('连接你的交易工作台')}</h1>
           <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-            输入服务启动时显示的登录令牌。凭证与交易调度由你的服务端管理。
+            {t('输入服务启动时显示的登录令牌。凭证与交易调度由你的服务端管理。')}
           </p>
           <form
             onSubmit={(event: FormEvent) => {
@@ -183,7 +186,7 @@ export function App() {
             }}
           >
             <label>
-              工作台登录令牌
+              {t('工作台登录令牌')}
               <Input
                 type="password"
                 value={token}
@@ -194,13 +197,13 @@ export function App() {
               />
             </label>
             <Button variant="primary" disabled={login.isPending}>
-              {login.isPending ? '连接中…' : '连接工作台'}
+              {login.isPending ? t('连接中…') : t('连接工作台')}
               <ArrowUpRight size={16} />
             </Button>
             <p role="alert">{login.error?.message || session.error?.message}</p>
           </form>
           <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-            在服务器运行日志中查找“登录令牌”，或使用管理员设置的 ORDERS_ACCESS_TOKEN。
+            {t('在服务器运行日志中查找“登录令牌”，或使用管理员设置的 ORDERS_ACCESS_TOKEN。')}
           </p>
         </div>
       </main>
@@ -222,6 +225,7 @@ function Workspace({
   onLogout: () => void;
   themeState: ReturnType<typeof useTheme>;
 }) {
+  const language = useLanguage();
   const client = useQueryClient(),
     [page, setPage] = useState<Page>('overview'),
     [menu, setMenu] = useState(false),
@@ -329,8 +333,11 @@ function Workspace({
   const manualOpening = useMutation({
     mutationFn: () => post('/api/opening/manual', { confirmed_trade_execution: true }),
     onSuccess: () => setNotice('手动开仓完成，请核对执行结果。'),
-    onError: error => setNotice(error.message),
-    onSettled: () => { for (const key of ['sources', 'orders', 'pending', 'history']) void client.invalidateQueries({ queryKey: [key] }); },
+    onError: (error) => setNotice(error.message),
+    onSettled: () => {
+      for (const key of ['sources', 'orders', 'pending', 'history'])
+        void client.invalidateQueries({ queryKey: [key] });
+    },
   });
   const resolve = useMutation({
     mutationFn: (input: { id: string; evidence: string }) =>
@@ -351,7 +358,7 @@ function Workspace({
       const response = await fetch('/api/download', { credentials: 'same-origin' });
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || '下载失败');
+        throw new Error(data.error || t('下载失败'));
       }
       const url = URL.createObjectURL(await response.blob()),
         link = document.createElement('a');
@@ -360,7 +367,7 @@ function Workspace({
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : '下载失败');
+      setNotice(error instanceof Error ? error.message : t('下载失败'));
     }
   };
   const sourceRows = useMemo(
@@ -386,8 +393,12 @@ function Workspace({
     () => entries.data?.entries.map((row) => ({ ...row })) ?? [],
     [entries.data],
   );
-  const activityItems = useMemo(() => eventItems(activity.data), [activity.data]);
-  const busy = manualOpening.isPending || refresh.isPending || source.data?.refreshing || orders.data?.refreshing;
+  const activityItems = useMemo(() => eventItems(activity.data), [activity.data, language]);
+  const busy =
+    manualOpening.isPending ||
+    refresh.isPending ||
+    source.data?.refreshing ||
+    orders.data?.refreshing;
   const heading = pages.find((item) => item.id === page)!;
   const requestRefresh = (which: 'all' | 'sources' | 'orders') => {
     {
@@ -401,12 +412,12 @@ function Workspace({
         href="#main"
         className="fixed top-[-80px] left-4 z-[100] rounded-lg bg-white p-3 text-blue-600 shadow-sm focus:top-3 dark:bg-zinc-900"
       >
-        跳到主要内容
+        {t('跳到主要内容')}
       </a>
       {menu && (
         <Button
           className="fixed! inset-0 z-40 rounded-none! border-0! bg-black/30! backdrop-blur-sm md:hidden"
-          aria-label="关闭导航"
+          aria-label={t('关闭导航')}
           onClick={() => setMenu(false)}
         />
       )}
@@ -419,14 +430,14 @@ function Workspace({
           <BrandLogo />
           <div>
             <strong>Orders3</strong>
-            <span>特洛伊资本 · 交易工作台</span>
+            <span>{t('特洛伊资本 · 交易工作台')}</span>
           </div>
-          <Button className="md:hidden" aria-label="关闭导航" onClick={() => setMenu(false)}>
+          <Button className="md:hidden" aria-label={t('关闭导航')} onClick={() => setMenu(false)}>
             <X size={18} />
           </Button>
         </div>
         <p className="px-3 pb-3 text-[10px] font-semibold tracking-widest text-zinc-500">
-          工作空间
+          {t('工作空间')}
         </p>
         <Navigation>
           {pages.map((item) => (
@@ -441,7 +452,7 @@ function Workspace({
               }}
             >
               <item.icon size={17} strokeWidth={1.7} />
-              {item.label}
+              {t(item.label)}
               {item.id === 'activity' && !!pending.data?.pending.length && (
                 <span className="ml-auto rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] text-red-700 dark:bg-red-950 dark:text-red-300">
                   {pending.data.pending.length}
@@ -455,43 +466,37 @@ function Workspace({
             <span
               className={`inline-block size-1.5 shrink-0 rounded-full ${activity.error ? 'bg-red-500' : 'bg-emerald-500'}`}
             />
-            <span>{activity.error ? '连接中断，正在重连' : '服务端已连接'}</span>
+            <span>{activity.error ? t('连接中断，正在重连') : t('服务端已连接')}</span>
           </div>
           <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-            交易状态以 Gate 实际记录为准
+            {t('交易状态以 Gate 实际记录为准')}
           </p>
-          <div role="group" aria-label="外观主题" className="grid grid-cols-3 gap-1 rounded-xl bg-zinc-200/60 p-1 dark:bg-zinc-800">
-            {([{ value: 'light', label: '浅色模式', icon: Sun }, { value: 'dark', label: '深色模式', icon: Moon }, { value: 'system', label: '跟随系统', icon: Monitor }] as const).map(option => (
-              <Button key={option.value} aria-pressed={theme === option.value} aria-label={option.label}
-                variant="quiet" onClick={() => setTheme(option.value)}
-                className={`min-w-0 flex-col gap-1! px-1! py-2! text-[10px]! ${theme === option.value ? 'bg-white! text-zinc-900 shadow-sm dark:bg-zinc-600! dark:text-white' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                <option.icon size={14} aria-hidden="true" />{option.label}
-              </Button>
-            ))}
-          </div>
+          <Button
+            variant="quiet"
+            onClick={download}
+            data-ui="download-database"
+            className="w-full justify-start!"
+          >
+            <ArrowDownToLine size={16} />
+            <span>{t('下载数据库')}</span>
+          </Button>
           <Button variant="text" onClick={() => logout.mutate()} disabled={logout.isPending}>
             <LogOut size={14} />
-            退出工作台
+            {t('退出工作台')}
           </Button>
         </div>
       </aside>
       <div className="min-w-0 flex-1 md:ml-[212px] lg:ml-[238px]" inert={compact && menu}>
         <header className="flex h-16 items-center justify-between gap-3 border-b border-zinc-200 bg-white px-5 md:px-8 dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex min-w-0 items-center gap-2 text-xs md:gap-4 [&>span]:text-zinc-500 [&>strong]:font-medium">
-            <Button className="md:hidden" onClick={() => setMenu(true)} aria-label="打开导航">
+            <Button className="md:hidden" onClick={() => setMenu(true)} aria-label={t('打开导航')}>
               <Menu size={20} />
             </Button>
-            <span className="hidden md:inline">工作空间</span>
+            <span className="hidden md:inline">{t('工作空间')}</span>
             <span className="hidden opacity-40 md:inline">/</span>
-            <strong>{heading.label}</strong>
+            <strong className="hidden sm:block">{t(heading.label)}</strong>
           </div>
-          <div className="flex shrink-0 items-center gap-3 [&_button>span]:hidden md:[&_button>span]:inline">
-            <Button variant="quiet" onClick={download}>
-              <ArrowDownToLine size={16} />
-              <span>下载数据库</span>
-            </Button>
-
-          </div>
+          <Preferences theme={theme} setTheme={setTheme} />
         </header>
         <main
           className="mx-auto max-w-[1740px] p-5 pt-8 outline-none md:p-8 xl:p-10"
@@ -505,13 +510,13 @@ function Workspace({
               </p>
               <TwoToneTitle
                 level={1}
-                title={heading.label}
+                title={t(heading.label)}
                 description={
                   page === 'overview'
-                    ? '看清每一笔订单，掌握每一次执行。'
+                    ? t('看清每一笔订单，掌握每一次执行。')
                     : page === 'settings'
-                      ? '管理连接、存储与自动追踪。'
-                      : '真实数据同步，保留完整业务记录。'
+                      ? t('管理连接、存储与自动追踪。')
+                      : t('真实数据同步，保留完整业务记录。')
                 }
               />
             </div>
@@ -521,7 +526,7 @@ function Workspace({
                   size={16}
                   className={busy ? 'animate-spin motion-reduce:animate-none' : ''}
                 />
-                {busy ? '正在同步…' : '统一刷新'}
+                {busy ? t('正在同步…') : t('统一刷新')}
               </Button>
             )}
           </div>
@@ -530,8 +535,8 @@ function Workspace({
               className="mb-5 flex items-center justify-between gap-3 rounded-xl bg-blue-50 px-4 py-3 text-xs dark:bg-blue-950"
               role="status"
             >
-              {notice}
-              <Button aria-label="关闭提示" onClick={() => setNotice('')}>
+              {t(notice)}
+              <Button aria-label={t('关闭提示')} onClick={() => setNotice('')}>
                 <X size={14} />
               </Button>
             </div>
@@ -550,17 +555,21 @@ function Workspace({
               <CircleHelp size={18} />
               <div>
                 <strong>
-                  {activity.error ? '连接暂时中断，当前列表可能不是最新数据' : '有任务需要检查'}
+                  {activity.error
+                    ? t('连接暂时中断，当前列表可能不是最新数据')
+                    : t('有任务需要检查')}
                 </strong>
                 <p>
                   {pending.error
-                    ? '无法确认当前阻断状态，请重新读取状态。'
-                    : pending.data?.database_error ||
-                      source.error?.message ||
-                      orders.error?.message ||
-                      source.data?.error ||
-                      orders.data?.error ||
-                      activity.error?.message}
+                    ? t('无法确认当前阻断状态，请重新读取状态。')
+                    : t(
+                        pending.data?.database_error ||
+                          source.error?.message ||
+                          orders.error?.message ||
+                          source.data?.error ||
+                          orders.data?.error ||
+                          activity.error?.message,
+                      )}
                 </p>
                 <Button
                   variant="text"
@@ -568,7 +577,7 @@ function Workspace({
                     void client.invalidateQueries();
                   }}
                 >
-                  重新读取状态
+                  {t('重新读取状态')}
                 </Button>
               </div>
             </div>
@@ -580,13 +589,16 @@ function Workspace({
             >
               <ShieldCheck size={20} />
               <div>
-                <strong>自动交易已暂停：有 {pending.data.pending.length} 笔请求结果需要核对</strong>
+                <strong>
+                  {t('自动交易已暂停：有 {0} 笔请求结果需要核对', [pending.data.pending.length])}
+                </strong>
                 <p>
-                  请先在 Gate
-                  查看真实订单与成交，确认后到“运行状态”处理。系统不会自动重发这些请求。
+                  {t(
+                    '请先在 Gate查看真实订单与成交，确认后到“运行状态”处理。系统不会自动重发这些请求。',
+                  )}
                 </p>
                 <Button variant="text" onClick={() => setPage('activity')}>
-                  查看待核对交易
+                  {t('查看待核对交易')}
                   <ArrowUpRight size={14} />
                 </Button>
               </div>
@@ -596,12 +608,12 @@ function Workspace({
             <>
               <div className="mb-6 grid grid-cols-2 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm xl:grid-cols-4 dark:border-zinc-700 dark:bg-zinc-900">
                 <Metric
-                  label="预测订单"
+                  label={t('预测订单')}
                   value={source.data ? String(source.data.orders.length) : '—'}
-                  detail="完整分页后保存"
+                  detail={t('完整分页后保存')}
                 />
                 <Metric
-                  label="有效跟踪订单"
+                  label={t('有效跟踪订单')}
                   value={
                     orders.data
                       ? String(
@@ -610,17 +622,17 @@ function Workspace({
                         )
                       : '—'
                   }
-                  detail="等待激活与已激活"
+                  detail={t('等待激活与已激活')}
                 />
                 <Metric
-                  label="未实现盈亏 / USDT"
+                  label={t('未实现盈亏 / USDT')}
                   value={orders.data?.unrealised_pnl ?? '—'}
-                  detail="当前非零持仓合计"
+                  detail={t('当前非零持仓合计')}
                 />
                 <Metric
-                  label="已实现盈亏 / USDT"
+                  label={t('已实现盈亏 / USDT')}
                   value={orders.data?.realised_pnl ?? '—'}
-                  detail="缓存持仓口径，非全历史"
+                  detail={t('缓存持仓口径，非全历史')}
                 />
               </div>
               <Panel className="flex flex-wrap items-center justify-between gap-6 [&_h2]:text-lg [&_h2]:font-semibold [&_p]:mt-2 [&_p]:text-xs">
@@ -629,17 +641,17 @@ function Workspace({
                     <span
                       className={`inline-block size-1.5 shrink-0 rounded-full ${activity.error ? 'bg-red-500' : 'bg-emerald-500'}`}
                     />
-                    执行状态
+                    {t('执行状态')}
                   </span>
                   <h2>
                     {activity.error
-                      ? '等待重新连接'
+                      ? t('等待重新连接')
                       : activity.data?.active
-                        ? `${activity.data.active} 个真实网络请求进行中`
-                        : '所有请求已结束'}
+                        ? t('{0} 个真实网络请求进行中', [activity.data.active])
+                        : t('所有请求已结束')}
                   </h2>
                   <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-                    预测抓取与自动开仓独立调度
+                    {t('预测抓取与自动开仓独立调度')}
                   </p>
                 </div>
                 <div className="flex w-full flex-wrap justify-between gap-5 xl:w-auto [&>span]:flex [&>span]:flex-col [&>span]:gap-2 [&>span]:text-[10px] [&>span]:text-zinc-500 [&_strong]:whitespace-nowrap [&_strong]:text-sm [&_strong]:font-medium [&_strong]:text-zinc-900 dark:[&_strong]:text-zinc-100">
@@ -647,13 +659,13 @@ function Workspace({
                     <strong>
                       <AnimatedValue value={String(activity.data?.total ?? '—')} />
                     </strong>
-                    本次进程请求
+                    {t('本次进程请求')}
                   </span>
                   <span>
                     <strong>
                       <AnimatedValue text value={source.data?.phase ?? '—'} />
                     </strong>
-                    来源任务阶段
+                    {t('来源任务阶段')}
                   </span>
                   <span>
                     <strong>
@@ -662,19 +674,19 @@ function Workspace({
                           orders.data ? String(Math.floor(orders.data.uptime_ms / 60000)) : '—'
                         }
                       />{' '}
-                      分钟
+                      {t('分钟')}
                     </strong>
-                    运行时长
+                    {t('运行时长')}
                   </span>
                 </div>
               </Panel>
               <OrderPanel
-                title="订单工作台"
-                description="来源信号与 Gate 跟踪单，共用同一套交易规则。"
+                title={t('订单工作台')}
+                description={t('来源信号与 Gate 跟踪单，共用同一套交易规则。')}
                 action={
                   <Button variant="quiet" disabled={busy} onClick={() => requestRefresh('sources')}>
                     <RefreshCw size={14} />
-                    刷新来源
+                    {t('刷新来源')}
                   </Button>
                 }
               >
@@ -682,34 +694,34 @@ function Workspace({
                   loading={source.isPending}
                   rows={sourceRows}
                   columns={sourceColumns}
-                  label="预测订单"
+                  label={t('预测订单')}
                 />
               </OrderPanel>
               <div className="grid gap-0 lg:grid-cols-[1fr_1.5fr] lg:gap-6">
                 <Panel>
                   <div className="mb-4 flex flex-wrap items-center gap-2 [&>svg]:size-[18px] [&>svg]:text-zinc-500">
                     <ShieldCheck size={18} />
-                    <TwoToneTitle title="持仓同步" description="只读快照" />
+                    <TwoToneTitle title={t('持仓同步')} description={t('只读快照')} />
                   </div>
                   <p
                     data-ui="position-count"
                     className="my-5 flex items-baseline gap-3 text-3xl font-medium [&>span:last-child]:text-xs [&>span:last-child]:text-zinc-500"
                   >
                     <AnimatedValue value={String(orders.data?.positions.length ?? '—')} />
-                    <span>个非零持仓方向</span>
+                    <span>{t('个非零持仓方向')}</span>
                   </p>
                   <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-                    每分钟同步持仓，不再自动创建或调整保护单。
+                    {t('每分钟同步持仓，不再自动创建或调整保护单。')}
                   </p>
                   <Button variant="text" onClick={() => setPage('positions')}>
-                    查看当前持仓
+                    {t('查看当前持仓')}
                     <ArrowUpRight size={14} />
                   </Button>
                 </Panel>
                 <Panel>
                   <div className="mb-4 flex flex-wrap items-center gap-2 [&>svg]:size-[18px] [&>svg]:text-zinc-500">
                     <Clock3 size={18} />
-                    <TwoToneTitle title="最近执行结果" description="来源任务" />
+                    <TwoToneTitle title={t('最近执行结果')} description={t('来源任务')} />
                   </div>
                   <ExecutionList rows={[...(source.data?.execution ?? [])].slice(-10)} />
                 </Panel>
@@ -718,14 +730,32 @@ function Workspace({
           )}
           {page === 'sources' && (
             <OrderPanel
-              title="预测订单"
-              description={`最近保存：${source.data?.updated_at ? new Date(source.data.updated_at).toLocaleString() : '尚未同步'} · 详情保留完整来源记录`}
+              title={t('预测订单')}
+              description={t('最近保存：{0} · 详情保留完整来源记录', [
+                source.data?.updated_at
+                  ? new Date(source.data.updated_at).toLocaleString(dateLocale())
+                  : t('尚未同步'),
+              ])}
               action={
                 <div className="flex flex-wrap gap-2">
-                  <Button disabled={busy} onClick={() => requestRefresh('sources')}>刷新预测订单</Button>
-                  <Button disabled={busy || !sourceRows.length} onClick={() => {
-                    if (confirm('手动开仓将使用当前保存的预测订单，按策略停止旧开仓单并提交新开仓单；不受自动开仓开关限制。确认操作真实账户？')) manualOpening.mutate();
-                  }}>手动开仓</Button>
+                  <Button disabled={busy} onClick={() => requestRefresh('sources')}>
+                    {t('刷新预测订单')}
+                  </Button>
+                  <Button
+                    disabled={busy || !sourceRows.length}
+                    onClick={() => {
+                      if (
+                        confirm(
+                          t(
+                            '手动开仓将使用当前保存的预测订单，按策略停止旧开仓单并提交新开仓单；不受自动开仓开关限制。确认操作真实账户？',
+                          ),
+                        )
+                      )
+                        manualOpening.mutate();
+                    }}
+                  >
+                    {t('手动开仓')}
+                  </Button>
                 </div>
               }
             >
@@ -733,14 +763,16 @@ function Workspace({
                 loading={source.isPending}
                 rows={sourceRows}
                 columns={sourceColumns}
-                label="预测订单"
+                label={t('预测订单')}
               />
             </OrderPanel>
           )}
           {page === 'trailing' && (
             <OrderPanel
-              title="跟踪订单"
-              description={`状态 2 保留；状态 5 默认隐藏。订单最近同步：${date(orders.data?.trailing_updated_at)}`}
+              title={t('跟踪订单')}
+              description={t('状态 2 保留；状态 5 默认隐藏。订单最近同步：{0}', [
+                date(orders.data?.trailing_updated_at),
+              ])}
               action={
                 <label className="flex flex-row items-center gap-2 text-xs font-normal">
                   <Input
@@ -748,7 +780,7 @@ function Workspace({
                     checked={showStopped}
                     onChange={(event) => setShowStopped(event.target.checked)}
                   />
-                  显示已停止
+                  {t('显示已停止')}
                 </label>
               }
             >
@@ -756,17 +788,20 @@ function Workspace({
                 loading={orders.isPending}
                 rows={trailingRows}
                 columns={trailColumns}
-                label="跟踪订单"
+                label={t('跟踪订单')}
               />
             </OrderPanel>
           )}
           {page === 'positions' && (
             <OrderPanel
-              title="当前持仓"
-              description={`仅同步数据，自动保护单功能已取消。持仓最近同步：${date(orders.data?.position_updated_at)}；订单最近同步：${date(orders.data?.trailing_updated_at)}`}
+              title={t('当前持仓')}
+              description={t(
+                '仅同步数据，自动保护单功能已取消。持仓最近同步：{0}；订单最近同步：{1}',
+                [date(orders.data?.position_updated_at), date(orders.data?.trailing_updated_at)],
+              )}
               action={
                 <Button disabled={busy} onClick={() => requestRefresh('orders')}>
-                  同步持仓与订单
+                  {t('同步持仓与订单')}
                 </Button>
               }
             >
@@ -774,21 +809,23 @@ function Workspace({
                 loading={orders.isPending}
                 rows={positionRows}
                 columns={positionColumns}
-                label="当前持仓"
+                label={t('当前持仓')}
               />
             </OrderPanel>
           )}
           {page === 'history' && (
             <OrderPanel
-              title="入仓历史"
-              description="仅记录真实开仓、加仓或反手新开方向；保留最近 100 条，用于 7 天限制。"
+              title={t('入仓历史')}
+              description={t(
+                '仅记录真实开仓、加仓或反手新开方向；保留最近 100 条，用于 7 天限制。',
+              )}
             >
-              {entries.error && <p role="alert">{entries.error.message}</p>}
+              {entries.error && <p role="alert">{t(entries.error.message)}</p>}
               <DataTable
                 loading={entries.isPending}
                 rows={historyRows}
                 columns={historyColumns}
-                label="入仓历史"
+                label={t('入仓历史')}
               />
             </OrderPanel>
           )}
@@ -798,17 +835,17 @@ function Workspace({
               <Panel>
                 <div className="mb-4 flex flex-wrap items-center gap-2 [&>svg]:size-[18px] [&>svg]:text-zinc-500">
                   <ShieldCheck size={18} />
-                  <TwoToneTitle title="需要人工核对的交易" description="请求结果" />
+                  <TwoToneTitle title={t('需要人工核对的交易')} description={t('请求结果')} />
                 </div>
-                {pending.isPending && <p role="status">正在读取待核对状态…</p>}
-                {pending.error && <p role="alert">无法确认当前阻断状态，请重试。</p>}
+                {pending.isPending && <p role="status">{t('正在读取待核对状态…')}</p>}
+                {pending.error && <p role="alert">{t('无法确认当前阻断状态，请重试。')}</p>}
                 {!pending.isPending &&
                   !pending.error &&
                   pending.data &&
                   !pending.data.database_error &&
                   pending.data.pending.length === 0 && (
                     <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-                      当前没有待核对请求。
+                      {t('当前没有待核对请求。')}
                     </p>
                   )}
                 {pending.data?.pending.map((intent) => (
@@ -817,48 +854,59 @@ function Workspace({
                     key={intent.id}
                   >
                     <strong>
-                      {intent.operation === 'create' ? '创建追踪单' : '停止追踪单'} ·{' '}
+                      {intent.operation === 'create' ? t('创建追踪单') : t('停止追踪单')} ·{' '}
                       {date(intent.created_at)}
                     </strong>
                     <code>{intent.payload}</code>
                     <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-                      本地编号：{intent.id} · 状态：{intent.state}
+                      {t('本地编号：')}
+                      {intent.id}
+                      {t('· 状态：')}
+                      {intent.state}
                       <br />
-                      原凭证指纹（不是账户 ID）：{intent.owner || '旧版记录缺失，禁止在线解除'}
+                      {t('原凭证指纹（不是账户 ID）：')}
+                      {intent.owner || t('旧版记录缺失，禁止在线解除')}
                       <br />
-                      请求关联：{intent.request_id || '旧版记录缺失'}
+                      {t('请求关联：')}
+                      {intent.request_id || t('旧版记录缺失')}
                     </p>
                     <Button
                       disabled={resolve.isPending || !intent.owner}
                       onClick={() => {
                         if (
                           confirm(
-                            '你已在 Gate 核对这笔请求的真实结果，并确认允许后续自动策略继续执行？确认只解除本地阻断，不会重发原请求。',
+                            t(
+                              '你已在 Gate 核对这笔请求的真实结果，并确认允许后续自动策略继续执行？确认只解除本地阻断，不会重发原请求。',
+                            ),
                           )
                         ) {
                           const evidence = prompt(
-                            '请填写 Gate 订单号、请求关联 text、成交记录或查询结果，至少 8 个字，作为本次人工核对依据：',
+                            t(
+                              '请填写 Gate 订单号、请求关联 text、成交记录或查询结果，至少 8 个字，作为本次人工核对依据：',
+                            ),
                           );
                           if (evidence && evidence.trim().length >= 8)
                             resolve.mutate({ id: intent.id, evidence: evidence.trim() });
                         }
                       }}
                     >
-                      已在 Gate 核对，解除此项阻断
+                      {t('已在 Gate 核对，解除此项阻断')}
                     </Button>
                   </article>
                 ))}
-                {pending.data?.database_error && <p role="alert">{pending.data.database_error}</p>}
+                {pending.data?.database_error && (
+                  <p role="alert">{t(pending.data.database_error)}</p>
+                )}
               </Panel>
               <Panel>
                 <div className="mb-4 flex flex-wrap items-center gap-2 [&>svg]:size-[18px] [&>svg]:text-zinc-500">
                   <Activity size={18} />
-                  <TwoToneTitle title="真实请求与任务记录" description="最近 64 个事件" />
+                  <TwoToneTitle title={t('真实请求与任务记录')} description={t('最近 64 个事件')} />
                 </div>
                 <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-                  最近 64 个内存事件；持久化请求日志保存在服务端，内容不包含密钥或请求正文。
+                  {t('最近 64 个内存事件；持久化请求日志保存在服务端，内容不包含密钥或请求正文。')}
                 </p>
-                <ScrollFade label="真实请求与任务记录，可滚动">
+                <ScrollFade label={t('真实请求与任务记录，可滚动')}>
                   <MotionList
                     as="ol"
                     className="m-0 list-none p-0 [&>li]:flex [&>li]:items-center [&>li]:gap-3 [&>li]:border-b [&>li]:border-zinc-200 [&>li]:py-4 [&>li]:text-xs dark:[&>li]:border-zinc-700 [&>li>div]:min-w-0 [&>li>div]:flex-1 [&_strong]:block [&_strong]:text-[11px] [&_strong]:break-words [&_time]:text-[10px] [&_time]:whitespace-nowrap [&_time]:text-zinc-500 [&>li>div>span]:text-[10px] [&>li>div>span]:text-zinc-500"
@@ -917,6 +965,7 @@ function ExecutionList({
 }: {
   rows: { action: string; contract: string; error?: string; message?: string; id?: string }[];
 }) {
+  const language = useLanguage();
   const items = useMemo(
     () =>
       rows.map((row, index) => ({
@@ -927,22 +976,22 @@ function ExecutionList({
             <Badge tone={row.action === 'failed' ? 'danger' : 'neutral'}>
               {(
                 {
-                  created: '已创建',
-                  stopped: '已停止',
-                  skipped: '已保留',
-                  failed: '失败',
+                  created: t('已创建'),
+                  stopped: t('已停止'),
+                  skipped: t('已保留'),
+                  failed: t('失败'),
                 } as Record<string, string>
               )[row.action] || row.action}
             </Badge>
             <strong>{row.contract}</strong>
-            <span>{row.error || row.message || row.id}</span>
+            <span>{t(row.error || row.message || row.id)}</span>
           </>
         ),
       })),
-    [rows],
+    [rows, language],
   );
   return (
-    <ScrollFade label="最近执行结果，可滚动">
+    <ScrollFade label={t('最近执行结果，可滚动')}>
       {rows.length ? (
         <MotionList
           as="ul"
@@ -951,7 +1000,7 @@ function ExecutionList({
         />
       ) : (
         <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-          尚无执行结果。自动开仓任务完成后会在这里显示。
+          {t('尚无执行结果。自动开仓任务完成后会在这里显示。')}
         </p>
       )}
     </ScrollFade>
@@ -973,14 +1022,19 @@ function eventItems(activity: ActivitySnapshot | undefined) {
             />
             <div>
               <strong>
-                {event.task} · {event.kind === 'request' ? `${event.method} ${event.host}` : '任务'}
+                {t(event.task)} ·{' '}
+                {event.kind === 'request' ? `${event.method} ${event.host}` : t('任务')}
               </strong>
               <span>
-                {event.state === 'started' ? '开始' : event.state === 'failed' ? '失败' : '完成'}
+                {event.state === 'started'
+                  ? t('开始')
+                  : event.state === 'failed'
+                    ? t('失败')
+                    : t('完成')}
                 {event.status !== undefined ? ` · HTTP ${event.status}` : ''}
               </span>
             </div>
-            <time>{new Date(event.at).toLocaleTimeString()}</time>
+            <time>{new Date(event.at).toLocaleTimeString(dateLocale())}</time>
           </>
         ),
       })) ?? []

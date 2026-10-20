@@ -1,3 +1,4 @@
+import { t, useLanguage, dateLocale } from '../i18n';
 import { Button } from './ui';
 import { X } from 'lucide-react';
 import { two } from '../../../../packages/decimal/index.ts';
@@ -64,21 +65,24 @@ function display(key: string, value: unknown): string {
   if (key === 'timestamp' || key === 'entry_time') {
     const time = Number(value);
     if (Number.isFinite(time) && !Number.isNaN(new Date(time).getTime()))
-      return new Date(time).toLocaleString();
+      return new Date(time).toLocaleString(dateLocale());
   }
-  if (key === 'reduce_only') return value ? '仅平仓' : '开仓追踪';
+  if (key === 'reduce_only') return value ? t('仅平仓') : t('开仓追踪');
   if (key === 'original_status')
     return (
-      ({ 1: '等待激活', 2: '已激活', 5: '已停止' } as Record<string, string>)[String(value)] ??
-      String(value)
+      ({ 1: t('等待激活'), 2: t('已激活'), 5: t('已停止') } as Record<string, string>)[
+        String(value)
+      ] ?? String(value)
     );
   if (key === 'side')
     return (
       (
-        { 'Open Long': '开多', 'Open Short': '开空', buy: '买入', sell: '卖出' } as Record<
-          string,
-          string
-        >
+        {
+          'Open Long': t('开多'),
+          'Open Short': t('开空'),
+          buy: t('买入'),
+          sell: t('卖出'),
+        } as Record<string, string>
       )[String(value)] ?? String(value)
     );
   return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
@@ -92,17 +96,18 @@ export function OrderDetails({
   label: string;
   onClose: () => void;
 }) {
+  useLanguage();
   const entries = Object.entries(row),
     contract = entries.find(([key]) => key === 'contract')?.[1];
   const group = (items: [string, unknown][]) => (
     <dl className="m-0 grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-zinc-200 bg-zinc-200 sm:grid-cols-2 dark:border-zinc-700 dark:bg-zinc-700 [&>div]:min-w-0 [&>div]:bg-white [&>div]:p-4 sm:[&>div:last-child:nth-child(odd)]:col-span-2 dark:[&>div]:bg-zinc-900 [&_dt]:mb-2 [&_dt]:text-[11px] [&_dt]:text-zinc-500 [&_dd]:text-sm [&_dd]:leading-relaxed [&_dd]:font-medium [&_dd]:whitespace-pre-wrap [&_dd]:[overflow-wrap:anywhere] [&_dd]:tabular-nums [&_pre]:mt-3 [&_pre]:text-[11px] [&_pre]:font-normal [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere] [&_summary]:cursor-pointer [&_summary]:text-blue-600 dark:[&_summary]:text-blue-400">
       {items.map(([key, value]) => (
         <div key={key}>
-          <dt>{labels[key] ?? key}</dt>
+          <dt>{t(labels[key] ?? key)}</dt>
           <dd title={String(value ?? '')}>
             {value !== null && typeof value === 'object' ? (
               <details>
-                <summary>展开原始记录</summary>
+                <summary>{t('展开原始记录')}</summary>
                 <pre>{display(key, value)}</pre>
               </details>
             ) : (
@@ -122,33 +127,33 @@ export function OrderDetails({
           <p className="mb-3 text-[10px] font-semibold tracking-[.14em] text-zinc-500 dark:text-zinc-400">
             {label}
           </p>
-          <h2>{contract ? String(contract).replace('_', ' / ') : '记录详情'}</h2>
+          <h2>{contract ? String(contract).replace('_', ' / ') : t('记录详情')}</h2>
         </div>
-        <Button variant="quiet" aria-label="关闭详情" onClick={onClose} autoFocus>
+        <Button variant="quiet" aria-label={t('关闭详情')} onClick={onClose} autoFocus>
           <X size={20} />
         </Button>
       </header>
       <div className="p-5 md:p-7 [&_h3]:mb-4 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-zinc-500">
-        <section aria-label="业务信息">
-          <h3>业务信息</h3>
+        <section aria-label={t('业务信息')}>
+          <h3>{t('业务信息')}</h3>
           {group(primary)}
         </section>
         {!!precision.length && (
           <section
             className="mt-6 [&>p]:mb-4 [&_dd]:font-mono [&_dd]:text-xs [&_dd]:font-normal"
-            aria-label="原始值与精度"
+            aria-label={t('原始值与精度')}
           >
-            <h3>原始值与精度</h3>
+            <h3>{t('原始值与精度')}</h3>
             <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-              以下保留原始精度，步长不做两位小数舍入。
+              {t('以下保留原始精度，步长不做两位小数舍入。')}
             </p>
             {group(precision)}
           </section>
         )}
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 bg-zinc-50 px-5 py-4 text-[10px] text-zinc-500 md:px-7 dark:border-zinc-700 dark:bg-zinc-950">
-        <span>交易状态以 Gate 实际记录为准</span>
-        <Button onClick={onClose}>关闭详情</Button>
+        <span>{t('交易状态以 Gate 实际记录为准')}</span>
+        <Button onClick={onClose}>{t('关闭详情')}</Button>
       </footer>
     </>
   );

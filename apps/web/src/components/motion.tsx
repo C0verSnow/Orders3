@@ -1,3 +1,4 @@
+import { t, useLanguage } from '../i18n';
 import {
   createContext,
   useContext,
@@ -26,6 +27,9 @@ const easing = 'cubic-bezier(0.22,0.61,0.36,1)';
 
 // Render exact latest values immediately; only the decorative outgoing layer holds old text.
 export function AnimatedValue({ value, text = false }: { value: string; text?: boolean }) {
+  const language = useLanguage();
+  const previousLanguage = useRef(language);
+  value = text ? t(value) : value;
   const reduced = useContext(ReducedMotion),
     incoming = useRef<HTMLSpanElement>(null),
     outgoing = useRef<HTMLSpanElement>(null),
@@ -38,9 +42,23 @@ export function AnimatedValue({ value, text = false }: { value: string; text?: b
       revision: frame.revision + 1,
       width: Math.max(frame.width, value.length),
     });
-  const interrupted = useRef<{ enter: { opacity: string; transform: string }; exit: { opacity: string; transform: string } } | null>(null);
+  const interrupted = useRef<{
+    enter: { opacity: string; transform: string };
+    exit: { opacity: string; transform: string };
+  } | null>(null);
   useLayoutEffect(() => {
-    if (!frame.revision || reduced) { interrupted.current = null; active.current = false; return; }
+    const changedLanguage = previousLanguage.current !== language;
+    previousLanguage.current = language;
+    if (
+      !frame.revision ||
+      reduced ||
+      changedLanguage ||
+      document.documentElement.dataset.revealing
+    ) {
+      interrupted.current = null;
+      active.current = false;
+      return;
+    }
     active.current = true;
     const options = { duration: text ? 550 : 850, easing, fill: 'both' as const };
     const enter = incoming.current?.animate(
@@ -58,16 +76,24 @@ export function AnimatedValue({ value, text = false }: { value: string; text?: b
       options,
     );
     interrupted.current = null;
-    if (enter) enter.onfinish = () => { interrupted.current = null; active.current = false; };
+    if (enter)
+      enter.onfinish = () => {
+        interrupted.current = null;
+        active.current = false;
+      };
     return () => {
       if (enter?.playState === 'running' && incoming.current) {
-        const current = getComputedStyle(incoming.current), previous = getComputedStyle(outgoing.current!);
-        interrupted.current = { enter: { opacity: current.opacity, transform: current.transform }, exit: { opacity: previous.opacity, transform: previous.transform } };
+        const current = getComputedStyle(incoming.current),
+          previous = getComputedStyle(outgoing.current!);
+        interrupted.current = {
+          enter: { opacity: current.opacity, transform: current.transform },
+          exit: { opacity: previous.opacity, transform: previous.transform },
+        };
       }
       enter?.cancel();
       exit?.cancel();
     };
-  }, [frame.revision, reduced, text]);
+  }, [frame.revision, reduced, text, language]);
   return (
     <span
       data-ui="animated-value"
@@ -159,22 +185,42 @@ export function MotionList({
   as?: 'tbody' | 'ol' | 'ul';
   className?: string;
 }) {
-  const [snapshot, setSnapshot] = useState({ items, exiting: [] as (MotionItem & { expires: number; index: number })[] });
+  const [snapshot, setSnapshot] = useState({
+    items,
+    exiting: [] as (MotionItem & { expires: number; index: number })[],
+  });
   if (snapshot.items !== items) {
     const ids = new Set(items.map((item) => item.id));
     setSnapshot({
       items,
-      exiting: [...snapshot.exiting, ...snapshot.items.map((item, index) => ({ ...item, expires: Date.now() + 750, index })).filter(item => !ids.has(item.id))].filter((item, index, all) => !ids.has(item.id) && all.findIndex(other => other.id === item.id) === index).slice(0, 40),
+      exiting: [
+        ...snapshot.exiting,
+        ...snapshot.items
+          .map((item, index) => ({ ...item, expires: Date.now() + 750, index }))
+          .filter((item) => !ids.has(item.id)),
+      ]
+        .filter(
+          (item, index, all) =>
+            !ids.has(item.id) && all.findIndex((other) => other.id === item.id) === index,
+        )
+        .slice(0, 40),
     });
   }
   useEffect(() => {
     if (!snapshot.exiting.length) return;
-    const timer = setTimeout(() => setSnapshot((current) => ({ ...current, exiting: current.exiting.filter(item => item.expires > Date.now()) })), Math.max(0, Math.min(...snapshot.exiting.map(item => item.expires)) - Date.now()));
+    const timer = setTimeout(
+      () =>
+        setSnapshot((current) => ({
+          ...current,
+          exiting: current.exiting.filter((item) => item.expires > Date.now()),
+        })),
+      Math.max(0, Math.min(...snapshot.exiting.map((item) => item.expires)) - Date.now()),
+    );
     return () => clearTimeout(timer);
   }, [snapshot.exiting]);
   const Tag = as,
     Item = as === 'tbody' ? 'tr' : 'li';
-  const display = items.map(item => ({ item, exiting: false }));
+  const display = items.map((item) => ({ item, exiting: false }));
   for (const item of [...snapshot.exiting].sort((a, b) => a.index - b.index)) {
     display.splice(Math.min(item.index, display.length), 0, { item, exiting: true });
   }
@@ -258,13 +304,18 @@ export function ScrollFade({
       const more = remaining > 2;
       setMore(more);
       const bottom = element.getBoundingClientRect().bottom;
-      for (const row of body.querySelectorAll<HTMLElement>('[data-ui="row"], [data-ui="row-exit"]')) {
+      for (const row of body.querySelectorAll<HTMLElement>(
+        '[data-ui="row"], [data-ui="row-exit"]',
+      )) {
         const rect = row.getBoundingClientRect();
         const opacity = more ? Math.max(0, Math.min(1, (bottom - rect.top) / 48)) : 1;
         row.style.setProperty('--scroll-opacity', String(opacity));
       }
     };
-    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
     const mutation = new MutationObserver(schedule);
     mutation.observe(body, { childList: true, subtree: true });
     const observer = new ResizeObserver(update);
@@ -275,7 +326,8 @@ export function ScrollFade({
     return () => {
       observer.disconnect();
       element.removeEventListener('scroll', schedule);
-      mutation.disconnect(); cancelAnimationFrame(frame);
+      mutation.disconnect();
+      cancelAnimationFrame(frame);
     };
   }, []);
   const height = table ? (compact ? 'h-[180px]' : 'h-[clamp(240px,48vh,560px)]') : 'max-h-[560px]';

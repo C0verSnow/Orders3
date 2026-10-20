@@ -1,3 +1,4 @@
+import { t, useLanguage } from '../i18n';
 import { Button, Input } from './ui';
 import { useMemo, useRef, useState, useEffect } from 'react';
 import {
@@ -25,6 +26,7 @@ export function DataTable<T extends object>({
   label: string;
   loading?: boolean;
 }) {
+  const language = useLanguage();
   const [filter, setFilter] = useState(''),
     [sorting, setSorting] = useState<SortingState>([]),
     [selected, setSelected] = useState<T | null>(null);
@@ -73,15 +75,15 @@ export function DataTable<T extends object>({
               <Button
                 variant="text"
                 onClick={() => setSelected(row.original)}
-                aria-label={`查看第 ${row.index + 1} 条记录详情`}
+                aria-label={t('查看第 {0} 条记录详情', [row.index + 1])}
               >
-                查看
+                {t('查看')}
               </Button>
             </td>
           </>
         ),
       })),
-    [visibleRows],
+    [visibleRows, language],
   );
   return (
     <>
@@ -90,17 +92,17 @@ export function DataTable<T extends object>({
           <Search size={16} aria-hidden="true" />
           <Input
             type="search"
-            aria-label={`搜索${label}`}
-            placeholder="搜索合约、状态或订单编号"
+            aria-label={t('搜索{0}', [label])}
+            placeholder={t('搜索合约、状态或订单编号')}
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
           />
         </label>
         <span className="shrink-0 text-[10px] text-zinc-500">
-          {table.getFilteredRowModel().rows.length} 条记录
+          {t('{0} 条记录', [table.getFilteredRowModel().rows.length])}
         </span>
       </div>
-      <ScrollFade table compact={rows.length <= 3} label={`${label}表格，可横向或纵向滚动`}>
+      <ScrollFade table compact={rows.length <= 3} label={t('{0}表格，可横向或纵向滚动', [label])}>
         <table className="w-full font-sans text-zinc-900 dark:text-zinc-100 border-collapse text-left text-xs whitespace-nowrap [&_th]:border-y [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:px-4 [&_th]:py-1 [&_th]:font-medium [&_th]:text-zinc-500 [&_td]:text-inherit [&_td]:font-sans [&_td]:max-w-[340px] [&_td]:overflow-hidden [&_td]:border-b [&_td]:border-zinc-200 [&_td]:px-4 [&_td]:py-4 [&_td]:text-ellipsis dark:[&_th]:border-zinc-800 dark:[&_th]:bg-zinc-950 dark:[&_td]:border-zinc-800 [&_tbody_tr]:transition-[background-color] [&_tbody_tr:hover]:bg-zinc-50 dark:[&_tbody_tr:hover]:bg-zinc-800/50">
           <caption className="sr-only">{label}</caption>
           <thead className="sticky top-0 z-10">
@@ -127,7 +129,7 @@ export function DataTable<T extends object>({
                     </Button>
                   </th>
                 ))}
-                <th scope="col">详情</th>
+                <th scope="col">{t('详情')}</th>
               </tr>
             ))}
           </thead>
@@ -138,31 +140,36 @@ export function DataTable<T extends object>({
             className="flex min-h-36 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-zinc-500 [&>strong]:font-medium [&>strong]:text-zinc-900 dark:[&>strong]:text-zinc-100 [&>p]:text-xs"
             role="status"
           >
-            正在读取{label}…
+            {t('正在读取{0}…', [label])}
           </FadeIn>
         )}
         {!loading && !table.getRowModel().rows.length && (
           <FadeIn className="flex min-h-36 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-zinc-500 [&>strong]:font-medium [&>strong]:text-zinc-900 dark:[&>strong]:text-zinc-100 [&>p]:text-xs">
             <Search size={24} aria-hidden="true" />
-            <strong>{filter ? '没有匹配的记录' : '还没有订单数据'}</strong>
-            <p>{filter ? '试试其他合约或清除搜索。' : '配置连接后刷新，即可同步真实订单。'}</p>
+            <strong>{filter ? t('没有匹配的记录') : t('还没有订单数据')}</strong>
+            <p>
+              {filter ? t('试试其他合约或清除搜索。') : t('配置连接后刷新，即可同步真实订单。')}
+            </p>
           </FadeIn>
         )}
       </ScrollFade>
       <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3 text-[10px] text-zinc-500 md:px-6 dark:border-zinc-700 [&>div]:flex [&>div]:gap-2 [&_button]:min-h-8 [&_button]:p-1.5">
         <span>
-          第 {table.getState().pagination.pageIndex + 1} / {Math.max(1, table.getPageCount())} 页
+          {t('第 {0} / {1} 页', [
+            table.getState().pagination.pageIndex + 1,
+            Math.max(1, table.getPageCount()),
+          ])}
         </span>
         <div>
           <Button
-            aria-label="上一页"
+            aria-label={t('上一页')}
             disabled={!table.getCanPreviousPage()}
             onClick={() => table.previousPage()}
           >
             <ChevronLeft size={16} />
           </Button>
           <Button
-            aria-label="下一页"
+            aria-label={t('下一页')}
             disabled={!table.getCanNextPage()}
             onClick={() => table.nextPage()}
           >
@@ -174,7 +181,7 @@ export function DataTable<T extends object>({
         ref={dialog}
         className="fixed inset-0 m-auto font-sans max-h-[calc(100dvh-32px)] w-[min(720px,calc(100vw-32px))] overflow-auto overscroll-contain rounded-2xl border border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl backdrop:bg-black/30 backdrop:backdrop-blur-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
         onClose={() => setSelected(null)}
-        aria-label={`${label}详情`}
+        aria-label={t('{0}详情', [label])}
         onClick={(event) => {
           if (event.target === event.currentTarget) {
             const rect = event.currentTarget.getBoundingClientRect();

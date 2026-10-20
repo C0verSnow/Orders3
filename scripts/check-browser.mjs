@@ -75,8 +75,8 @@ try {
     assert.equal(await page.evaluate(()=>location.hash),'');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no document overflow');
     await page.screenshot({path:`tests/artifacts/overview-${width}-light.png`,fullPage:true});
-    if(width<=768)await page.getByRole('button',{name:'打开导航',exact:true}).click();
     await page.getByRole('button', { name: '深色模式', exact: true }).click();
+    if(width<=768)await page.getByRole('button',{name:'打开导航',exact:true}).click();
     await page.getByRole('button',{name:'系统设置',exact:true}).click();
     await page.getByRole('heading',{name:'连接与存储',exact:true}).waitFor();
     assert.equal(await page.locator('input[name="API_SECRET"]').inputValue(),'');
@@ -91,8 +91,8 @@ try {
       const detail = await browser.newPage({ viewport: { width, height: 850 } });
       await detail.goto(`${base}/#token=${token}`);
       await detail.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
-      if (width <= 768) await detail.getByRole('button', { name: '打开导航', exact: true }).click();
       await detail.getByRole('button', { name: theme === 'dark' ? '深色模式' : '浅色模式', exact: true }).click();
+      if (width <= 768) await detail.getByRole('button', { name: '打开导航', exact: true }).click();
       await detail.getByRole('button', { name: '预测订单', exact: true }).click();
       const trigger = detail.getByRole('button', { name: '查看第 1 条记录详情', exact: true });
       await trigger.click();
@@ -256,6 +256,96 @@ try {
   assert.equal(await appearance.getByLabel('Cron 表达式', { exact: true }).nth(1).inputValue(), '3 * * * *');
   await appearance.screenshot({ path: 'tests/artifacts/independent-schedules-dark.png', fullPage: true });
   await appearance.close();
+
+  // Latest comment: real two-snapshot circular reveals, both directions, at the
+  // actual trigger centre. No second app tree, API writes or reset form drafts.
+  for (const width of [1440, 390]) {
+    const reveal = await browser.newPage({ viewport: { width, height: 1000 } });
+    const errors = [], writes = [];
+    reveal.on('pageerror', error => errors.push(error.message));
+    reveal.on('request', request => { if (request.method() === 'POST' && !request.url().endsWith('/api/session')) writes.push(request.url()); });
+    await reveal.goto(`${base}/#token=${token}`);
+    await reveal.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
+    assert.equal(await reveal.locator('header [data-ui="preferences"]').count(), 1);
+    assert.equal(await reveal.locator('aside [data-ui="download-database"]').count(), 1);
+    assert.equal(await reveal.locator('header [data-ui="download-database"]').count(), 0);
+    const runReveal = async (button, name) => {
+      const bounds = await button.boundingBox();
+      await button.click();
+      await reveal.waitForFunction(() => document.getAnimations().some(a => a.animationName === 'circular-reveal'));
+      const animation = await reveal.evaluate(() => {
+        const a = document.getAnimations().find(a => a.animationName === 'circular-reveal');
+        a.pause(); a.currentTime = 240;
+        const root = document.documentElement;
+        return { duration: a.effect.getTiming().duration, easing: getComputedStyle(document.documentElement, '::view-transition-new(root)').animationTimingFunction,
+          x: parseFloat(root.style.getPropertyValue('--reveal-x')), y: parseFloat(root.style.getPropertyValue('--reveal-y')),
+          radius: parseFloat(root.style.getPropertyValue('--reveal-radius')), frames: a.effect.getKeyframes(),
+          oldOpacity: getComputedStyle(root, '::view-transition-old(root)').opacity,
+          newOpacity: getComputedStyle(root, '::view-transition-new(root)').opacity,
+          groupTransform: getComputedStyle(root, '::view-transition-group(root)').transform };
+      });
+      assert.equal(animation.duration, 600);
+      assert.equal(animation.easing, 'cubic-bezier(0.4, 0, 0.2, 1)');
+      assert.ok(Math.abs(animation.x - bounds.x - bounds.width / 2) < 1);
+      assert.ok(Math.abs(animation.y - bounds.y - bounds.height / 2) < 1);
+      assert.ok(animation.radius >= Math.hypot(Math.max(animation.x, width - animation.x), Math.max(animation.y, 1000 - animation.y)) - 1);
+      assert.match(animation.frames[0].clipPath, /^circle\(0px at /);
+      assert.equal(animation.oldOpacity, '1'); assert.equal(animation.newOpacity, '1');
+      assert.equal(animation.groupTransform, 'none');
+      await reveal.screenshot({ path: `tests/artifacts/reveal-${width}-${name}-midpoint.png` });
+      await reveal.evaluate(() => document.getAnimations().find(a => a.animationName === 'circular-reveal').finish());
+      await reveal.waitForFunction(() => !document.documentElement.dataset.revealing);
+    };
+    await runReveal(reveal.getByRole('button', { name: '深色模式', exact: true }), 'dark');
+    assert.equal(await reveal.locator('html').getAttribute('data-theme'), 'dark');
+    await runReveal(reveal.getByRole('button', { name: '浅色模式', exact: true }), 'light');
+    assert.equal(await reveal.locator('html').getAttribute('data-theme'), 'light');
+    if (width <= 768) await reveal.getByRole('button', { name: '打开导航', exact: true }).click();
+    await reveal.getByRole('button', { name: '系统设置', exact: true }).click();
+    await reveal.getByRole('heading', { name: '连接与存储', exact: true }).waitFor();
+    await reveal.locator('input[name="API_KEY"]').fill('unsaved-language-draft');
+    await reveal.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
+    const formBefore = await reveal.locator('input[name="API_KEY"]').evaluate(el => { window.originalDraftInput = el; return true; });
+    assert.ok(formBefore);
+    const coloursBefore = await reveal.locator('#main').evaluate(el => ({ background: getComputedStyle(el).backgroundColor, colour: getComputedStyle(el).color }));
+    await runReveal(reveal.locator('[data-ui="language-switch"]'), 'english');
+    await reveal.getByRole('heading', { name: 'Connections and storage', exact: true }).waitFor();
+    assert.equal(await reveal.locator('html').getAttribute('lang'), 'en');
+    assert.equal(await reveal.locator('html').getAttribute('data-theme'), 'light');
+    assert.equal(await reveal.locator('input[name="API_KEY"]').inputValue(), 'unsaved-language-draft');
+    assert.equal(await reveal.getByLabel('Cron expression', { exact: true }).nth(1).inputValue(), '3 * * * *');
+    assert.ok(await reveal.locator('input[name="API_KEY"]').evaluate(el => el === window.originalDraftInput));
+    assert.deepEqual(await reveal.locator('#main').evaluate(el => ({ background: getComputedStyle(el).backgroundColor, colour: getComputedStyle(el).color })), coloursBefore);
+    assert.ok(await reveal.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'English has no page overflow');
+    assert.doesNotMatch(await reveal.locator('body').innerText(), /[\u3400-\u9fff]/, 'all visible settings UI is translated');
+    await runReveal(reveal.locator('[data-ui="language-switch"]'), 'chinese');
+    await reveal.getByRole('heading', { name: '连接与存储', exact: true }).waitFor();
+    assert.equal(await reveal.locator('input[name="API_KEY"]').inputValue(), 'unsaved-language-draft');
+    await runReveal(reveal.locator('[data-ui="language-switch"]'), 'english-again');
+    await reveal.reload();
+    await reveal.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
+    assert.equal(await reveal.locator('html').getAttribute('lang'), 'en');
+    assert.ok(await reveal.getByRole('columnheader', { name: 'Activation price', exact: true }).count());
+    if (width <= 768) await reveal.getByRole('button', { name: 'Open navigation', exact: true }).click();
+    await reveal.getByRole('button', { name: 'Predicted orders', exact: true }).click();
+    await reveal.getByRole('button', { name: 'View details for record 1', exact: true }).click();
+    const englishDialog = reveal.getByRole('dialog', { name: 'Predicted orders details', exact: true });
+    await englishDialog.getByRole('heading', { name: 'Raw values and precision', exact: true }).waitFor();
+    assert.equal(await englishDialog.locator('dd').filter({ hasText: /^100\.005$/ }).count(), 1);
+    await reveal.keyboard.press('Escape');
+    // Reduced motion and older browsers retain functional, persistent controls.
+    await reveal.emulateMedia({ reducedMotion: 'reduce' });
+    await reveal.locator('[data-ui="language-switch"]').click();
+    await reveal.getByRole('heading', { name: '预测订单', exact: true, level: 1 }).waitFor();
+    assert.equal(await reveal.locator('html').getAttribute('data-revealing'), null);
+    await reveal.emulateMedia({ reducedMotion: 'no-preference' });
+    await reveal.evaluate(() => { document.startViewTransition = undefined; });
+    await reveal.locator('[data-ui="language-switch"]').click();
+    await reveal.getByRole('heading', { name: 'Predicted orders', exact: true, level: 1 }).waitFor();
+    assert.equal(await reveal.locator('html').getAttribute('data-revealing'), null);
+    assert.deepEqual(writes, []); assert.deepEqual(errors, []);
+    await reveal.close();
+  }
 
   // Fault-injection regressions: production UI + real server, only /api/status failure is intercepted.
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
