@@ -17,6 +17,8 @@ export async function checkSettings(browser, base, token, output) {
     await overview.waitFor();
     const cards = overview.locator('[data-settings-section]');
     assert.equal(await cards.count(), 4);
+    const titles = zh ? ['外观设置','连接与存储','预测抓取','自动开仓'] : ['Appearance Settings','Connections & Storage','Prediction Fetching','Automatic Entry'];
+    for (let i=0;i<4;i++) await cards.nth(i).getByText(titles[i],{exact:true}).waitFor();
     assert.equal(await page.locator('[data-ui=settings] input:visible, [data-ui=settings] select:visible').count(), 0);
     const sizes = await cards.evaluateAll(elements => elements.map(el => { const r = el.getBoundingClientRect(); return [r.x,r.width,r.height,r.y]; }));
     for (let i = 0; i < 4; i++) {

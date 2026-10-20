@@ -362,7 +362,7 @@ try {
     assert.equal(await reveal.locator('[data-ui="theme-select"]').inputValue(), 'light');
     const coloursBefore = await reveal.locator('#main').evaluate(el => ({ background: getComputedStyle(el).backgroundColor, colour: getComputedStyle(el).color }));
     await runReveal(reveal.locator('[data-ui="language-switch"]'), 'english');
-    await reveal.getByRole('heading', { name: 'Connections and storage', exact: true }).waitFor();
+    await reveal.getByRole('heading', { name: 'Connections & Storage', exact: true }).waitFor();
     assert.deepEqual(await layout(), chineseLayout, 'English and Chinese keep title, field, navigation and toolbar positions');
     assert.equal(await reveal.locator('html').getAttribute('lang'), 'en');
     assert.equal(await reveal.locator('html').getAttribute('data-theme'), 'light');

@@ -174,7 +174,7 @@ export const english: Record<string, string> = {
   完成: 'Completed',
   开始: 'Started',
   '正在读取配置…': 'Loading configuration…',
-  连接与存储: 'Connections and storage',
+  连接与存储: 'Connections & Storage',
   凭证与数据: 'Credentials and data',
   '凭证仅在服务端保存。留空保留现有密钥，勾选清除后才会删除本地值。':
     'Credentials stay on the server. Leave fields blank to keep existing secrets; select clear to remove local values.',
@@ -194,10 +194,10 @@ export const english: Record<string, string> = {
     'The data directory changes after restart. Back up and move the existing database first.',
   保存程序配置: 'Save configuration',
   '正在保存…': 'Saving…',
-  预测抓取: 'Prediction fetching',
+  预测抓取: 'Prediction Fetching',
   定时与周期: 'Schedule and interval',
   启用预测订单定时抓取: 'Enable scheduled prediction fetching',
-  自动开仓: 'Automatic entry',
+  自动开仓: 'Automatic Entry',
   独立授权与周期: 'Independent permission and schedule',
   '默认关闭。启用后仅在计划时间使用已保存的有效预测订单交易；启动、刷新和预测抓取不会开仓。请先完成一次预测抓取。':
     'Off by default. When enabled, trades use saved valid predictions only at scheduled times. Startup, refresh and prediction fetching do not place trades. Fetch predictions first.',
