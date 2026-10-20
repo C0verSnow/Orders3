@@ -16,8 +16,8 @@ const fontResponse=await fetch(fontURL);assert.ok(fontResponse.ok);
 const font=Buffer.from(await fontResponse.arrayBuffer());
 const token='ci-platform-visual-token-at-least-32-characters';
 const base='http://127.0.0.1:18093';
-const manifest={platform,commit:process.env.GITHUB_SHA,fontURL,fontSHA256:createHash('sha256').update(font).digest('hex'),browser:null,deviceScaleFactor:1,timezone:'UTC',cases:[]};
-const browser=await chromium.launch({args:['--disable-lcd-text','--font-render-hinting=none']});
+const manifest={platform,commit:process.env.GITHUB_SHA,fontURL,fontSHA256:createHash('sha256').update(font).digest('hex'),browser:null,deviceScaleFactor:1,timezone:'UTC',renderedFonts:[],cases:[]};
+const browser=await chromium.launch({args:['--disable-lcd-text','--font-render-hinting=none','--disable-font-subpixel-positioning']});
 manifest.browser=browser.version();
 try {
   for(const count of [0,2,45]) {
@@ -53,6 +53,15 @@ try {
         await page.getByRole('button',{name:language==='zh'?'预测订单':'Predicted orders',exact:true}).click();
         const fade=page.locator('[data-ui=scroll-fade]').first(), viewport=fade.locator('[data-ui=fade-viewport]');
         await viewport.waitFor();await page.waitForTimeout(300);
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
+        const {root} = await cdp.send('DOM.getDocument');
+        const {nodeId} = await cdp.send('DOM.querySelector',{nodeId:root.nodeId,selector:'table th [data-ui="stable-text"] > span:last-child'});
+        assert.ok(nodeId,'inspect the actual rendered table font');
+        const {fonts} = await cdp.send('CSS.getPlatformFontsForNode',{nodeId});
+        assert.ok(fonts.length && fonts.every(font => font.isCustomFont),'table uses the pinned custom font rather than a system fallback');
+        manifest.renderedFonts.push({count,width,language,theme,fonts});
+        await cdp.detach();
         await viewport.scrollIntoViewIfNeeded();
         // Keep the content on a whole device pixel before rasterization. A
         // fractional page offset can otherwise add a crop row and change glyph AA.
