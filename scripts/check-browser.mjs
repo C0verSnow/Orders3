@@ -339,9 +339,11 @@ try {
     // Mobile drawer is closed but still laid out, so its two actions can be compared.
     const actions = await reveal.locator('aside [data-ui="download-database"], aside [data-ui="logout"]').evaluateAll(elements => elements.map(el => {
       const button = el.getBoundingClientRect(), icon = el.querySelector('svg').getBoundingClientRect();
-      return [button.x, button.width, button.height, icon.x, icon.width, icon.height];
+      const text = document.createRange();
+      text.selectNodeContents(el.querySelector('[data-ui="stable-text"] > span:last-child'));
+      return [button.x, button.width, button.height, icon.x, icon.width, icon.height, text.getBoundingClientRect().x];
     }));
-    assert.deepEqual(actions[0], actions[1], 'sidebar actions have identical dimensions, icon size and alignment');
+    assert.deepEqual(actions[0], actions[1], 'sidebar actions have identical dimensions, icon size and text left edges');
     assert.equal(await reveal.locator('[data-ui="theme-select"]').inputValue(), 'light');
     const coloursBefore = await reveal.locator('#main').evaluate(el => ({ background: getComputedStyle(el).backgroundColor, colour: getComputedStyle(el).color }));
     await runReveal(reveal.locator('[data-ui="language-switch"]'), 'english');

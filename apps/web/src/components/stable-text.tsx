@@ -7,7 +7,7 @@ export function StableText({ text }: { text: string }) {
   const en = Object.hasOwn(english, text) ? english[text] : text;
   const zh = chinese.get(text) ?? text;
   return (
-    <span className="inline-grid min-w-0 align-baseline" data-ui="stable-text">
+    <span className="inline-grid min-w-0 text-left align-baseline" data-ui="stable-text">
       <span aria-hidden="true" data-text={en} className="text-measure invisible col-start-1 row-start-1" />
       <span aria-hidden="true" data-text={zh} className="text-measure invisible col-start-1 row-start-1" />
       <span className="col-start-1 row-start-1">{text}</span>
