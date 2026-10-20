@@ -23,3 +23,6 @@
 @media (prefers-reduced-motion: reduce) {
   :root[data-revealing]::view-transition-new(root) { animation: none; }
 }
+
+/* CSS-only measurement keeps translated sizing copies out of form labels. */
+.text-measure::before { content: attr(data-text); }

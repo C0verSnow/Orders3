@@ -929,11 +929,11 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
       data-ui="metric"
       className="min-w-0 p-5 not-first:border-l not-first:border-zinc-200 nth-3:border-t nth-3:border-l-0 nth-4:border-t xl:nth-3:border-t-0 xl:nth-3:border-l xl:nth-4:border-t-0 dark:not-first:border-zinc-700 [&>p]:text-xs [&>p]:text-zinc-500 [&>strong]:my-3 [&>strong]:block [&>strong]:text-3xl [&>strong]:font-semibold [&>span]:text-[10px] [&>span]:text-zinc-500"
     >
-      <p>{label}</p>
+      <p><StableText text={label} /></p>
       <strong className="tabular-nums tracking-tight">
         <AnimatedValue value={value} />
       </strong>
-      <span>{detail}</span>
+      <span><StableText text={detail} /></span>
     </section>
   );
 }

@@ -320,6 +320,7 @@ try {
       const rect = el => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(n => Math.round(n * 10) / 10); };
       return [...document.querySelectorAll('#main [data-ui="two-tone-title"], #main input, header [data-ui="preferences"], aside nav button, aside [data-ui="download-database"], aside [data-ui="logout"]')].map(rect);
     });
+    await reveal.evaluate(() => window.scrollTo(0, 0));
     const chineseLayout = await layout();
     // Mobile drawer is closed but still laid out, so its two actions can be compared.
     const actions = await reveal.locator('aside [data-ui="download-database"], aside [data-ui="logout"]').evaluateAll(elements => elements.map(el => {

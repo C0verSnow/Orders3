@@ -8,8 +8,8 @@ export function StableText({ text }: { text: string }) {
   const zh = chinese.get(text) ?? text;
   return (
     <span className="inline-grid min-w-0 align-baseline" data-ui="stable-text">
-      <span aria-hidden="true" className="invisible col-start-1 row-start-1">{en}</span>
-      <span aria-hidden="true" className="invisible col-start-1 row-start-1">{zh}</span>
+      <span aria-hidden="true" data-text={en} className="text-measure invisible col-start-1 row-start-1" />
+      <span aria-hidden="true" data-text={zh} className="text-measure invisible col-start-1 row-start-1" />
       <span className="col-start-1 row-start-1">{text}</span>
     </span>
   );
