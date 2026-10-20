@@ -340,7 +340,7 @@ try {
     await reveal.getByRole('button', { name: 'View details for record 1', exact: true }).click();
     const englishDialog = reveal.getByRole('dialog', { name: 'Predicted orders details', exact: true });
     await englishDialog.getByRole('heading', { name: 'Raw values and precision', exact: true }).waitFor();
-    assert.equal(await englishDialog.locator('dd').filter({ hasText: /^100\.005$/ }).count(), 1);
+    assert.equal((await englishDialog.locator('dd').allTextContents()).filter(value => value === uiSources[0].activation_price).length, 1, 'language switching preserves the current raw fixture price');
     await reveal.keyboard.press('Escape');
     // Reduced motion and older browsers retain functional, persistent controls.
     await reveal.emulateMedia({ reducedMotion: 'reduce' });
