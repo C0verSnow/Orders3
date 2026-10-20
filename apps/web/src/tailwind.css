@@ -1,0 +1,28 @@
+@import "tailwindcss";
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@theme { --breakpoint-md: 48.0625rem; --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+
+/* New snapshot always reveals over the old one, in both directions. Disable
+   browser crossfade and group transforms so only the circular mask animates. */
+:root[data-revealing]::view-transition-group(root) { animation: none; }
+:root[data-revealing]::view-transition-old(root),
+:root[data-revealing]::view-transition-new(root) { mix-blend-mode: normal; }
+:root[data-revealing]::view-transition-old(root) { animation: none; z-index: 1; }
+:root[data-revealing]::view-transition-new(root) {
+  z-index: 2;
+  animation: circular-reveal 600ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@keyframes circular-reveal {
+  from { clip-path: circle(0px at var(--reveal-x) var(--reveal-y)); }
+  to { clip-path: circle(var(--reveal-radius) at var(--reveal-x) var(--reveal-y)); }
+}
+/* Capture final colors and text, without unrelated component transitions. */
+:root[data-revealing] *, :root[data-revealing] *::before, :root[data-revealing] *::after {
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-revealing]::view-transition-new(root) { animation: none; }
+}
+
+/* CSS-only measurement keeps translated sizing copies out of form labels. */
+.text-measure::before { content: attr(data-text); }

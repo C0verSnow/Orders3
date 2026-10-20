@@ -1,14 +1,7 @@
-# 第三方组件
+# 依赖
 
-当前程序使用 Qt 6 Core、Network、Sql、Concurrent 和 HTTP Server；Windows 另外使用 Qt Widgets 和 Qt WebEngine。SQLite 由 Qt SQL 插件提供。Linux 发布包还包含所依赖的 Ubuntu 动态库。
+React / React DOM、Vite、TypeScript、Tailwind、TanStack Query / Table、Lucide：前端与工程化。
 
-Qt 各模块的授权不同。Qt HTTP Server 提供 GPLv3 或商业授权；其他模块及 WebEngine 包含各自的授权和第三方声明。发布与修改时按所选授权保留对应文本。项目自身的授权不在本次重构中变更。
+Fastify、Zod：HTTP 与运行时校验。Decimal.js：确定性十进制计算。lossless-json：远端数字原文。proper-lockfile：数据目录租约。Node 内置 crypto/sqlite：HMAC-SHA512、哈希与持久化。
 
-参考：
-
-- [Qt 授权说明](https://doc.qt.io/qt-6/licensing.html)
-- [Qt HTTP Server](https://doc.qt.io/qt-6/qthttpserver-index.html)
-- [Qt WebEngine 第三方声明](https://doc.qt.io/qt-6/qtwebengine-licensing.html)
-- [Windows 部署](https://doc.qt.io/qt-6/windows-deployment.html)
-
-CI 收集 Qt 安装目录中可用的授权文件；Linux 包附带系统通用授权和相关包的 copyright 文件。安装 Qt 的 CI 辅助工具与应用运行时分离，发布包不含 Python 应用或解释器。
+esbuild：远端打包服务端与内嵌前端资源。postject：Node SEA 二进制注入。Playwright：远端浏览器回归与截图。所有 npm 版本由根 package-lock.json 固定。Node 运行时固定 24.22.0；Qt、CMake、Python 不参与当前应用构建，已有部署脚本的纯 Python 回归仅在 CI 执行。

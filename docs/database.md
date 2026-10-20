@@ -1,30 +1,27 @@
-# SQLite 数据格式
+# SQLite 数据兼容
 
-来源记录和 Gate 跟踪订单共用 `data/data.db`。`records` 保存 Supabase orders 表的完整记录，`orders` 保存直接提取的订单字段，`orderslist` 保存 Gate 跟踪订单。两种刷新分别在事务中更新自己的表，不会清空另一种数据；下载数据库也包含这三张表。
+Node 使用内置 `node:sqlite`（无第三方原生扩展）。旧库直接打开，schema 升级在事务中增加列和表。请先备份并停止旧进程；不要让旧程序与新程序共享运行中的数据目录。
 
-`records` 保存来源记录：`position` 表示顺序，`url`、`created_at`、`status_code`、`error`、`data` 为独立列。文本内容直接存入 `data`；结构化内容以 JSON 字符串保存，由 `data_format` 区分。`extra_json` 保留额外字段，`present_fields` 区分缺失字段和空值。
+| 表 | 用途与迁移 |
+| --- | --- |
+| records | 兼容旧 record_json 与结构化 extra_json/present_fields。保留缺失/null、原始数字和额外字段 |
+| orders | 来源成功刷新后事务重建；结构化字段为两位字符串，新增 raw_activation_price/raw_amount。旧 symbol/price/size/orders_time 读取时映射 |
+| orderslist | 保留 id/contract/amount/activation_price/reduce_only/original_status/timestamp；新增原始价格/数量。旧 trigger_price 仅作为旧字段，不冒充激活价；下次完整刷新替换 |
+| position | 保留旧字段并补合约乘数和 tick；同合约多空分别保存；展示/业务结果两位字符串，size 仍按 INTEGER 保存以兼容旧库 |
+| raw_positions | 对应当前持仓的完整上游原始记录，保留实际精度 |
+| position_entry_history | 原 owner:trade_id 去重、UTC 毫秒、方向、原始固定保证金；最多 100 条 |
+| position_entry_seen | 独立保留七天成交身份；展示历史裁剪后仍去重，允许补入水位前的迟到成交 |
+| position_entry_sync | 每个 Key SHA256 摘要的进度，与历史同事务提交 |
+| position_entry_margin | 按 owner/合约/方向保留最新真实入仓固定保证金；历史清理不清此表 |
+| snapshots | sources、trailing、positions 各自成功保存时间；旧 orders 字段保留兼容，不代表完整快照 |
+| trade_intents | 写前 pending，响应与缓存确认后 confirmed，失败 unknown；新增 owner 原Key指纹、request_id、review_evidence。人工核查必须恢复原凭证并提供依据；旧无身份记录不在线解除 |
 
-`orders` 通过 `record_position` 关联来源，每条 Supabase 订单对应一条 `records` 和一条 `orders`，`order_index` 为 0（旧缓存仍保留来源内的订单顺序）；业务列为 `contract`、`activation_price`、`side`、`amount`、`timestamp`、`quanto_multiplier`、`order_price_round`。字段名称与 `orderslist` 一致，并保留来源订单的 `side`；不再保存 `value`。价格和数量以文本保留精度及单位，`timestamp` 与 `orderslist` 一样为整数时间戳（毫秒），缺失或无效时为 NULL。`core/order_parser.cpp` 中的 `parseSupabaseOrders()` 校验 orders 表记录并保护数字精度；`parseOrderRecord()` 直接提取业务字段。旧 `parseOrders()` 仅用于兼容旧文本缓存。`id`、`value` 等原始字段保存在 `records.extra_json`，不作为自动下单参数。读取旧缓存时转换为新字段，下次成功抓取会重建为新表结构。
+旧 managed_close_orders 和其他无关表不主动删除。来源事务只替换 records/orders；Gate 更新只替换 orderslist；持仓更新只替换 position/raw_positions。任何事务失败回滚；来源网络/字段失败不进入保存。历史分页失败不推进水位，失败不新开仓。
 
-```sql
-SELECT r.url, o.contract, o.activation_price, o.side, o.amount, o.timestamp
-FROM orders AS o
-JOIN records AS r ON r.position = o.record_position
-ORDER BY o.record_position, o.order_index;
-```
+固定保证金不在行情变化、纯减仓、杠杆/保证金调整时覆盖。新真实入仓、加仓、反手新方向更新固定值；自动保护取消后持仓刷新直接展示交易所当前保证金，不初始化固定保证金；历史仍不伪造或重设 7 天时间。保留原始保证金用于内部计算，只有结果/API 规范化为两位。
 
-HTTP `/api/data` 返回来源记录、订单行、更新时间和刷新错误。旧版 `record_json` 数据库仍可读取；刷新后通过 SQLite 事务更新为当前表结构，失败时回滚。数据库下载通过 `/api/download` 生成一致快照。
+每次 BEGIN IMMEDIATE 后，统计同目录 SQLite 文件（扩展名或文件头），含旧库 WAL 已提交页的最终主文件需求，设置向下取整 max_page_count，合计预算 450,000,000 字节。超限仍可读和下载，写入拒绝。目录级进程租约防止多个新服务在额度检查间并发写入；外部直接写库不在保证范围内。
 
-`orderslist` 由 `fetchTrailingOrders()` 获取数据，`Dashboard::refreshOrders()` 调用 `saveTrailingOrders()` 保存，`readTrailingOrders()` 读取。字段为 `id`（主键）、`contract`、`amount`、`activation_price`、`reduce_only`、`original_status`、`timestamp`。价格和数量以文本保留精度，`reduce_only` 为 0 或 1。HTTP `/api/orders` 返回这张表的数据。成功刷新会替换整张 `orderslist` 表的数据，失败则保留之前的内容。
+下载使用 `VACUUM INTO`，包含已提交 WAL 内容，不直接复制正在使用的主文件。临时快照、日志轮换、WAL/SHM 不计主文件预算，需预留额外磁盘空间。
 
-```sql
-SELECT * FROM orderslist ORDER BY id;
-```
-
-`position` 增加 `quanto_multiplier`、`order_price_round` 两个文本列，已有表仅增加列。来源 `orders` 在下次成功抓取后重建并保存这两列，刷新失败时旧快照保留。
-
-`position_entry_history` 保存 `event_id`（API Key 摘要加真实成交 ID）、`entry_time`（UTC 毫秒）、`contract`、`side`（1/-1）和 `initial_margin`（可空十进制文本，固定入仓保证金）。仅保留按入仓时间排序的最近 100 条。`position_entry_sync` 单独保存每个 API Key 摘要已同步到的毫秒时间，不存密钥原文；它防止重启后把清理掉的旧成交重新插回历史。详细规则见 [入仓历史与开仓限制](position-entry-history.md)。
-
-程序不再访问或创建 `managed_close_orders`，已有旧表不主动删除。其他业务数据保留。
-
-`position_entry_margin` 按 `owner`（API Key 摘要）、`contract`、`side` 保存当前方向最新 `event_id`、`entry_time` 和固定 `initial_margin`。新入仓或加仓时随历史事务更新，重复成交不覆盖；历史 100 条清理不删除当前固定值。旧库加列和加表，旧持仓首次读取时初始化，不制造入仓事件或重置 7 天限制。实时保证金不覆盖固定值，`position.initial_margin` 保存平仓计算实际使用的固定值。
+自动保护单已取消。`position.close_price` 仅兼容旧表的非空约束，新快照写 0 占位；API 不返回该字段，页面不显示或计算保护价。`close_execution` 兼容字段固定为空数组。

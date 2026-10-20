@@ -6,6 +6,14 @@ image="${ORDERS_IMAGE:-ghcr.io/c0versnow/orders3:latest}"
 container_name="${ORDERS_CONTAINER_NAME:-orders-dashboard}"
 volume_name="${ORDERS_VOLUME_NAME:-orders-dashboard-data}"
 pull_policy="${ORDERS_PULL_POLICY:-always}"
+env_file="${ORDERS_ENV_FILE:-.env}"
+env_args=()
+if [[ -f "$env_file" ]]; then
+    env_args=(--env-file "$env_file")
+elif [[ -n "${ORDERS_ENV_FILE:-}" ]]; then
+    echo 'ORDERS_ENV_FILE 指向的文件不存在。' >&2
+    exit 1
+fi
 command -v docker >/dev/null
 command -v curl >/dev/null
 docker info >/dev/null
@@ -37,7 +45,7 @@ start_mapped_dashboard() {
         port=$((49152 + RANDOM % 16384))
         if ! container_id="$(docker create --pull never --name "$container_name" --restart unless-stopped \
             -p "127.0.0.1:$port:$port" -v "$volume_name:/data" \
-            -e ORDERS_HOST=0.0.0.0 -e "ORDERS_PORT=$port" -e ORDERS_NO_BROWSER=1 \
+            "${env_args[@]}" -e ORDERS_HOST=0.0.0.0 -e "ORDERS_PORT=$port" -e ORDERS_NO_BROWSER=1 \
             "$image" "$@" --host 0.0.0.0 --port "$port" --no-browser)"; then
             rm -f "$failure"
             return 1
@@ -89,6 +97,7 @@ for attempt in {1..60}; do
             exit 1
         fi
         printf '本地看板：%s\n容器名称：%s\n' "$dashboard_url" "$container_name"
+        printf '登录令牌请查看：docker logs %s\n' "$container_name"
         exit 0
     fi
     sleep 1

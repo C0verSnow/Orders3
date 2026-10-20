@@ -1,317 +1,114 @@
-# 特洛伊资本
+# Orders3 · 特洛伊资本
 
-> **仓库约定：以后不要进行本地编译验证。** 修改后使用代码阅读、静态检查、差异检查或已有远端 CI 验证；不要执行本地构建或会触发编译的测试、冒烟脚本。详细约定见 [AGENTS.md](AGENTS.md)。
+React + TypeScript 交易工作台，Node.js + TypeScript 负责真实 Supabase / Gate 业务、SQLite、签名、定时任务和凭证管理。当前运行与构建不依赖 C++、Qt、WebEngine 或 QWebChannel。
 
-C++17 / Qt 6 工程。Windows 默认打开独立软件窗口，Linux 和 macOS 默认打开系统浏览器。程序直接从 Supabase 的 `public.orders` 表分页读取来源订单并保存到 SQLite，同时提供 Gate 跟踪订单、搜索筛选、手动刷新、Cron 定时抓取和数据库下载。Gate 列表每分钟独立刷新，网页在任务结束时立即同步列表，并每分钟补充同步一次，并隐藏状态码为 5 的订单；来源订单在按钮或定时任务触发后更新，任务运行期间每 5 秒检查完成状态，自动下单结果仅显示最近 10 条；来源抓取成功后自动停止符合条件且状态为 1 的旧开仓追踪单（状态 2 不取消）并创建新单，具体规则见 [自动追踪订单](docs/trailing-orders.md)。
+前端使用 React 19、TypeScript、Vite、Tailwind CSS 4 和 TanStack Query/Table。界面全部使用 Tailwind 工具类，共用 Button/Input/Select/Panel/Badge 组件；旧手写 CSS 已移除。样式入口包含 Tailwind 导入、深色模式变体、字体/断点配置，以及浏览器圆形揭示过渡的伪元素与关键帧规则。数字与列表过渡使用浏览器 Web Animations API，支持系统减少动态效果设置，不改变交易数据与后端逻辑。
 
-运行与发布不需要 Python，也不使用 PyInstaller。网页仍使用 HTML / CSS / JavaScript，作为 Qt 资源编译进程序。旧 Python 代码保存在 `archive/python/`，仅供迁移对照，不参与构建。
+**仓库约定：不进行本地编译验证。** 代理修改时只做代码阅读、静态分析和差异检查；构建、类型检查、测试和发布包启动验证交给已有远端 Actions。未执行的检查不算通过。
 
 ## 运行发布包
 
-解压后运行：
+普通用户完整操作步骤见 [使用手册](使用手册.md)，分别说明 Windows EXE、Linux DEB、Docker、配置优先级及日常排查。
 
-- Windows：`orders-windows-x64/orders.exe`。包内包含 Qt WebEngine，保留整个解压目录；无需安装 WebView2。
-- Linux：`orders-linux-x64/bin/orders` 或 `orders-linux-arm64/bin/orders`。包内包含 Qt 与相关运行库，面向 Ubuntu 24.04 对应架构或兼容环境，需要 glibc 2.39+；浏览器模式需要系统提供 `xdg-open`。
-- macOS：按 Intel / Apple Silicon 选择 `orders-macos-x64.tar.gz` / `orders-macos-arm64.tar.gz`，解压后运行 `orders.app`，或执行 `orders.app/Contents/MacOS/orders`。面向 macOS 13+，应用包包含 Qt、SQLite 插件和项目运行库。
+Release 附件统一带 `v-版本`，以下 `1.0.0` 为示例，请替换成实际下载版本。自动预发布使用 `1.0.0-build.运行ID.重试号`，旧 Release 附件不会自动改名。
 
-启动后在「连接与存储配置」中填写 Supabase 地址、密钥以及 Gate API Key / Secret，点击「保存程序配置」即可，无需创建或打开 `.env`。连接配置立即生效，正在执行的任务使用原配置；更改数据目录需要重启，不会自动搬移已有数据库。密钥不回显，留空保留原值，勾选清除可删除。发布版默认在用户目录 `.orders-dashboard/` 保存数据库和配置。Windows 的 exe、DLL、Qt 插件与 `example.env`、`example.config` 均位于解压后的程序目录内。
-
-```powershell
-# Windows 示例
-.\orders-windows-x64\orders.exe --cached
-.\orders-windows-x64\orders.exe --browser
-.\orders-windows-x64\orders.exe --no-browser --port 8090
-.\orders-windows-x64\orders.exe --fetch-only
-.\orders-windows-x64\orders.exe --list
-.\orders-windows-x64\orders.exe "D:\my data\results.db" --cached
-```
-
-宿主机直接运行时默认端口为 0，由系统选择空闲端口。Docker / Podman 容器（通过 `/.dockerenv` 或 `/run/.containerenv` 识别）默认监听 `0.0.0.0:8090` 并禁止自动打开浏览器，即使镜像没有设置启动环境变量也使用这些默认值。命令行和环境变量可覆盖默认值。程序打印实际地址。关闭 Windows 主窗口或在服务模式按 Ctrl+C 停止程序；关闭过程取消尚未完成的网络请求。
-
-`--cached` 跳过启动抓取，定时任务仍可执行。`--fetch-only` 抓取来源一次，保存后自动处理开仓追踪单，`--list` 获取 Gate 跟踪订单一次。单次抓取允许位置参数指定数据库路径，只支持 `.db`、`.sqlite`、`.sqlite3`。
-
-启动时立即展示缓存，两个抓取任务分别在后台执行；Linux 和 macOS 无需等待远程抓取完成即可访问页面。`--desktop` 仅支持 Windows，不能与 `--browser`、`--no-browser` 或单次抓取组合使用。
-
-自动平仓使用 `value = size × quanto_multiplier × entry_price`（保留正负号），跳过零持仓；每 60 秒检查 Gate 持仓和追踪订单：每个合约的每个持仓方向仅保留一张数量、激活价格符合当前持仓的有效追踪平仓单，多余或不匹配且状态为 1 的先停止，再补建缺失订单；状态 2 的旧单不取消，可能与新单同时存在。清理包含当前账户列表可见的手工及旧版本追踪平仓单，不依赖本地创建记录；开仓单不参与。详见 [自动平仓追踪单](docs/close-position-orders.md)。原始目标是固定入仓保证金的 3.1 倍毛收益；仅真实入仓或加仓更新保证金，旧持仓首次读取时初始化。原始目标价多仓乘 1.01、空仓乘 0.99，再按真实合约步长取整，近似补偿 1% 回撤；算出的价格用于激活追踪，并不保证最终成交收益。历史公式与净利润目标的区别、300% ROI 公式和完整算例见 [平多仓收益分析](docs/close-profit-analysis.md)。
-
-## 配置与数据
-
-### Gate 备用密钥
-
-启动时由程序内的 C++ / Qt HTTP 客户端自动获取，无需安装 Node、Python 或 Infisical CLI。先通过 [Universal Auth](https://infisical.com/docs/api-reference/endpoints/universal-auth/login) 交换临时访问令牌，再使用 [读取密钥接口](https://infisical.com/docs/api-reference/endpoints/secrets/read) 读取指定项目、环境及路径中的 `GATE_API_KEY`、`GATE_API_SECRET`。不再请求 Supabase `secret` 表；原有 Supabase `orders` 表读取和交易规则保持不变。
-
-启动环境或程序原有 `.env` 中配置：
-
-```dotenv
-INFISICAL_URL=https://app.infisical.com
-INFISICAL_CLIENT_ID=your-machine-client-id
-INFISICAL_CLIENT_SECRET=your-machine-client-secret
-INFISICAL_PROJECT_ID=your-project-uuid
-INFISICAL_ENVIRONMENT=prod
-INFISICAL_SECRET_PATH=/
-```
-
-地址默认 `https://app.infisical.com`，环境默认 `prod`，路径默认 `/`，项目 ID 必填。兼容本地已有的 `CLIENT_ID`、`CLIENT_SECRET` 名称；设置了 `INFISICAL_CLIENT_ID`、`INFISICAL_CLIENT_SECRET` 时优先使用专用名称。这些是启动配置，网页不展示或保存机器认证凭证；修改后需重启。`.env` 位置沿用原规则：源码仓库根目录、Windows 程序旁、Linux 的 `bin/orders` 旁。Docker 可使用 `docker run --env-file /安全目录/infisical.env ...` 注入，或把文件只读挂载到 `/opt/orders/bin/.env`。只允许 HTTPS 服务地址（本机回环地址可用 HTTP），不跟随认证或密钥接口的重定向。
-
-`API_KEY`、`API_SECRET` 分别优先使用本地非空有效配置，缺少哪个字段就由 Infisical 对应字段补充，支持混合来源。本地 Gate 配置仍按 `[environment]` > 进程环境变量 > `.env` 的顺序处理。令牌和 Gate 备用凭证只在内存中使用，不写文件，不出现在网页、日志或错误正文中。机器身份需对指定环境和路径的这两项密钥具有读取明文权限。
-
-网页每次成功保存程序配置都会在后台重新认证并读取备用密钥，无需重启；失败后在本次请求结束 5 秒后重试，成功后停止。更新 Infisical 中的 Gate 密钥后，再保存一次网页配置即可刷新。保存接口不等待网络；过期请求的结果不会覆盖新配置。修改 Supabase 订单连接不会清除 Infisical 备用值。两项读取分别处理，一项失败不会阻止另一项补充本地缺失字段；失败字段保留上次成功的内存备用值，完整的本地 Gate 配置始终保留。
-
-认证失败、响应无效、密钥缺失或格式无效都会触发重试。最终缺少 `API_KEY` 或 `API_SECRET` 时，Gate 操作在发送请求前停止；看板继续运行，方便补充配置。`--cached` 仍获取备用凭证，但不会因此抓取订单或操作 Gate。单次 `--list` / `--fetch-only` 模式只尝试一次，不启动常驻重试线程。
-
-### 来源订单读取流程
-
-手动获取、Cron 定时和启动抓取都直接读取 `/rest/v1/orders?select=*&order=id.asc`，不再从 `1` 表读取 URL 或访问外部订单网页。沿用现有 Supabase 连接配置和表读取权限，服务器分页少于 1000 条时仍继续读取。有总数统计时检查每页总数一致和完整性；未返回总数时读到空页为止。分页不是数据库事务快照，同一数量下的内容变化无法检测。
-
-每行需要有效的 `contract`、正数 `activation_price`、非零整数张数 `amount` 和毫秒 `timestamp`；`side` 可为文本或空值。数量正负表示交易方向，沿用自动下单规则。价格、数量和 ID 的 JSON 数字原文按文本保留，时间戳保存为整数。完整原始字段保存在本地 `records`，可执行字段直接写入 `orders`，无需解析 Order Alert 文本。按 contract 从 Gate 合约详情补齐 `quanto_multiplier` 和 `order_price_round`，同合约在同次抓取只请求一次；参数缺失或无效时保留旧数据。全部分页和合约参数通过检查后才在一个 SQLite 事务中替换来源数据，失败保留旧数据并停止本次自动下单；成功保存后沿用自动追踪订单流程。旧来源缓存仍可读取，下次成功抓取后替换。
-
-当表为空，或记录的 `contract`、`activation_price`、`amount`、`side` 四个字段明确都是 JSON null 且 `timestamp` 有效时，表示没有来源订单。原始空订单记录仍保存到 `records`，不写入可下单的 `orders`；全部分页成功后清空旧来源订单，并只停止缓存中状态为 1 的旧开仓追踪单，状态 2 保留，不创建新单。平仓保护单和已完成记录保留。混合列表只处理有效订单，半条订单、缺字段、无效时间戳及接口失败仍报错并保留旧来源数据。
-
-### 导出 Supabase orders 表
-
-使用 Node.js 22+，在仓库根目录运行，无需安装依赖或编译：
+- Windows x64：下载 Release 的 `orders-windows-x64_v-1.0.0.exe`，双击或从终端运行。程序打开系统浏览器，不再提供 Qt 窗口。exe 包含 Node 和 React 资源，无需另装 Node。
+- Linux AMD64 / ARM64：下载对应 `.deb`，执行 `sudo dpkg -i orders3_v-版本_架构.deb`，再运行 `orders3`。
+- 容器：镜像位于 [GHCR Packages](https://github.com/C0verSnow/Orders3/pkgs/container/orders3)，支持 `linux/amd64` 和 `linux/arm64`。发布状态与产物以 [Actions](https://github.com/C0verSnow/Orders3/actions) 和 [Releases](https://github.com/C0verSnow/Orders3/releases) 为准。
 
 ```sh
-npm run export:orders
-# 或者：node scripts/export-orders.mjs
+# Linux 发布包
+orders3 --cached
+orders3 --no-browser --port 8090
+orders3 --fetch-only
+orders3 --list
+orders3 /备份目录/data.db --cached
+
+# 容器，数据与 config 保存在命名卷
+docker run -d --name orders-dashboard --restart unless-stopped \
+  -p 127.0.0.1:8090:8090 -v orders-dashboard-data:/data \
+  ghcr.io/c0versnow/orders3:latest --cached
+docker logs orders-dashboard
 ```
 
-脚本直接读取 Supabase 的 `public.orders` 表，按 `id` 升序分页读取所有当前密钥有权访问的记录，将原始字段保存到仓库根目录的 `orderstable.json`，不会抓取来源 URL 或操作 Gate 订单。连接配置使用 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY`，优先级与程序一致：`config` 的 `[environment]` > 进程环境变量 > 根目录 `.env`；`ORDERS_CONFIG_PATH` 可以指定其他配置文件。密钥需要拥有该表的读取权限；行级安全策略仍然生效，导出仅包含当前密钥能看到的行。
+启动日志输出工作台地址和一次生成的**登录令牌**。自动打开浏览器时通过 URL fragment 传入令牌，登录后立即清除 fragment；手动访问时输入日志中的令牌。令牌不保存在浏览器存储，服务端签发 8 小时 HttpOnly / SameSite=Strict 会话。也可启动前设置至少 32 位的 `ORDERS_ACCESS_TOKEN`；该固定令牌不打印。重启后旧会话失效。不要将启动日志公开分享。
 
-每次请求最多读取 1000 行，服务器返回较小分页时继续读取。所有分页成功后才替换输出文件，网络、权限或格式错误时保留旧文件并以非零状态退出。导出保留原始 JSON 数字文本，不把大整数或小数转成 JavaScript 数值后重新写入。分页期间订单总数改变会中止；多次请求不是数据库事务快照，同一数量下的内容变化无法检测，需要一致快照时请在订单暂停写入期间执行。连接方式参见 [Supabase 官方 REST API 说明](https://supabase.com/docs/guides/api/creating-routes)。
+默认宿主机只监听 `127.0.0.1`，端口 0 自动分配；容器默认 `0.0.0.0:8090`。`--cached` 只跳过启动抓取，已启用的预测抓取、自动开仓与每分钟持仓同步仍运行。`--list` 仅读取 Gate 列表，不下单。`--fetch-only` 只抓取并保存预测订单，不执行开仓。`--desktop` 已移除，使用 `--browser`。
 
-`example.env` 列出兼容的环境变量字段；`example.config` 是程序配置示例。日常设置使用程序页面：
+## 配置与旧数据迁移
 
-| 配置 | 用途 |
-| --- | --- |
-| `SUPABASE_URL`、`SUPABASE_ANON_KEY` | 来源数据读取 |
-| `API_KEY`、`API_SECRET` | Gate 持仓、跟踪订单读取及自动下单；需对应合约读写权限 |
-| `ORDERS_DATA_DIR` | 两个 SQLite 数据库的保存目录 |
-| `ORDERS_CONFIG_PATH` | 程序与定时配置文件路径（启动前通过环境变量指定，页面显示实际位置） |
-| `ORDERS_ALLOWED_ORIGIN` | 使用代理或不同访问地址时，允许的网页来源 |
+请先备份旧 `data.db` 和 `config`，停止旧服务，再启动新程序；新旧程序不得同时操作同一数据目录或账户。新服务每个数据目录只允许一个进程，进程锁同时保护日志预算和交易串行化。旧程序不认识此锁，必须手动停止。
 
-源码目录构建时自动寻找仓库配置，默认使用 `data/data.db` 和根目录 `config`；来源记录保存在 `records`、`orders` 表，Gate 跟踪订单保存在同一数据库的 `orderslist` 表；发布包使用用户目录。`--list` 和普通抓取的位置参数均指定这个共享数据库。可执行文件旁的 `.env` 优先于仓库配置。程序页面保存的 `[environment]` 配置优先于同名环境变量；未保存的字段依次读取环境变量、旧 `.env`。`ORDERS_CONFIG_PATH` 是启动时定位配置文件的变量，不在页面修改。原有 `.env` 和 `config` 继续兼容。
+配置优先级继续为：INI `[environment]` > 进程环境 > `.env`。源码运行兼容根目录 `config` / `data/data.db`；发布版默认 `~/.orders-dashboard/`。有程序旁 `.env` 时优先读取它。容器使用 `/data/config` 和 `/data/data.db`。
 
-旧的 `record_json` 缓存、当前结构化来源表以及 `orderslist` 跟踪订单表均可读取。`orderslist` 中旧 `trigger_price` 缓存不会误作激活价格显示，下次成功获取时迁移。原独立的 `orderslist.db` 不再读写。订单金额和价格始终保留字符串精度。抓取或数据库写入失败保留之前的快照。数据格式见 [数据库说明](docs/database.md)。
+页面“系统设置”支持 Supabase 地址、Supabase 密钥、Gate Key / Secret、数据目录和允许来源。密钥不回显；留空保留，勾选清除才清除本地值。数据目录在重启后生效，不自动搬数据。环境变量说明见 `example.env`、`example.config`。
 
-### 请求日志与数据库上限
+Infisical 仍支持 Universal Auth 与两个内存备用字段：`INFISICAL_CLIENT_ID` / `INFISICAL_CLIENT_SECRET`（兼容 `CLIENT_ID` / `CLIENT_SECRET`）、`INFISICAL_PROJECT_ID`、`INFISICAL_ENVIRONMENT`（默认 prod）、`INFISICAL_SECRET_PATH`（默认 /）、`INFISICAL_URL`（默认 https://app.infisical.com）。本地凭证每个字段优先；读取失败保留上次成功备用值，5 秒后重试；每次保存设置重新读取。机器认证信息只能在服务端启动环境配置。
 
-程序启动后自动在实际数据库所在目录的 `logs/requests.jsonl` 保存请求日志，单次抓取模式也记录。每行是一条 JSON，包含 UTC 时间、请求方向、HTTP 方法、主机、路径、状态码及是否成功；外部请求还包含耗时（毫秒）。`outbound` 是 Supabase / Infisical / Gate 请求，`inbound` 是网页和其他客户端访问本程序的请求，包含静态资源、失败请求和 404。状态码 0 表示没有收到 HTTP 响应（例如取消、网络错误）。日志不保存用户名、密码、查询参数、请求头、请求体或响应体。
+旧 records / record_json、orders 别名列、orderslist、position、入仓历史、同步水位和固定保证金继续读取。刷新在事务中替换自己的快照；`managed_close_orders` 历史表不删除也不使用。旧 `trigger_price` 不当作激活价格，必须重新同步 Gate。详细见 [数据库](docs/database.md)、[迁移说明](docs/migration.md) 和 [业务对照](docs/business-parity.md)。
 
-数据库主文件与请求日志合计最多 **500 MB（500,000,000 字节）**，固定分配如下：
+## 执行流程审查
 
-- 同一数据目录下的 SQLite 主文件合计最多 **450 MB（450,000,000 字节）**，不是每个数据库分别有 450 MB。程序识别 `.db`、`.sqlite`、`.sqlite3` 文件及其他扩展名的 SQLite 文件；旧的 `orderslist.db` 即使不再使用，也计入额度。来源、追踪单、持仓和托管订单编号的写入都受限制。
-- `logs/requests.jsonl` 和其数字编号轮换文件合计最多 **50 MB（50,000,000 字节）**。新日志每个文件最多 10 MB，保留当前文件及最近 4 个轮换文件（`.1` 到 `.4`）。启动与每次追加时检查总量，自动删除最旧的超额日志及旧版本遗留的额外轮换文件；不删除数据库或无关文件。
+[检查报告（issue #33）](检查报告.md) 按启动、数据同步、交易执行、持仓保护、异常恢复和前后端交互梳理函数。正文保留 `358df62` 的审查基线；开头处理表说明本 PR 的修复及保守处理方式。CI 不替代实盘验收。
 
-数据库的每个写连接按实际页大小及其他数据库已占用的空间设置 [SQLite 的 max_page_count](https://www.sqlite.org/pragma.html#pragma_max_page_count)，向下取整以保证不突破额度。旧数据库若使用 WAL，会预留其已提交数据将来写回主文件所需的空间。同一程序的写线程及同目录的程序进程串行写入，检查额度到提交或回滚期间一直持有锁。超限写入失败并回滚，保留上次成功保存的数据，不自动删除旧记录。已有超限数据库拒绝写入，仍可读取和下载；日志按自己的额度继续记录。
+## 交易规则与精度
 
-日志写入也使用线程与进程锁。启动时无法打开或清理日志会报错；运行中写入失败会在标准错误输出提示。这里的 MB 为十进制字节单位，旧版本的 50 MiB 不再适用。按用户确认，SQLite 临时文件、事务日志、WAL/SHM 文件和下载快照另占空间；这不是整个目录的磁盘配额。预算适用于当前数据目录，由本程序管理的写入受约束，外部程序直接修改文件不受本程序控制。
+自动保护单功能已取消：不生成、修改或撤销平仓保护单；Gate 上已有保护单由用户自行管理。订单和持仓分别显示同步时间；只刷新订单不会把旧持仓标成最新。
 
-### 定时配置
+人工解除待核对请求时，必须恢复原 API Key、填写核对依据，并成功读取订单、持仓和七天成交历史。新意图保存 Key 的 SHA256 指纹，创建请求另带唯一 `t-` 关联标识。指纹不是交易所账户 ID，程序不声称自动证明成交结果。旧版缺失指纹的记录禁止在线解除。
 
-定时配置为 INI：
+来源从 Supabase `public.orders` 完整分页读取，全部校验后保存。保存来源不会开仓；独立的自动开仓任务默认关闭，启用并到达计划时间后才按策略匹配开仓追踪单，数量正负决定方向。状态 1 可停止，状态 2 保留；真实开仓/加仓成交触发同合约同方向 7 天限制，历史最多保留 100 条。持仓与订单每分钟独立同步，仅发送读取请求，不依赖 Supabase 来源步长。
+
+页面价格、数量、持仓、盈亏使用 Decimal ROUND_HALF_UP 显示两位小数；计算和下单不受两位小数限制。来源每个合约必须提供正数 `order_price_round`，作为开仓最终下单步长，按 ROUND_HALF_EVEN 对齐；Gate `order_price_round` 独立校验最终价格，乘数和数量限制仍来自 Gate。比如 `100.005` 按 `0.001` 下单仍为 `100.005`，页面显示 `100.01`。`0.005` 表示整数倍步长，不是三位小数。缺失、无效或同合约不同 `order_price_round`、对齐后非正价格、Gate 步长冲突或张数越界，**整批交易在撤单和创建前停止**。Supabase 步长读取时保存为内部 `price_round`，不会被 Gate 同名字段覆盖，不回退读取 Supabase 旧 `price_round` 列。持仓刷新不计算保护价，也不读取来源步长。原始来源、交易 raw 字段和持仓计算值保留高精度，旧库中已舍入且没有 raw 的值无法恢复。
+
+每笔交易先持久化意图。网络中断、无有效订单 ID 或成功响应后本地写入失败时，待核对意图会阻止自动交易，包括重启后。先在 Gate 查明真实结果，再到“运行状态”确认解除；确认会读取订单、持仓和成交，并记录人工核对依据后解除本地阻断，不重发原请求。刷新按钮会执行真实策略，页面要求确认；读取页面不会触发交易。
+
+请求日志位于数据目录 `logs/requests.jsonl`，不保存查询参数、头、正文或凭证；10 MB × 5，总计 50 MB。数据目录 SQLite 主文件合计上限 450 MB，事务超限回滚。WAL、临时文件与下载快照另占空间。新服务持有目录锁期间，外部程序直接写库不受预算保护。
+
+## 源码开发与远端验证
+
+Node **24.22.0**，使用 lockfile 安装。前后端可以分别构建和部署；生产也可由 Node 从内嵌资源分发 React。
+
+```sh
+npm ci
+# 开发：两个终端；先设置允许 Vite 的来源
+# config 的 [environment] 若已保存同名变量，需同步修改
+ORDERS_ALLOWED_ORIGIN=http://127.0.0.1:5173 ORDERS_PORT=8090 npm run dev:server
+npm run dev
+```
+
+Vite 默认代理 `/api` 到 8090；开发环境打开启动页后输入服务端登录令牌。独立前端部署推荐反向代理相同 Origin 的 `/api`，配置 `ORDERS_ALLOWED_ORIGIN` 为外部来源，保留原 Host；远程访问使用 TLS 或 SSH 隧道。
+
+以下由**远端 CI**执行，代理不得在本地运行构建/类型检查：`npm run typecheck`、`npm test`、`npm run build`、`npm run package:exe`、`npm run package:deb`。`npm run check` 只解析语法和检查架构，不发出或编译代码。
+
+Actions 验证精度、历史、匹配、未知交易、旧库、事务预算、配置脱敏、会话与 Origin；构建 React 后检查 1920/1440/1280/1024/768/390 六种宽度，双主题、登录、设置和页面溢出，并上传截图。Windows 与 Linux 两架构原生 Runner 制作、安装/启动真实 exe/deb，容器两架构分别启动后才合并 manifest。CI 不连接真实账户或下真实订单。
+
+正式 `v*` 标签与默认分支 main 自动发布；手动运行工作流并勾选 `publish_preview` 可为 feature 分支当前 SHA 发布预发布版本，不更新 latest 或部署生产。Release 包含 exe、两种 deb、SHA256SUMS、源提交与容器 digest。默认分支的 Tailscale/SSH 自动部署使用本次验证的不可变 digest。工作流读取 GitHub 默认分支，后续改名不用再改发布条件。详情见 [部署说明](docs/deployment.md)。
+
+## 宿主机 Docker 自动更新
+
+macOS/Linux 宿主机仍可运行 `bash start-docker.sh --cached`；它先拉取镜像，再替换旧容器，保留命名卷，自动映射回环随机端口，成功后写两行 `docker.md`。使用 `docker logs 容器名称` 读取登录令牌。旧卷若属于 root，升级前将卷内数据属主改为镜像 node 用户（UID/GID 1000），或明确配置合适的运行用户；新镜像默认非 root。
+
+远程使用 SSH 隧道，例如 `ssh -N -L 8090:127.0.0.1:服务器随机端口 用户@服务器`，浏览器访问本机 8090。此时需将服务端允许来源设为实际浏览器 Origin，并保留与之匹配的 Host；随机端口变化时更新隧道。首次可让本机隧道端口与服务器随机端口一致，使用默认来源校验。
+
+历史 Python 归档只供对照，不参与构建；旧 C++ 实现可从 Git 历史查看。
+
+### 独立自动开仓（PR #34 最新评论）
+
 ```ini
 [schedule]
 enabled = true
 cron = */15 * * * *
+
+[opening]
+enabled = false
+cron = */15 * * * *
 ```
 
-默认每 15 分钟抓取一次。网页可启停、选择周期、编辑 Cron 并立即保存。支持五段数字表达式、通配符、步长、范围和列表，按电脑本地时间执行；星期支持 0 或 7 表示周日。日和星期同时受限时按“任一匹配”执行，不补跑休眠或慢任务期间错过的次数。与手动抓取冲突时跳过；停用不会中断正在执行的任务。保存时保留其他配置段。
+预测抓取、启动同步、手动刷新和 `--fetch-only` 都不交易。要自动开仓，先成功抓取有效预测订单，再在系统设置的独立表单启用“自动开仓”并设置 Cron。关闭预测抓取不会关闭已授权的开仓任务；开仓使用当前保存的数据，不强制在每次开仓前抓取。两项同时到期时先完成抓取；任务忙、错过或失败不会无限重试。
 
-### Gate 凭证状态与成交历史兼容
+计划执行按任务名与计划时间写入 SQLite `scheduled_runs`，同一批次只领取一次；重启将未完成批次标为未知，不补跑。每次交易 POST 前重新检查启用状态、配置版本和执行记录；关闭开关会阻止后续 POST，不能撤回已发出的请求。交易结果未知仍须在“运行状态”按原凭证核对 Gate 后人工解除阻断，不自动重发。配置文件手动修改后请重启。
 
-Gate 输入框会区分“本地配置”和“Infisical 备用凭证”。本地 `API_KEY = ""`、`API_SECRET = ""` 时，如果 Infisical 提供了备用凭证，页面仍显示已配置，并标明来源；两处都没有有效的非空值时显示未配置。已配置仅表示凭证内容格式有效，不代表交易所验证成功或拥有下单权限。
+界面使用统一四字名称和 SVG O 标志。右上角提供一个明暗主题切换按钮及 ZH / EN 语言切换；浅色、深色、跟随系统三项选择位于系统设置的外观主题中；下载数据库位于左侧导航底部。主题与中英文双向切换采用以实际点击按钮中心为原点的 600ms 圆形揭示，语言选择保存在当前浏览器；切换不重置搜索、分页或未保存的设置草稿。支持国际化的界面文案与已知服务端提示会翻译，原始来源记录、技术字段、第三方原始错误及交易数据保留原值。浏览器不支持 View Transitions 或系统要求减少动态效果时直接切换。数字/文字过渡为 850/550ms，行进入退出为 750ms、进入间隔 90ms；滚动边缘按行位置连续淡出，表头和详情按钮保持可见。系统减少动态效果时关闭非必要动画。
 
-读取环境变量、配置文件、网页输入和 Infisical 备用值使用统一的 Gate 凭证检查：去掉首尾空白及一层成对引号，拒绝界面提示文字、残缺引号、内部空白、控制字符和过长内容。网页不会回填密钥或把提示文字作为表单值；留空时不提交该字段，保留原值；勾选清除会保存本地空值，但仍可使用 Infisical 备用值。后端拒绝提交无效提示文字并保留原配置。缺少凭证时，在交易请求和成交历史处理之前明确指出 `API_KEY` 或 `API_SECRET`。
-
-issue #19 的现场运行版本为 `5938e99`：本地 Gate 凭证为空，但 Supabase 备用凭证成功查询了真实成交；成交的 `size`、`close_size` 为 JSON 数字。PR #18 新增历史同步只读取字符串整数，导致自动下单和持仓管理均报“成交历史合约或开平仓数量无效”。修复兼容旧数字整数及新十进制字符串，精确判断开仓、加仓、反手和纯平仓；拒绝不安全的数字、缺失字段、零成交量及方向冲突，不推进失败批次的同步进度。现场核查仅执行只读查询，没有试下单或修改服务器配置。
-
-### Gate 在 Linux / Docker 返回 401
-
-Windows、Linux 和 Docker 共用配置加载、页面保存及 Gate 签名代码，字段均为 `API_KEY`、`API_SECRET`。启动读取与页面保存统一去除 Gate 密钥首尾空白及成对的单／双引号，兼容 Docker `--env-file` 保留引号的行为。页面保存的密钥优先于容器环境变量；留空保留，勾选清除后保存会删除本地密钥，并且不会回退使用环境变量中的旧值；如果 Infisical 仍有备用凭证，将继续使用备用值。容器配置默认保存到 `/data/config`，应挂载 `/data` 保留设置。
-
-Gate 读取持仓、获取追踪单、创建和停止订单失败时，页面会显示已识别的认证错误类别及处理提示，不再仅显示 HTTP 401。按 [Gate APIv4 官方说明](https://www.gate.com/docs/developers/apiv4/en/#label-list) 检查：
-
-- `IP_FORBIDDEN`：将 Linux/Docker 实际公网出口 IP 加入该密钥的白名单；代理出口可能与 Windows 不同。
-- `REQUEST_EXPIRED`：同步宿主机系统时间；容器共用宿主机时钟，签名时间与 Gate 的差距不能超过 60 秒，修改时区不能修正时钟偏差。
-- `INVALID_KEY` / `INVALID_CREDENTIALS` / `INVALID_SIGNATURE`：核对 APIv4 Key 与 Secret 是否为有效的同一组，并在页面重新保存。
-- `READ_ONLY` / `FORBIDDEN`：核对该密钥是否具备合约读取与交易写入权限。
-
-没有具体错误类别时，401 本身无法证明密钥未加载。以上代码修改需要重新构建发布包／镜像后生效，现有旧镜像不会自动更新。
-
-## 工程目录
-
-```text
-src/
-  app/              命令行入口、本地 HTTP API、资源分发
-  core/             配置、Cron 规则、订单文本解析
-  infrastructure/   HTTP 客户端、SQLite 连接和事务
-  services/         抓取业务、刷新状态和定时调度
-  ui/               Windows 原生窗口与启动动画
-web/                模块化网页脚本和共享样式，编译嵌入程序
-tests/cpp/          C++ 回归测试
-scripts/            CMake 构建、打包和 CI 运行检查
-docs/               架构、数据格式、第三方组件说明
-archive/python/     原实现及原测试，供历史对照
-```
-
-来源订单和 Gate 跟踪订单合并在同一订单工作台，提供统一更新入口，并保留各自的单独更新按钮。统一更新顺序执行来源抓取与 Gate 刷新，避免交易锁冲突。前端按配置、定时、启动动画和公共 UI 拆分模块；Gate 签名及响应解析归入基础层。架构与接口见 [工程说明](docs/architecture.md)。格式规则为 `.editorconfig` 和 `.clang-format`。
-
-## 执行状态与前端检查
-
-“掌握订单执行流程”使用真实 HTTP 请求遥测：来源读取、Gate 获取和交易提交共用执行图；只有服务端报告正在请求时连线才流动。请求结束停止流动并显示完成／失败反馈；短于轮询间隔的请求通过执行事件记录反馈，不伪造进度。状态每 600 毫秒读取 `/api/activity`，实际同步延迟包含网络往返和浏览器调度。连接失败或 3 秒超时停止动画并自动重连。没有演示或暂停开关，系统减少动态效果设置仍受尊重。
-
-使用 Node.js 22+，无需安装依赖或构建网页：
-
-```sh
-npm run check
-npm test
-```
-
-以上检查网页语法、模块引用、DOM ID、资源注册、纯 JavaScript 状态逻辑和导出脚本的模拟接口测试，不触发 C++ 编译，也不会访问真实 Supabase。C++ 请求生命周期、线程隔离和有界事件记录测试由远端 CI 执行。
-
-## 构建与测试
-
-以下命令供开发者或 CI 使用；本次迁移没有在本地执行编译或运行验证。
-
-依赖：C++17 编译器、CMake 3.24+、Qt 6.4+ 的 Core / Network / Sql / Concurrent / HttpServer；测试需要 Qt Test。Windows 窗口另外需要 Widgets / WebEngineWidgets；推荐使用 MSVC 2022 和 Qt 6.8.3。
-
-```powershell
-# Windows：QtPrefix 指向 Qt 的 msvc2022_64 安装目录
-.\scripts\build.ps1 -QtPrefix C:\Qt\6.8.3\msvc2022_64
-.\scripts\test.ps1
-```
-
-Linux（Ubuntu 24.04）：
-
-```sh
-sudo apt-get install cmake ninja-build g++ qt6-base-dev qt6-httpserver-dev qt6-websockets-dev libqt6sql6-sqlite
-cmake --preset release
-cmake --build --preset release
-ctest --preset release
-./build/release/orders --cached
-```
-
-CMake 是唯一构建入口。测试覆盖 Cron、字符串精度、事务回滚、旧数据库读取及迁移；CI 额外检查发布包脱离源码目录后的网页、接口、来源校验和配置持久化。
-
-## CI 与发布
-
-`.github/workflows/build.yml` 在 Windows x64、Linux x64 / ARM64 和 macOS Intel / Apple Silicon 编译 C++、执行测试并组装运行库。所有推送和 PR 都上传 Actions 构建附件：Windows 下载为 `orders-windows-x64.zip`，Linux 下载为 `orders-linux-x64.zip`，各自包含同名目录，不再嵌套第二层压缩包。Linux ARM64 附件为 `orders-linux-arm64.zip`；macOS 附件 ZIP 内包含同名 `.tar.gz`，解开 tar 包后保留执行权限与应用包结构。Linux 构建附件 ZIP 解压后需要在程序目录执行 `chmod +x bin/orders`；Release 的 `.tar.gz` 保留可执行权限。每次推送 `master`（或在 `master` 手动运行工作流）在所有平台及容器检查通过后，自动创建 `build-<运行 ID>-<重跑次数>` 预发布版本；`v*` 标签继续发布对应版本，带 `-` 的版本标签标记为预发布。PR 和其他分支只做检查。发布内容：
-
-- `orders-windows-x64.zip`
-- `orders-linux-x64.tar.gz`
-- `orders-linux-arm64.tar.gz`
-- `orders-macos-x64.tar.gz`
-- `orders-macos-arm64.tar.gz`
-- `SHA256SUMS.txt`
-- `container-image.txt`：GHCR 镜像标签与不可变 digest，Release 说明也附有拉取命令
-- GHCR 容器镜像，与 Release 使用相同的版本标签，并附加 `sha-<提交短哈希>` 标签
-
-程序下载位于 [Releases](https://github.com/huan00000/orders3/releases)，容器镜像位于 [Packages](https://github.com/huan00000/orders3/packages)。`master` 发布更新镜像的 `master`、`latest` 标签；不带 `-` 的正式 `v*` 版本也更新 `latest`。自动构建的 Release 标记为预发布，不取代正式 Release 的 Latest 标记。
-
-程序动态链接 Qt 和项目核心库 `orders_core`；Windows 使用动态 MSVC 运行库（`/MD`）。Windows 的 `scripts/package-windows.ps1` 同时扫描 exe 和 `orders_core.dll`，收集 Qt SQL / Concurrent、SQLite 插件及 WebEngine 资源，并从 MSVC 官方 Redist 目录复制 x64 运行库到 exe 旁。打包阶段检查必要文件，CI 解压实际 ZIP 后清除 Qt 开发环境和开发工具 PATH，再检查网页与接口，避免构建机上的 DLL 掩盖漏打包。Linux 发布包将 `liborders_core.so` 放在 `lib` 目录，并打包 Qt 插件与递归依赖，保留系统 glibc 依赖。包内包含多个文件，不能只复制 exe 或裸程序。
-
-容器 CI 在启动后轮询 HTTP 就绪状态，处理端口映射建立期间的连接拒绝或重置；容器提前退出或始终未就绪会失败并输出容器日志。`master` 或 `v*` 标签通过检查后才推送 GHCR，镜像推送成功后才发布 Release。
-
-## 容器
-
-Docker 使用 Ubuntu 多阶段 C++ 构建，运行阶段直接启动原生程序。GHCR 镜像同时提供 `linux/amd64` 和 `linux/arm64`，Docker 自动选择对应架构；CI 在 `ubuntu-24.04`（AMD64）和 `ubuntu-24.04-arm`（ARM64）原生 Runner 上分别构建并启动对应架构的镜像，不使用 QEMU；两边均检查网页、接口、三种启动方式、随机端口和 `docker.md` 地址记录。构建缓存按架构分开；仅发布时上传各自镜像摘要，全部检查成功后合并为同一个双架构镜像，再交给 Release 和部署任务。仓库需要具备对应 Runner 的使用权限，Runner 需要提供 Docker 和 Buildx；CI 会检查宿主机、Docker 引擎和镜像架构，架构不匹配直接失败。
-
-```powershell
-docker run -d --name orders-dashboard --restart unless-stopped `
-  -p 127.0.0.1:8090:8090 --env-file .env `
-  -v orders-dashboard-data:/data ghcr.io/c0versnow/orders3:latest
-```
-
-访问 `http://127.0.0.1:8090`。`/data` 保存数据库与程序配置。不需要启动抓取时，在镜像名后追加 `--cached`。使用不同访问地址时设置相应的 `ORDERS_ALLOWED_ORIGIN`。
-
-### macOS / Linux：自动更新并启动容器
-
-在 **macOS 或 Linux 宿主机终端、仓库根目录** 运行自动随机端口映射脚本，需要安装 Bash、curl，并能访问运行中的 Docker 引擎。macOS 可使用 OrbStack 或 Docker Desktop 提供 Docker 环境；OrbStack 不是项目依赖。Linux 可直接使用 Docker Engine，支持 x64 和 ARM64。
-
-```sh
-bash start-docker.sh
-# 跳过启动抓取：
-# bash start-docker.sh --cached
-```
-
-脚本在 49152–65535 中随机选择端口，让 Docker 创建 `127.0.0.1:随机端口:随机端口` 映射，并让程序监听 `0.0.0.0:随机端口`。Docker 确认端口可绑定后启动服务，端口占用时最多换端口重试 15 次；网页就绪后输出可在宿主机直接访问的「本地看板」链接。容器在后台运行，退出终端后仍可访问。网页就绪后，脚本在执行命令的当前目录创建或更新 `docker.md`，内容为两行：第一行是 `本地看板：`，第二行是 `127.0.0.1:本次实际端口`，不带 `http://` 和末尾 `/`。SSH 自动部署在远端用户主目录运行，因此文件保存为远端 `~/docker.md`。拉取、启动或就绪检查失败时不覆盖旧记录；写入失败会明确报错并让部署失败。脚本同时设置 `ORDERS_PORT`，容器健康检查使用相同端口。
-
-默认容器名为 `orders-dashboard`，数据卷为 `orders-dashboard-data`。每次执行先拉取 `ghcr.io/c0versnow/orders3:latest` 最新镜像；拉取成功后，自动强制停止并删除同名旧容器，再创建新容器，更新期间服务会短暂中断。拉取失败时保留旧容器；删除容器不会删除命名数据卷，原有数据库和配置继续使用。可用 `ORDERS_CONTAINER_NAME=orders-random bash start-docker.sh` 指定其他名称。镜像和数据卷可分别通过 `ORDERS_IMAGE`、`ORDERS_VOLUME_NAME` 指定；自定义镜像时拉取的是指定标签或 digest，不会自动改为 `latest`。若页面此前保存了 `ORDERS_ALLOWED_ORIGIN`，请清除该旧值，让程序按当前随机端口校验来源。
-
-使用已经构建或下载到本地的镜像时，设置 `ORDERS_PULL_POLICY=never`，例如 `ORDERS_IMAGE=orders-dashboard:ci ORDERS_PULL_POLICY=never bash start-docker.sh --cached`。默认值为 `always`；`never` 不访问镜像仓库，本地镜像不存在时直接失败并保留旧容器。
-
-这段映射逻辑必须在 Docker 宿主机上执行，容器内的 `./orders` 无法自行给 Docker 添加宿主机映射。脚本只绑定宿主机 `127.0.0.1`；远程 Linux 服务器可使用 SSH 隧道访问，例如 `ssh -L 8090:127.0.0.1:脚本输出的端口 用户@服务器`，然后在本机打开 `http://127.0.0.1:8090/`。以下是固定 8090 端口的手动方式：
-
-在宿主机终端创建并进入容器（使用包含本次改动的新镜像）：
-
-```sh
-docker run -it --name orders-manual \
-  -p 127.0.0.1:8090:8090 \
-  -v orders-dashboard-data:/data \
-  --entrypoint /bin/sh ghcr.io/c0versnow/orders3:latest
-```
-
-进入后直接运行：
-
-```sh
-./orders
-```
-
-在宿主机浏览器打开 `http://127.0.0.1:8090`，首次使用在页面填写连接配置。容器工作目录默认为 `/opt/orders/bin`，镜像通过 `ORDERS_HOST=0.0.0.0`、`ORDERS_PORT=8090`、`ORDERS_NO_BROWSER=1` 提供服务默认值。命令行 `--host` / `--port` 优先于环境变量；`--browser` 可以覆盖禁止自动打开浏览器的环境默认值，`--no-browser` 始终禁止打开浏览器。这些启动变量从进程环境读取，需要在启动前设置，不由页面或旧 `.env` 文件读取。宿主机直接运行发布包时仍默认仅监听本机、自动分配端口并打开浏览器。
-
-如果旧镜像输出 `http://127.0.0.1:36497/` 等随机端口，而创建容器时映射的是 `8090:8090`，宿主机无法通过这个链接访问容器。停止程序后，旧镜像可用以下命令显式固定监听地址和端口（可执行文件使用绝对路径，不受当前目录影响）：
-
-```sh
-/opt/orders/bin/orders --host 0.0.0.0 --port 8090 --no-browser
-```
-
-然后在宿主机打开 `http://127.0.0.1:8090/`。新代码需要重新构建镜像才会生效，已有容器和旧的 `latest` 镜像不会自动获得修改。若要继续使用 36497，必须同时指定 `--port 36497` 并在创建容器时使用 `-p 127.0.0.1:36497:36497`。
-
-若创建时提示 `orders-manual` 名称已被占用，已有且已停止的容器可以通过 `docker start -ai orders-manual` 重新进入。需要更换镜像或端口映射时，先退出并停止旧容器，再执行 `docker rm orders-manual`，然后重新创建；命名卷中的数据保留。
-
-`-p` 必须在创建容器时设置；`EXPOSE` 和程序本身都不会创建 宿主机的端口映射。此前通过 OrbStack 临时终端创建且没有映射端口的容器，需要重新创建并配置 `127.0.0.1:8090:8090`。如果已有容器使用 8090，请先停止对应服务或改用其他宿主机端口，同时设置匹配的 `ORDERS_ALLOWED_ORIGIN`。正常自动启动的容器已经运行服务，无需再执行第二个 `./orders`。
-
-已有手动容器可在停止程序、退出终端后通过 `docker start -ai orders-manual` 再次进入，随后执行 `./orders`。
-
-
-### master 自动部署到 Linux
-
-SSH 连上后会检查 `~/start-docker.sh` 是否存在：有同名文件就覆盖，没有就新建。上传先写入临时文件并检查 Bash 语法，成功后再替换目标文件并执行；上传或语法检查失败时不执行脚本，原有文件保留。同名路径如果是目录会报错。启动失败会原样返回失败状态，让 Actions 显示失败。
-
-仓库根目录的 `start-docker.sh` 是启动脚本的唯一维护入口，已纳入 Git；`scripts/start-docker.sh` 兼容旧命令并调用根目录脚本。脚本可以单独上传到服务器运行，不需要整个仓库或额外的 Compose yml。现有 `.github/workflows/build.yml` 已接入上传流程，并在远端 CI 检查新建、覆盖、实际执行、失败状态以及 Docker 随机端口和网页响应。
-
-master 收到 push 后，现有各平台检查和 Docker 验证全部通过、GHCR 镜像发布成功，才运行 `deploy` 作业。该作业通过 Tailscale 加入内网，使用 OpenSSH 私钥连接 Linux，将仓库根目录的 `start-docker.sh` 上传到登录用户的 `~/start-docker.sh`，然后在该用户的主目录运行 `bash start-docker.sh`，每次拉取 `ghcr.io/c0versnow/orders3:latest` 当前最新镜像并重新启动容器。标签使用 `:latest`，不是 `@latest`；`latest` 会随发布更新，不固定到某一次构建。其他分支、PR、标签和手动构建不会部署。
-
-使用以下 **Actions Secrets**（与本地 `.env` 名称对应，`.env` 不会上传到 GitHub）。可以沿用 Organization secrets，组织需要将本仓库加入这些密钥允许访问的仓库范围；也支持仓库 Settings → Secrets and variables → Actions 中的同名 Secrets：
-
-| 名称 | 用途 |
-| --- | --- |
-| `AUTH_KEY` | Tailscale 可复用认证密钥；允许 CI 节点加入 Tailnet |
-| `DEPLOY_HOST` | Linux 的 Tailscale IPv4 地址或 MagicDNS 主机名 |
-| `DEPLOY_USER` | Linux SSH 用户，必须能直接执行 Docker |
-| `DEPLOY_PORT` | SSH 端口，未填使用 22 |
-| `DEPLOY_SSH_KEY` | 完整多行 SSH 私钥，CI 使用无密码私钥 |
-| `DEPLOY_KNOWN_HOSTS` | 可选：事先核对的服务器 SSH 主机公钥行；非 22 端口使用 `[主机]:端口` 格式 |
-
-部署请使用独立 SSH 密钥，不要与 TGBot 等受限控制密钥共用。部署公钥对应的 `authorized_keys` 行需要允许运行远端 Bash 命令；如果该行带有机器人 `command="...tgbot-control.py"` 强制命令，部署会被机器人拒绝，并可能只返回 `{"result":"failed"}`。保留机器人的原有限制，另加部署公钥即可；部署公钥可以使用 `restrict` 禁止端口转发和终端分配。若组织级 `DEPLOY_SSH_KEY` 被其他仓库共用，在本仓库新增同名 Repository secret，填入部署专用私钥，只覆盖本仓库使用的值。
-
-`DEPLOY_SSH_KEY_PUB` 是用户公钥，应放进远端用户的 `~/.ssh/authorized_keys`，无需传入 CI；它不是服务器主机公钥。不设置 `DEPLOY_KNOWN_HOSTS` 时，作业在经过认证的 Tailscale 网络中首次接受 SSH 主机公钥；设置后必须严格匹配。Tailscale 配置依据 [官方 GitHub Action](https://github.com/tailscale/github-action)。
-
-远端需要已启动 Tailscale、允许 CI 到 SSH 端口的 Tailnet 访问规则、Bash、curl、Docker，以及与私钥匹配的 authorized_keys。`ghcr.io/c0versnow/orders3` 镜像包设为 Public，允许匿名下载，无需在服务器登录 GitHub；代码仓库公开不等于镜像包自动公开。如果以后改用私有 GHCR 镜像，需要事先在远端以该 SSH 用户执行 `docker login ghcr.io`，使用具备镜像读取权限的凭据。部署不会自动安装这些工具或覆盖应用密钥。
-
-沿用 `orders-dashboard` 容器和 `orders-dashboard-data` 数据卷，数据库、应用配置保留；拉取失败不会停止旧容器，重启期间会短暂中断，启动失败会使作业失败，没有自动回滚。看板只绑定远端 `127.0.0.1` 的随机端口，部署日志输出地址，用 SSH 隧道访问即可。首次启动后通过看板填写 Supabase / Gate 配置；已有数据卷直接沿用。自动部署不传入 `--cached`，沿用程序启动抓取设置。
-
-#### 在自己的电脑访问远端看板
-
-启动日志里的 `本地看板：http://127.0.0.1:随机端口/` 指服务器自己的地址。在自己的电脑另开终端，将下面的 `服务器随机端口`、`SSH端口`、`用户` 和 `服务器` 换成实际值：
-
-```sh
-ssh -N -o ExitOnForwardFailure=yes -p SSH端口 -L 8090:127.0.0.1:服务器随机端口 用户@服务器
-```
-
-保持终端连接，在自己的浏览器打开 `http://127.0.0.1:8090/`。例如服务器日志显示端口 54321，SSH 端口为 22，则用 `ssh -N -o ExitOnForwardFailure=yes -p 22 -L 8090:127.0.0.1:54321 用户@服务器`。本机 8090 被占用时，将 `-L` 左边的 8090 改成其他空闲端口，浏览器也使用该端口。服务器每次重启容器会重新选端口，隧道也需改用最新日志里的端口；CI 部署作业结束后不会留下供个人电脑使用的隧道。
-
-### 实际入仓记录与 7 天限制
-
-所有启动、手动、定时来源下单入口共用开仓检查：先同步 Gate 真实成交记录，再检查最近 7 天同合约、同方向的实际入仓，命中就跳过。加仓也记录并重新算 7 天；纯平仓不记录，反手只记新开的一侧。提交订单成功不算入仓。历史只保留最近 100 条，重启不会重复插入；被清理的记录不再参与限制。详情见 [入仓历史与开仓限制](docs/position-entry-history.md)。
+手动交易保留在“预测订单 → 手动开仓”，先刷新并核对有效预测数据，再单独确认真实交易。该入口独立于自动任务开关；关闭自动开仓不禁止经确认的手动交易。刷新按钮本身始终只读。
