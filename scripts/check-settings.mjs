@@ -119,6 +119,14 @@ export async function checkSettings(browser, base, token, output) {
     await page.route('**/api/refresh', route => route.fulfill({status:503,json:{error:'request failed'}}));
     await refresh.click();
     await page.waitForFunction(() => document.querySelector('[data-ui=refresh-all]').dataset.feedback === 'error');
+    let orderAttempts = 0;
+    await page.route('**/api/refresh', route => route.fulfill({json:{error:'source fixture failed'}}));
+    await page.route('**/api/orders/refresh', route => { orderAttempts++; return route.fulfill({json:{error:null}}); });
+    const orderResult = page.waitForResponse(response => response.url().endsWith('/api/orders/refresh'));
+    await refresh.click();
+    await orderResult;
+    await page.waitForFunction(() => document.querySelector('[data-ui=refresh-all]').dataset.feedback === 'error');
+    assert.equal(orderAttempts,1,'source result errors still allow the existing order sync');
     assert.deepEqual(errors,[]);
     await page.close();
   }

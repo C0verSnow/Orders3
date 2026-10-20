@@ -321,14 +321,16 @@ function Workspace({
   }, [source.error, orders.error, activity.error, client]);
   const refresh = useMutation({
     mutationFn: async (which: 'all' | 'sources' | 'orders') => {
+      const errors: string[] = [];
       if (which !== 'orders') {
         const result = await post<SourceSnapshot>('/api/refresh');
-        if (result.error) throw new Error(result.error);
+        if (result.error) errors.push(result.error);
       }
       if (which !== 'sources') {
         const result = await post<OrdersSnapshot>('/api/orders/refresh');
-        if (result.error) throw new Error(result.error);
+        if (result.error) errors.push(result.error);
       }
+      if (errors.length) throw new Error(errors.join('\n'));
     },
     onError: (error) => setNotice(error.message),
     onSettled: () => {
