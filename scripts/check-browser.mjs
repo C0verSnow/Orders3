@@ -243,6 +243,7 @@ try {
   assert.equal(await appearance.locator('svg[data-ui="brand-logo"]').count(), 1);
   await appearance.getByRole('button', { name: '系统设置', exact: true }).click();
   await appearance.locator('[data-ui="theme-select"]').selectOption('system');
+  await appearance.waitForFunction(() => !document.documentElement.dataset.revealing);
   await appearance.emulateMedia({ colorScheme: 'dark' });
   await appearance.locator('html[data-theme="dark"]').waitFor();
   await appearance.emulateMedia({ colorScheme: 'light' });
@@ -252,6 +253,18 @@ try {
   await appearance.locator('html[data-theme="dark"]').waitFor();
   assert.equal(await appearance.locator('html').getAttribute('data-theme'), 'dark');
   assert.equal(await appearance.locator('[data-ui="theme-select"]').inputValue(), 'dark');
+  await appearance.waitForFunction(() => !document.documentElement.dataset.revealing);
+  for (const mode of ['light', 'dark', 'system']) {
+    await appearance.locator('[data-ui="theme-select"]').selectOption(mode);
+    await appearance.waitForFunction(() => !document.documentElement.dataset.revealing);
+    assert.equal(await appearance.evaluate(() => localStorage.getItem('orders-theme')), mode);
+    await appearance.locator(`html[data-theme="${mode === 'system' ? 'light' : mode}"]`).waitFor();
+  }
+  await appearance.emulateMedia({ colorScheme: 'dark' });
+  await appearance.locator('html[data-theme="dark"]').waitFor();
+  await appearance.reload();
+  await appearance.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
+  await appearance.locator('html[data-theme="dark"]').waitFor();
   await appearance.getByRole('button', { name: '系统设置', exact: true }).click();
   assert.equal(await appearance.getByLabel('启用自动开仓（涉及真实交易）', { exact: true }).isChecked(), false);
   await appearance.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
@@ -320,6 +333,7 @@ try {
       const rect = el => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(n => Math.round(n * 10) / 10); };
       return [...document.querySelectorAll('#main [data-ui="two-tone-title"], #main input, header [data-ui="preferences"], aside nav button, aside [data-ui="download-database"], aside [data-ui="logout"]')].map(rect);
     });
+    await reveal.locator('aside').evaluate(async el => { await Promise.allSettled(el.getAnimations().map(a => a.finished)); });
     await reveal.evaluate(() => window.scrollTo(0, 0));
     const chineseLayout = await layout();
     // Mobile drawer is closed but still laid out, so its two actions can be compared.
