@@ -74,6 +74,7 @@ export function DataTable<T extends object>({
             <td>
               <Button
                 variant="text"
+                className="relative z-30"
                 onClick={() => setSelected(row.original)}
                 aria-label={t('查看第 {0} 条记录详情', [row.index + 1])}
               >

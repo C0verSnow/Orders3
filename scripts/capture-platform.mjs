@@ -60,8 +60,8 @@ try {
           const box=await viewport.boundingBox();
           // Keep the full viewport and a separately identified bottom 48px comparison region.
           await viewport.screenshot({path:join(out,`${id}.png`)});
-          await page.screenshot({path:join(out,`${id}-fade.png`),clip:{x:box.x,y:box.y+box.height-48,width:box.width,height:48}});
-          manifest.cases.push({id,count,width,language,theme,position,metrics,more,region:{width:box.width,height:48}});
+          await page.screenshot({path:join(out,`${id}-fade.png`),clip:{x:box.x,y:box.y+metrics.height-48,width:metrics.width,height:48}});
+          manifest.cases.push({id,count,width,language,theme,position,metrics,more,region:{width:metrics.width,height:48}});
         }
         await page.close();
       }

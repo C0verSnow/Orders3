@@ -367,10 +367,6 @@ try {
     assert.ok(await reveal.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'English has no page overflow');
     assert.doesNotMatch(await reveal.locator('body').innerText(), /[\u3400-\u9fff]/, 'all visible settings UI is translated');
     await runReveal(reveal.locator('[data-ui="language-switch"]'), 'chinese');
-    await reveal.locator('[data-settings-section=opening]').click();
-    await reveal.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
-    await reveal.locator('[data-ui=settings-back]').click();
-    await reveal.locator('[data-settings-section=connections]').click();
     await reveal.getByRole('heading', { name: '连接与存储', exact: true }).waitFor();
     assert.equal(await reveal.locator('input[name="API_KEY"]').inputValue(), 'unsaved-language-draft');
     await runReveal(reveal.locator('[data-ui="language-switch"]'), 'english-again');

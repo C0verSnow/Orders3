@@ -338,7 +338,6 @@ function Workspace({
   });
   const manualOpening = useMutation({
     mutationFn: () => post('/api/opening/manual', { confirmed_trade_execution: true }),
-    onSuccess: () => setNotice('手动开仓完成，请核对执行结果。'),
     onError: (error) => setNotice(error.message),
     onSettled: () => {
       for (const key of ['sources', 'orders', 'pending', 'history'])
@@ -349,7 +348,6 @@ function Workspace({
     mutationFn: (input: { id: string; evidence: string }) =>
       post('/api/intents/resolve', { ...input, confirmed_exchange_review: true }),
     onSuccess: () => {
-      setNotice('已记录人工核对，未重新发送交易。');
       void client.invalidateQueries({ queryKey: ['pending'] });
     },
     onError: (error) => setNotice(error.message),
