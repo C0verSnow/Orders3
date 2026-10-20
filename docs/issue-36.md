@@ -43,6 +43,8 @@ ScrollFade 的底部 48px 层使用透明到当前主题表格表面的渐变；
 
 持仓页移除同步按钮及 action，沿用原表头布局、数据查询、后台同步和全局刷新。
 
+卸载回归另发现：退出接口成功且服务端已注销，前端仍显示交易概览。原先只调用 `client.clear()`，未通知挂载的会话观察者。现成功退出时先取消旧查询，明确写入未登录状态，再删除业务查询和 Mutation 缓存，确保工作台真正卸载；不改后端会话接口。
+
 远端复现命令为 `node scripts/check-browser.mjs`，调用 `scripts/check-refresh.mjs`。旧源码新增回归的[运行 39422424353](https://github.com/C0verSnow/Orders3/actions/runs/39422424353)明确失败：`source refresh must not animate Refresh all`，实际 pending、预期 idle。修复后的远端结果待补。
 
 新增专项覆盖桌面 1440px 和手机 390px、明暗主题，包括按钮隔离、重复点击、切页前后与未挂载期间的反馈到期、双请求完成前保持 pending、旧计时器不能结束新请求、背景色真实过渡、持仓页按钮移除且数据继续重新查询、HTTP/业务失败原因及退出重登后的状态。仅此专项恢复手机视口，其余移动端与可选跨平台视觉检查仍跳过。

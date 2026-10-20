@@ -212,8 +212,13 @@ export function App() {
     );
   return (
     <Workspace
-      onLogout={() => {
-        client.clear();
+      onLogout={async () => {
+        await client.cancelQueries();
+        // Keep the mounted session observer informed while discarding all
+        // business data and mutation variables from the previous session.
+        client.setQueryData(['session'], { authenticated: false });
+        client.removeQueries({ predicate: query => query.queryKey[0] !== 'session' });
+        client.getMutationCache().clear();
       }}
       themeState={themeState}
     />

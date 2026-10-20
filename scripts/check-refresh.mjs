@@ -25,14 +25,8 @@ export async function checkRefresh(browser, base, token, output) {
       const response = page.waitForResponse(response => response.url().endsWith('/api/session') && response.request().method() === 'DELETE');
       await page.locator('[data-ui=logout]').click();
       assert.equal((await response).status(), 200, 'logout API succeeds');
-      try {
-        await page.getByRole('button', {name:/连接工作台/}).waitFor({timeout:4000});
-      } catch (error) {
-        await page.screenshot({path:`${output}/logout-failure-${width}-${theme}.png`,fullPage:true});
-        const session = await page.evaluate(async () => (await fetch('/api/session')).json());
-        console.log('Logout diagnostic', {session, headings:await page.locator('h1').allTextContents()});
-        throw error;
-      }
+      await page.getByRole('button', {name:/连接工作台/}).waitFor({timeout:4000});
+      assert.equal(await all.count(), 0, 'Workspace actually unmounted');
     };
     const state = async (button, expected) => {
       await page.waitForFunction(({el, expected}) => el.dataset.feedback === expected,
