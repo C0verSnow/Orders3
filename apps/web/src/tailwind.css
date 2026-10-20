@@ -28,7 +28,7 @@
 .text-measure::before { content: attr(data-text); }
 
 /* Shared by every action, including navigation, sorting and dialog controls. */
-.action-button { transition: transform 180ms cubic-bezier(.2,.8,.2,1), box-shadow 180ms cubic-bezier(.2,.8,.2,1), background-color 180ms cubic-bezier(.2,.8,.2,1); }
+.action-button { transition: transform 180ms cubic-bezier(.2,.8,.2,1), box-shadow 180ms cubic-bezier(.2,.8,.2,1), background-color 180ms cubic-bezier(.2,.8,.2,1), border-color 180ms cubic-bezier(.2,.8,.2,1), color 180ms cubic-bezier(.2,.8,.2,1); }
 @media (hover: hover) { .action-button:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 5px 12px #20203020; } }
 .action-button:not(:disabled):active { transform: scale(.94); box-shadow: 0 1px 2px #20203014; }
 .action-button[data-feedback="success"] { background-color: #15803d !important; border-color: #15803d; color: white; }

@@ -36,6 +36,7 @@ import { AnimatedValue, MotionList, ScrollFade, TwoToneTitle } from './component
 import { Navigation } from './components/navigation';
 import { SettingsPage } from './pages/settings';
 import { useTheme } from './hooks/use-theme';
+import { useRefreshFeedback } from './hooks/use-refresh-feedback';
 import { Preferences } from './components/preferences';
 
 type Row = Record<string, unknown>;
@@ -227,6 +228,7 @@ function Workspace({
   themeState: ReturnType<typeof useTheme>;
 }) {
   const language = useLanguage();
+  const refreshFeedback = useRefreshFeedback();
   const client = useQueryClient(),
     [page, setPage] = useState<Page>('overview'),
     [menu, setMenu] = useState(false),
@@ -404,13 +406,11 @@ function Workspace({
     refresh.isPending ||
     source.data?.refreshing ||
     orders.data?.refreshing;
-  const refreshStatus = refresh.isPending ? 'pending' : refresh.isError ? 'error' : refresh.isSuccess ? 'success' : 'idle';
   const heading = pages.find((item) => item.id === page)!;
-  const requestRefresh = (which: 'all' | 'sources' | 'orders') => {
-    {
-      setNotice('');
-      refresh.mutate(which);
-    }
+  const requestRefresh = (owner: 'all' | 'overview' | 'sources') => {
+    if (busy) return;
+    setNotice('');
+    void refreshFeedback.run(owner, () => refresh.mutateAsync(owner === 'all' ? 'all' : 'sources'));
   };
   return (
     <div className="flex min-h-dvh">
@@ -528,10 +528,10 @@ function Workspace({
               />
             </div>
             {page !== 'settings' && (
-              <Button data-ui="refresh-all" status={refreshStatus} variant="primary" disabled={busy} onClick={() => requestRefresh('all')}>
+              <Button data-ui="refresh-all" status={refreshFeedback.statusFor('all')} autoDismiss={false} variant="primary" disabled={busy} onClick={() => requestRefresh('all')}>
                 <RefreshCw
                   size={16}
-                  className={busy ? 'animate-spin motion-reduce:animate-none' : ''}
+                  className={refreshFeedback.statusFor('all') === 'pending' ? 'animate-spin motion-reduce:animate-none' : ''}
                 />
                 {t('统一刷新')}
               </Button>
@@ -691,7 +691,7 @@ function Workspace({
                 title={t('订单工作台')}
                 description={t('来源信号与 Gate 跟踪单，共用同一套交易规则。')}
                 action={
-                  <Button status={refreshStatus} variant="quiet" disabled={busy} onClick={() => requestRefresh('sources')}>
+                  <Button status={refreshFeedback.statusFor('overview')} autoDismiss={false} variant="quiet" disabled={busy} onClick={() => requestRefresh('overview')}>
                     <RefreshCw size={14} />
                     {t('刷新来源')}
                   </Button>
@@ -745,7 +745,7 @@ function Workspace({
               ])}
               action={
                 <div className="flex flex-wrap gap-2">
-                  <Button status={refreshStatus} disabled={busy} onClick={() => requestRefresh('sources')}>
+                  <Button status={refreshFeedback.statusFor('sources')} autoDismiss={false} disabled={busy} onClick={() => requestRefresh('sources')}>
                     {t('刷新预测订单')}
                   </Button>
                   <Button
@@ -807,11 +807,6 @@ function Workspace({
                 '仅同步数据，自动保护单功能已取消。持仓最近同步：{0}；订单最近同步：{1}',
                 [date(orders.data?.position_updated_at), date(orders.data?.trailing_updated_at)],
               )}
-              action={
-                <Button status={refreshStatus} disabled={busy} onClick={() => requestRefresh('orders')}>
-                  {t('同步持仓与订单')}
-                </Button>
-              }
             >
               <DataTable
                 loading={orders.isPending}

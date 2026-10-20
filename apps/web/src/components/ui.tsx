@@ -16,21 +16,23 @@ export function Button({
   variant = 'default',
   children,
   status,
+  autoDismiss = true,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'default' | 'primary' | 'quiet' | 'text';
   status?: 'idle' | 'pending' | 'success' | 'error';
+  autoDismiss?: boolean;
 }) {
   useLanguage();
   const [dismissed, setDismissed] = useState(false);
   useEffect(() => {
     setDismissed(false);
-    if (status === 'success' || status === 'error') {
+    if (autoDismiss && (status === 'success' || status === 'error')) {
       const timeout = window.setTimeout(() => setDismissed(true), 1800);
       return () => window.clearTimeout(timeout);
     }
-  }, [status]);
-  const feedback = dismissed && (status === 'success' || status === 'error') ? 'idle' : (status ?? 'idle');
+  }, [status, autoDismiss]);
+  const feedback = autoDismiss && dismissed && (status === 'success' || status === 'error') ? 'idle' : (status ?? 'idle');
   const normal = Children.map(children, (child) => typeof child === 'string' ? <StableText text={child} /> : child);
   const labels = { pending: t('正在处理…'), success: t('操作成功'), error: t('操作失败') };
   const variants = {
