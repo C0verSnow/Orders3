@@ -271,6 +271,9 @@ try {
     assert.equal(await reveal.locator('header [data-ui="preferences"]').count(), 1);
     assert.equal(await reveal.locator('aside [data-ui="download-database"]').count(), 1);
     assert.equal(await reveal.locator('header [data-ui="download-database"]').count(), 0);
+    await reveal.getByRole('cell', { name: 'UI00 / USDT', exact: true }).waitFor();
+    await reveal.locator('[data-ui="metric"]').first().evaluate(async el => { await Promise.allSettled(el.getAnimations({ subtree: true }).map(a => a.finished)); });
+    await reveal.locator('tbody').first().evaluate(async el => { await Promise.allSettled(el.getAnimations({ subtree: true }).map(a => a.finished)); });
     const runReveal = async (button, name) => {
       await button.scrollIntoViewIfNeeded();
       const bounds = await button.boundingBox();

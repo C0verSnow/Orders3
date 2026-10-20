@@ -48,7 +48,7 @@ const templates = Object.entries(english)
   .sort((left, right) => right.specificity - left.specificity);
 export function t(text: string | null | undefined, values: unknown[] = []): string {
   const source = text ?? '';
-  let translated = language === 'en' ? (english[source] ?? source) : source;
+  let translated = language === 'en' && Object.hasOwn(english, source) ? english[source] : source;
   if (
     language === 'en' &&
     translated === source &&
