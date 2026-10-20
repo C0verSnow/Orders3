@@ -24,31 +24,40 @@ ScrollFade 的底部 48px 层使用透明到当前主题表格表面的渐变；
 - 原图产物：`platform-windows`、`platform-docker`；差异报告：`platform-visual-comparison`；功能截图：`browser-evidence`。像素完全相同和容差通过分别报告；不能把容差通过写成完全相同。
 - 发布 manifest 在可选视觉检查未启用时允许该项跳过；明确启用时要求该项成功，否则阻止后续发布。feature 分支不会自动发布或部署生产。
 
-本地仅阅读源码和检查差异，没有编译、构建、运行测试或启动程序。首轮 CI 仍在执行；以最终远端运行结果为准。
+本地仅阅读源码和检查差异，没有编译、构建、运行测试或启动程序。
 
+
+## 最终交付结果
+
+- 验证源码：`e24c98f06164e3724257c71f8c2fa88ac77d1003`；[最终远端 CI](https://github.com/C0verSnow/Orders3/actions/runs/39385666385)整体成功。后续提交仅补文档及任务记录。
+- 66 项 Node 回归、20 项宿主机脚本回归、静态检查、类型检查、构建、真实服务启动、三种桌面宽度的中英文/明暗主题浏览器验收均通过。设置真实保存、按钮完整状态、圆形切换、草稿保留及错误处理已覆盖。
+- Windows x64 EXE、Linux AMD64/ARM64 Debian 包及两种架构的真实 Docker 容器均通过安装或启动检查。桌面四卡片和保存成功状态截图已查看，产物保存在 CI 的 `browser-evidence`。
+- 手机、平板、跨平台截图、字体诊断与像素差异检查按用户要求跳过；不将这些项记为通过，不宣称跨平台视觉一致性已经验证。此前桌面像素比较仍有文字区域超出容差，见[历史报告](https://github.com/C0verSnow/Orders3/actions/runs/39384722331)，本次没有放宽阈值。
+- [Issue #36](https://github.com/C0verSnow/Orders3/issues/36) 已按完成状态关闭；[PR #37](https://github.com/C0verSnow/Orders3/pull/37) 保持开放待审阅。没有合并、发布、部署或使用真实资金。
 
 ## 源码定位
 
-以下位置以源码提交 `954c4b309d696c6337128bc3c3c583b5f489477b` 为准。
+以下位置以已验证源码提交 `e24c98f06164e3724257c71f8c2fa88ac77d1003` 为准。
 
 | 内容 | 文件与行号 |
 |---|---|
-| 表格滚动容器与逐行渐隐 | [apps/web/src/components/motion.tsx:285](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/apps/web/src/components/motion.tsx#L285) |
-| 滚动条边界与渐隐层定位 | [apps/web/src/components/motion.tsx:310](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/apps/web/src/components/motion.tsx#L310) |
-| 渐隐层样式 | [apps/web/src/tailwind.css:44](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/apps/web/src/tailwind.css#L44) |
-| 表格组件与详情按钮层级 | [apps/web/src/components/data-table.tsx:18](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/apps/web/src/components/data-table.tsx#L18) |
-| 共享按钮与状态恢复 | [apps/web/src/components/ui.tsx:14](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/apps/web/src/components/ui.tsx#L14) |
-| 刷新请求结果与失败反馈 | [apps/web/src/app.tsx:322](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/apps/web/src/app.tsx#L322) |
-| 统一刷新按钮 | [apps/web/src/app.tsx:531](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/apps/web/src/app.tsx#L531) |
-| 设置四模块与两级导航 | [apps/web/src/pages/settings.tsx:13](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/apps/web/src/pages/settings.tsx#L13) |
-| 保存程序配置 | [apps/web/src/pages/settings.tsx:182](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/apps/web/src/pages/settings.tsx#L182) |
-| 定时配置共用表单 | [apps/web/src/pages/settings.tsx:235](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/apps/web/src/pages/settings.tsx#L235) |
-| 中英文新增文案 | [apps/web/src/messages.ts:3](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/apps/web/src/messages.ts#L3) |
-| 按钮与卡片样式 | [apps/web/src/tailwind.css:31](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/apps/web/src/tailwind.css#L31) |
-| 旧浏览器回归与导航适配 | [scripts/check-browser.mjs:1](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/scripts/check-browser.mjs#L1) |
-| 设置与按钮状态验收 | [scripts/check-settings.mjs:3](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/scripts/check-settings.mjs#L3) |
-| 实际 EXE/Docker 截图 | [scripts/capture-platform.mjs:10](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/scripts/capture-platform.mjs#L10) |
-| 像素比较和预设容差 | [scripts/compare-platforms.py:12](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/scripts/compare-platforms.py#L12) |
-| Windows 实际 EXE 截图步骤 | [.github/workflows/build.yml:139](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/.github/workflows/build.yml#L139) |
-| Docker 实际截图步骤 | [.github/workflows/build.yml:229](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/.github/workflows/build.yml#L229) |
-| 跨平台比较与产物上传 | [.github/workflows/build.yml:275](https://github.com/C0verSnow/Orders3/blob/954c4b309d696c6337128bc3c3c583b5f489477b/.github/workflows/build.yml#L275) |
+| 表格滚动容器与逐行渐隐 | [apps/web/src/components/motion.tsx:285](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/apps/web/src/components/motion.tsx#L285) |
+| 滚动条边界与渐隐层定位 | [apps/web/src/components/motion.tsx:310](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/apps/web/src/components/motion.tsx#L310) |
+| 渐隐层样式 | [apps/web/src/tailwind.css:44](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/apps/web/src/tailwind.css#L44) |
+| 表格组件与详情按钮层级 | [apps/web/src/components/data-table.tsx:18](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/apps/web/src/components/data-table.tsx#L18) |
+| 共享按钮与状态恢复 | [apps/web/src/components/ui.tsx:14](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/apps/web/src/components/ui.tsx#L14) |
+| 刷新请求结果与失败反馈 | [apps/web/src/app.tsx:322](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/apps/web/src/app.tsx#L322) |
+| 统一刷新按钮 | [apps/web/src/app.tsx:531](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/apps/web/src/app.tsx#L531) |
+| 设置四模块与两级导航 | [apps/web/src/pages/settings.tsx:13](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/apps/web/src/pages/settings.tsx#L13) |
+| 保存程序配置 | [apps/web/src/pages/settings.tsx:182](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/apps/web/src/pages/settings.tsx#L182) |
+| 定时配置共用表单 | [apps/web/src/pages/settings.tsx:235](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/apps/web/src/pages/settings.tsx#L235) |
+| 中英文新增文案 | [apps/web/src/messages.ts:3](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/apps/web/src/messages.ts#L3) |
+| 按钮与卡片样式 | [apps/web/src/tailwind.css:31](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/apps/web/src/tailwind.css#L31) |
+| 旧浏览器回归与导航适配 | [scripts/check-browser.mjs:1](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/scripts/check-browser.mjs#L1) |
+| 设置与按钮状态验收 | [scripts/check-settings.mjs:3](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/scripts/check-settings.mjs#L3) |
+| 实际 EXE/Docker 截图（默认跳过） | [scripts/capture-platform.mjs:10](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/scripts/capture-platform.mjs#L10) |
+| 像素比较和预设容差（默认跳过） | [scripts/compare-platforms.py:12](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/scripts/compare-platforms.py#L12) |
+| 可选视觉检查开关 | [.github/workflows/build.yml:10](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/.github/workflows/build.yml#L10) |
+| Windows 实际 EXE 截图步骤 | [.github/workflows/build.yml:143](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/.github/workflows/build.yml#L143) |
+| Docker 实际截图步骤 | [.github/workflows/build.yml:233](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/.github/workflows/build.yml#L233) |
+| 跨平台比较与产物上传 | [.github/workflows/build.yml:279](https://github.com/C0verSnow/Orders3/blob/e24c98f06164e3724257c71f8c2fa88ac77d1003/.github/workflows/build.yml#L279) |
