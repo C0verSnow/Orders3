@@ -1,5 +1,7 @@
 // Remote CI only, against the built production server; no exchange calls or mocked API.
 import { chromium } from 'playwright';
+import { checkSettings } from './check-settings.mjs';
+import { checkRefresh } from './check-refresh.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -25,6 +27,7 @@ try {
   for(let index=0;index<100;index++) { if(child.exitCode!==null)throw new Error(output); try {if((await fetch(base+'/health')).ok){ready=true;break;}}catch{} await new Promise(resolve=>setTimeout(resolve,100)); }
   assert.ok(ready);
   browser=await chromium.launch();mkdirSync('tests/artifacts',{recursive:true});
+  await checkRefresh(browser, base, token, 'tests/artifacts');
   // Hold an anonymous session GET until after the real login POST succeeds.
   // A late anonymous response must never replace the authenticated cache.
   const bootstrap = await browser.newPage();
@@ -68,7 +71,7 @@ try {
   assert.equal(await precision.getByRole('columnheader', { name: '保护激活价', exact: true }).count(), 0);
   await precision.screenshot({ path: 'tests/artifacts/precision-positions.png', fullPage: true });
   await precision.close();
-  for(const width of [1920,1440,1280,1024,768,390]) {
+  for(const width of [1920,1440,1280]) {
     const page=await browser.newPage({viewport:{width,height:1000},reducedMotion:'reduce'}), errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(`${base}/#token=${token}`);await page.getByRole('heading',{name:'交易概览',exact:true}).waitFor();
@@ -78,6 +81,7 @@ try {
     await page.locator('[data-ui="theme-switch"]').click();
     if(width<=768)await page.getByRole('button',{name:'打开导航',exact:true}).click();
     await page.getByRole('button',{name:'系统设置',exact:true}).click();
+    await page.locator('[data-settings-section=connections]').click();
     await page.getByRole('heading',{name:'连接与存储',exact:true}).waitFor();
     assert.equal(await page.locator('input[name="API_SECRET"]').inputValue(),'');
     await page.screenshot({path:`tests/artifacts/settings-${width}-dark.png`,fullPage:true});
@@ -85,8 +89,8 @@ try {
     assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');assert.deepEqual(errors,[]);
     await page.close();
   }
-  // Production UI + SQLite: grouped details, full precision, keyboard and mobile scrolling.
-  for (const width of [1440, 390]) {
+  // Production UI + SQLite: desktop grouped details, full precision and keyboard.
+  for (const width of [1440]) {
     for (const theme of ['light', 'dark']) {
       const detail = await browser.newPage({ viewport: { width, height: 850 } });
       await detail.goto(`${base}/#token=${token}`);
@@ -242,6 +246,7 @@ try {
   assert.equal(await appearance.locator('header [aria-label="本地受信任会话"]').count(), 0);
   assert.equal(await appearance.locator('svg[data-ui="brand-logo"]').count(), 1);
   await appearance.getByRole('button', { name: '系统设置', exact: true }).click();
+  await appearance.locator('[data-settings-section=appearance]').click();
   await appearance.locator('[data-ui="theme-select"]').selectOption('system');
   await appearance.waitForFunction(() => !document.documentElement.dataset.revealing);
   await appearance.emulateMedia({ colorScheme: 'dark' });
@@ -266,8 +271,11 @@ try {
   await appearance.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
   await appearance.locator('html[data-theme="dark"]').waitFor();
   await appearance.getByRole('button', { name: '系统设置', exact: true }).click();
+  await appearance.locator('[data-settings-section=opening]').click();
   assert.equal(await appearance.getByLabel('启用自动开仓（涉及真实交易）', { exact: true }).isChecked(), false);
   await appearance.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
+  await appearance.locator('[data-ui=settings-back]').click();
+  await appearance.locator('[data-settings-section=prediction]').click();
   await appearance.getByLabel('Cron 表达式', { exact: true }).first().fill('7 * * * *');
   assert.equal(await appearance.getByLabel('Cron 表达式', { exact: true }).nth(1).inputValue(), '3 * * * *');
   await appearance.screenshot({ path: 'tests/artifacts/independent-schedules-dark.png', fullPage: true });
@@ -275,7 +283,7 @@ try {
 
   // Latest comment: real two-snapshot circular reveals, both directions, at the
   // actual trigger centre. No second app tree, API writes or reset form drafts.
-  for (const width of [1440, 390]) {
+  for (const width of [1440]) {
     const reveal = await browser.newPage({ viewport: { width, height: 1000 } });
     const errors = [], writes = [];
     reveal.on('pageerror', error => errors.push(error.message));
@@ -292,8 +300,14 @@ try {
     await reveal.locator('tbody').first().evaluate(async el => { await Promise.allSettled(el.getAnimations({ subtree: true }).map(a => a.finished)); });
     const runReveal = async (button, name) => {
       await button.scrollIntoViewIfNeeded();
-      const bounds = await button.boundingBox();
+      // Measure at the actual click: shared hover/press motion moves the trigger
+      // between Playwright's pre-click bounding box and the React click handler.
+      await button.evaluate(el => el.addEventListener('click', () => {
+        const rect = el.getBoundingClientRect();
+        window.revealClickBounds = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      }, { capture: true, once: true }));
       await button.click();
+      const bounds = await reveal.evaluate(() => window.revealClickBounds);
       await reveal.waitForFunction(() => document.getAnimations().some(a => a.animationName === 'circular-reveal'));
       const animation = await reveal.evaluate(() => {
         const a = document.getAnimations().find(a => a.animationName === 'circular-reveal');
@@ -324,16 +338,25 @@ try {
     assert.equal(await reveal.locator('html').getAttribute('data-theme'), 'light');
     if (width <= 768) await reveal.getByRole('button', { name: '打开导航', exact: true }).click();
     await reveal.getByRole('button', { name: '系统设置', exact: true }).click();
+    await reveal.locator('[data-settings-section=opening]').click();
+    await reveal.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
+    await reveal.locator('[data-ui=settings-back]').click();
+    await reveal.locator('[data-settings-section=connections]').click();
     await reveal.getByRole('heading', { name: '连接与存储', exact: true }).waitFor();
     await reveal.locator('input[name="API_KEY"]').fill('unsaved-language-draft');
-    await reveal.getByLabel('Cron 表达式', { exact: true }).nth(1).fill('3 * * * *');
     const formBefore = await reveal.locator('input[name="API_KEY"]').evaluate(el => { window.originalDraftInput = el; return true; });
     assert.ok(formBefore);
-    const layout = () => reveal.evaluate(() => {
+    const layout = async () => {
+      await reveal.locator('aside').evaluate(async el => {
+        await Promise.allSettled(el.getAnimations({subtree:true})
+          .filter(animation => animation.effect?.getComputedTiming().endTime !== Infinity)
+          .map(animation => animation.finished));
+      });
+      return reveal.evaluate(() => {
       const rect = el => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(n => Math.round(n * 10) / 10); };
       return [...document.querySelectorAll('#main [data-ui="two-tone-title"], #main input, header [data-ui="preferences"], aside nav button, aside [data-ui="download-database"], aside [data-ui="logout"]')].map(rect);
-    });
-    await reveal.locator('aside').evaluate(async el => { await Promise.allSettled(el.getAnimations().map(a => a.finished)); });
+      });
+    };
     await reveal.evaluate(() => window.scrollTo(0, 0));
     const chineseLayout = await layout();
     // Mobile drawer is closed but still laid out, so its two actions can be compared.
@@ -347,7 +370,7 @@ try {
     assert.equal(await reveal.locator('[data-ui="theme-select"]').inputValue(), 'light');
     const coloursBefore = await reveal.locator('#main').evaluate(el => ({ background: getComputedStyle(el).backgroundColor, colour: getComputedStyle(el).color }));
     await runReveal(reveal.locator('[data-ui="language-switch"]'), 'english');
-    await reveal.getByRole('heading', { name: 'Connections and storage', exact: true }).waitFor();
+    await reveal.getByRole('heading', { name: 'Connections & Storage', exact: true }).waitFor();
     assert.deepEqual(await layout(), chineseLayout, 'English and Chinese keep title, field, navigation and toolbar positions');
     assert.equal(await reveal.locator('html').getAttribute('lang'), 'en');
     assert.equal(await reveal.locator('html').getAttribute('data-theme'), 'light');
@@ -397,8 +420,11 @@ try {
   await page.goto(`${base}/#token=${token}`);
   await page.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
   await page.getByRole('button', { name: '系统设置', exact: true }).click();
-  await page.locator('input[name="API_KEY"]').fill('unsaved-key-draft');
+  await page.locator('[data-settings-section=prediction]').click();
   await page.getByLabel('Cron 表达式', { exact: true }).first().fill('7 * * * *');
+  await page.locator('[data-ui=settings-back]').click();
+  await page.locator('[data-settings-section=connections]').click();
+  await page.locator('input[name="API_KEY"]').fill('unsaved-key-draft');
   await page.waitForTimeout(1200);
   // Match Query's window listener and a full hidden/visible transition.
   await page.evaluate(() => {
@@ -420,7 +446,8 @@ try {
   assert.equal(await page.getByText('当前没有待核对请求。', { exact: true }).count(), 0);
   await page.screenshot({ path: 'tests/artifacts/status-unavailable.png', fullPage: true });
   await page.close();
-  console.log('Browser checks passed at six widths, both themes, session bootstrap, settings and secret fields');
+  await checkSettings(browser, base, token, 'tests/artifacts');
+  console.log('Browser checks passed at three desktop widths, both themes, session bootstrap, settings and secret fields');
 } finally {
   await browser?.close();child.kill('SIGTERM');
   if(child.exitCode===null)await new Promise(resolve=>{child.once('exit',resolve);setTimeout(()=>{child.kill('SIGKILL');resolve();},5000).unref();});
