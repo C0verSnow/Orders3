@@ -295,8 +295,7 @@ export function ScrollFade({
 }) {
   const viewport = useRef<HTMLDivElement>(null),
     content = useRef<HTMLDivElement>(null),
-    [more, setMore] = useState(false),
-    [insets, setInsets] = useState({ right: 0, bottom: 0 });
+    [more, setMore] = useState(false);
   useLayoutEffect(() => {
     const element = viewport.current!,
       body = content.current!;
@@ -305,12 +304,7 @@ export function ScrollFade({
       const remaining = element.scrollHeight - element.clientHeight - element.scrollTop;
       const more = remaining > 2;
       setMore(more);
-      // Native scrollbar dimensions vary by OS; end the fade at the actual
-      // scrollable content edge instead of assuming a fixed scrollbar width.
-      const right = element.offsetWidth - element.clientWidth;
-      const bottomInset = element.offsetHeight - element.clientHeight;
-      setInsets(previous => previous.right === right && previous.bottom === bottomInset ? previous : { right, bottom: bottomInset });
-      const bottom = element.getBoundingClientRect().top + element.clientHeight;
+      const bottom = element.getBoundingClientRect().bottom;
       for (const row of body.querySelectorAll<HTMLElement>(
         '[data-ui="row"], [data-ui="row-exit"]',
       )) {
@@ -353,8 +347,7 @@ export function ScrollFade({
       <span
         data-ui="bottom-fade"
         aria-hidden="true"
-        style={insets}
-        className={`pointer-events-none absolute left-0 z-20 h-12  transition-opacity duration-200 motion-reduce:transition-none  ${more ? 'opacity-100' : 'opacity-0'}`}
+        className={`pointer-events-none absolute right-3 bottom-0 left-0 z-20 h-12  transition-opacity duration-200 motion-reduce:transition-none  ${more ? 'opacity-100' : 'opacity-0'}`}
       />
     </div>
   );

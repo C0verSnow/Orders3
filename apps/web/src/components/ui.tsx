@@ -1,6 +1,4 @@
-import { Children, useEffect, useState } from 'react';
-import { Check, LoaderCircle, CircleAlert } from 'lucide-react';
-import { t, useLanguage } from '../i18n';
+import { Children } from 'react';
 import { StableText } from './stable-text';
 import type {
   ButtonHTMLAttributes,
@@ -15,49 +13,24 @@ export function Button({
   className = '',
   variant = 'default',
   children,
-  status,
-  autoDismiss = true,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'default' | 'primary' | 'quiet' | 'text';
-  status?: 'idle' | 'pending' | 'success' | 'error';
-  autoDismiss?: boolean;
 }) {
-  useLanguage();
-  const [dismissed, setDismissed] = useState(false);
-  useEffect(() => {
-    setDismissed(false);
-    if (autoDismiss && (status === 'success' || status === 'error')) {
-      const timeout = window.setTimeout(() => setDismissed(true), 1800);
-      return () => window.clearTimeout(timeout);
-    }
-  }, [status, autoDismiss]);
-  const feedback = autoDismiss && dismissed && (status === 'success' || status === 'error') ? 'idle' : (status ?? 'idle');
-  const normal = Children.map(children, (child) => typeof child === 'string' ? <StableText text={child} /> : child);
-  const labels = { pending: t('正在处理…'), success: t('操作成功'), error: t('操作失败') };
   const variants = {
     default:
-      'border border-zinc-200 bg-white enabled:hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:enabled:hover:bg-zinc-800',
+      'border border-zinc-200 bg-white hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800',
     primary:
-      'border border-blue-600 bg-blue-600 text-white shadow-sm enabled:hover:bg-blue-700 dark:border-blue-500 dark:bg-blue-500 dark:enabled:hover:bg-blue-400',
-    quiet: 'border border-transparent bg-transparent enabled:hover:bg-zinc-100 dark:enabled:hover:bg-zinc-800',
-    text: 'border-0 bg-transparent px-0 text-blue-600 enabled:hover:text-blue-700 dark:text-blue-400 dark:enabled:hover:text-blue-300',
+      'border border-blue-600 bg-blue-600 text-white shadow-sm hover:bg-blue-700 dark:border-blue-500 dark:bg-blue-500 dark:hover:bg-blue-400',
+    quiet: 'border border-transparent bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800',
+    text: 'border-0 bg-transparent px-0 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300',
   };
   return (
     <button
-      data-feedback={feedback}
-      aria-busy={status === 'pending'}
-      className={`action-button inline-flex font-sans min-h-9 shrink-0 cursor-pointer touch-manipulation select-none items-center justify-center gap-2 [&_svg]:shrink-0 rounded-lg px-3 py-2 text-[13px] leading-5 font-medium disabled:cursor-default disabled:opacity-50 motion-reduce:transform-none motion-reduce:transition-none ${focus} ${variants[variant]} ${className}`}
+      className={`inline-flex font-sans min-h-9 shrink-0 cursor-pointer touch-manipulation select-none items-center justify-center gap-2 [&>svg]:shrink-0 rounded-lg px-3 py-2 text-[13px] leading-5 font-medium transition-[background-color,color,border-color,transform] duration-300 ease-[cubic-bezier(.22,1,.36,1)] active:scale-[.98] disabled:cursor-default disabled:opacity-50 motion-reduce:transform-none motion-reduce:transition-none ${focus} ${variants[variant]} ${className}`}
       {...props}
-      disabled={props.disabled || status === 'pending'}
     >
-      {status === undefined ? normal : <span className="grid items-center justify-items-start" aria-live="polite" aria-atomic="true">
-        <span className={`col-start-1 row-start-1 inline-flex items-center gap-2 ${feedback !== 'idle' ? 'invisible' : ''}`} aria-hidden={feedback !== 'idle'}>{normal}</span>
-        {(['pending', 'success', 'error'] as const).map(state => <span key={state} className={`col-start-1 row-start-1 inline-flex items-center gap-2 ${feedback !== state ? 'invisible' : ''}`} aria-hidden={feedback !== state}>
-          {state === 'pending' ? <LoaderCircle size={16} className="animate-spin motion-reduce:animate-none" /> : state === 'success' ? <Check size={16} /> : <CircleAlert size={16} />}
-          <StableText text={labels[state]} />
-        </span>)}
-      </span>}
+      {Children.map(children, (child) => typeof child === 'string' ? <StableText text={child} /> : child)}
     </button>
   );
 }

@@ -1,14 +1,5 @@
 // UI translations only. API field names, source records and trading values stay unchanged.
 export const english: Record<string, string> = {
-  外观设置: 'Appearance Settings',
-  主题与界面偏好: 'Theme and interface preferences',
-  '数据库连接、凭证与存储': 'Database connections, credentials and storage',
-  定时抓取与执行间隔: 'Scheduled prediction fetching and intervals',
-  自动入场与安全限制: 'Automatic entry and safety limits',
-  返回设置: 'Back to Settings',
-  '正在处理…': 'Working…',
-  操作成功: 'Success',
-  操作失败: 'Failed',
   切换主题: 'Toggle theme',
   界面偏好: 'Interface preferences',
   主题模式: 'Theme mode',
@@ -174,7 +165,7 @@ export const english: Record<string, string> = {
   完成: 'Completed',
   开始: 'Started',
   '正在读取配置…': 'Loading configuration…',
-  连接与存储: 'Connections & Storage',
+  连接与存储: 'Connections and storage',
   凭证与数据: 'Credentials and data',
   '凭证仅在服务端保存。留空保留现有密钥，勾选清除后才会删除本地值。':
     'Credentials stay on the server. Leave fields blank to keep existing secrets; select clear to remove local values.',
@@ -194,14 +185,18 @@ export const english: Record<string, string> = {
     'The data directory changes after restart. Back up and move the existing database first.',
   保存程序配置: 'Save configuration',
   '正在保存…': 'Saving…',
-  预测抓取: 'Prediction Fetching',
+  '配置已保存，备用凭证在后台刷新。':
+    'Configuration saved. Fallback credentials refresh in the background.',
+  预测抓取: 'Prediction fetching',
   定时与周期: 'Schedule and interval',
   启用预测订单定时抓取: 'Enable scheduled prediction fetching',
-  自动开仓: 'Automatic Entry',
+  '定时配置已保存。': 'Schedule saved.',
+  自动开仓: 'Automatic entry',
   独立授权与周期: 'Independent permission and schedule',
   '默认关闭。启用后仅在计划时间使用已保存的有效预测订单交易；启动、刷新和预测抓取不会开仓。请先完成一次预测抓取。':
     'Off by default. When enabled, trades use saved valid predictions only at scheduled times. Startup, refresh and prediction fetching do not place trades. Fetch predictions first.',
   '启用自动开仓（涉及真实交易）': 'Enable automatic entry (real trades)',
+  '自动开仓配置已保存。': 'Automatic entry schedule saved.',
   独立的持仓同步: 'Independent position sync',
   'Gate 持仓与订单每 60秒只读同步一次，不受来源定时开关影响；不会创建、修改或撤销保护单。停用来源定时不会中断正在运行的任务。':
     'Gate positions and orders sync read-only every 60 seconds, independently of source scheduling. No protection orders are created, changed or cancelled. Disabling source scheduling does not interrupt a running task.',

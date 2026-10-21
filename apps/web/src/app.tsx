@@ -36,7 +36,6 @@ import { AnimatedValue, MotionList, ScrollFade, TwoToneTitle } from './component
 import { Navigation } from './components/navigation';
 import { SettingsPage } from './pages/settings';
 import { useTheme } from './hooks/use-theme';
-import { useRefreshFeedback } from './hooks/use-refresh-feedback';
 import { Preferences } from './components/preferences';
 
 type Row = Record<string, unknown>;
@@ -198,8 +197,8 @@ export function App() {
                 autoFocus
               />
             </label>
-            <Button variant="primary" status={login.isPending ? 'pending' : login.isError ? 'error' : 'idle'} disabled={login.isPending}>
-              {t('连接工作台')}
+            <Button variant="primary" disabled={login.isPending}>
+              {login.isPending ? t('连接中…') : t('连接工作台')}
               <ArrowUpRight size={16} />
             </Button>
             <p role="alert">{login.error?.message || session.error?.message}</p>
@@ -212,13 +211,8 @@ export function App() {
     );
   return (
     <Workspace
-      onLogout={async () => {
-        await client.cancelQueries();
-        // Keep the mounted session observer informed while discarding all
-        // business data and mutation variables from the previous session.
-        client.setQueryData(['session'], { authenticated: false });
-        client.removeQueries({ predicate: query => query.queryKey[0] !== 'session' });
-        client.getMutationCache().clear();
+      onLogout={() => {
+        client.clear();
       }}
       themeState={themeState}
     />
@@ -233,7 +227,6 @@ function Workspace({
   themeState: ReturnType<typeof useTheme>;
 }) {
   const language = useLanguage();
-  const refreshFeedback = useRefreshFeedback();
   const client = useQueryClient(),
     [page, setPage] = useState<Page>('overview'),
     [menu, setMenu] = useState(false),
@@ -328,17 +321,10 @@ function Workspace({
   }, [source.error, orders.error, activity.error, client]);
   const refresh = useMutation({
     mutationFn: async (which: 'all' | 'sources' | 'orders') => {
-      const errors: string[] = [];
-      if (which !== 'orders') {
-        const result = await post<SourceSnapshot>('/api/refresh');
-        if (result.error) errors.push(result.error);
-      }
-      if (which !== 'sources') {
-        const result = await post<OrdersSnapshot>('/api/orders/refresh');
-        if (result.error) errors.push(result.error);
-      }
-      if (errors.length) throw new Error(errors.join('\n'));
+      if (which !== 'orders') await post('/api/refresh');
+      if (which !== 'sources') await post('/api/orders/refresh');
     },
+    onSuccess: () => setNotice('刷新完成，以下为服务端确认的数据。'),
     onError: (error) => setNotice(error.message),
     onSettled: () => {
       for (const key of ['sources', 'orders', 'pending'])
@@ -347,6 +333,7 @@ function Workspace({
   });
   const manualOpening = useMutation({
     mutationFn: () => post('/api/opening/manual', { confirmed_trade_execution: true }),
+    onSuccess: () => setNotice('手动开仓完成，请核对执行结果。'),
     onError: (error) => setNotice(error.message),
     onSettled: () => {
       for (const key of ['sources', 'orders', 'pending', 'history'])
@@ -357,6 +344,7 @@ function Workspace({
     mutationFn: (input: { id: string; evidence: string }) =>
       post('/api/intents/resolve', { ...input, confirmed_exchange_review: true }),
     onSuccess: () => {
+      setNotice('已记录人工核对，未重新发送交易。');
       void client.invalidateQueries({ queryKey: ['pending'] });
     },
     onError: (error) => setNotice(error.message),
@@ -366,8 +354,8 @@ function Workspace({
     onSuccess: onLogout,
     onError: (error) => setNotice(error.message),
   });
-  const download = useMutation({
-    mutationFn: async () => {
+  const download = async () => {
+    try {
       const response = await fetch('/api/download', { credentials: 'same-origin' });
       if (!response.ok) {
         const data = await response.json();
@@ -379,9 +367,10 @@ function Workspace({
       link.download = 'data.db';
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-    },
-    onError: (error) => setNotice(error.message),
-  });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : t('下载失败'));
+    }
+  };
   const sourceRows = useMemo(
     () =>
       source.data?.orders.map((row) => ({
@@ -412,10 +401,11 @@ function Workspace({
     source.data?.refreshing ||
     orders.data?.refreshing;
   const heading = pages.find((item) => item.id === page)!;
-  const requestRefresh = (owner: 'all' | 'overview' | 'sources') => {
-    if (busy) return;
-    setNotice('');
-    void refreshFeedback.run(owner, () => refresh.mutateAsync(owner === 'all' ? 'all' : 'sources'));
+  const requestRefresh = (which: 'all' | 'sources' | 'orders') => {
+    {
+      setNotice('正在同步，请等待服务端确认结果…');
+      refresh.mutate(which);
+    }
   };
   return (
     <div className="flex min-h-dvh">
@@ -484,15 +474,14 @@ function Workspace({
           </p>
           <Button
             variant="quiet"
-            onClick={() => download.mutate()}
-            status={download.isPending ? 'pending' : download.isError ? 'error' : download.isSuccess ? 'success' : 'idle'}
+            onClick={download}
             data-ui="download-database"
             className="h-10 w-full justify-start! gap-2! px-3! py-2!"
           >
             <ArrowDownToLine size={16} />
             <StableText text={t('下载数据库')} />
           </Button>
-          <Button variant="quiet" data-ui="logout" className="h-10 w-full justify-start! gap-2! px-3! py-2!" onClick={() => logout.mutate()} status={logout.isPending ? 'pending' : logout.isError ? 'error' : 'idle'} disabled={logout.isPending}>
+          <Button variant="quiet" data-ui="logout" className="h-10 w-full justify-start! gap-2! px-3! py-2!" onClick={() => logout.mutate()} disabled={logout.isPending}>
             <LogOut size={16} />
             {t('退出工作台')}
           </Button>
@@ -533,12 +522,12 @@ function Workspace({
               />
             </div>
             {page !== 'settings' && (
-              <Button data-ui="refresh-all" status={refreshFeedback.statusFor('all')} autoDismiss={false} variant="primary" disabled={busy} onClick={() => requestRefresh('all')}>
+              <Button variant="primary" disabled={busy} onClick={() => requestRefresh('all')}>
                 <RefreshCw
                   size={16}
-                  className={refreshFeedback.statusFor('all') === 'pending' ? 'animate-spin motion-reduce:animate-none' : ''}
+                  className={busy ? 'animate-spin motion-reduce:animate-none' : ''}
                 />
-                {t('统一刷新')}
+                {busy ? t('正在同步…') : t('统一刷新')}
               </Button>
             )}
           </div>
@@ -696,7 +685,7 @@ function Workspace({
                 title={t('订单工作台')}
                 description={t('来源信号与 Gate 跟踪单，共用同一套交易规则。')}
                 action={
-                  <Button status={refreshFeedback.statusFor('overview')} autoDismiss={false} variant="quiet" disabled={busy} onClick={() => requestRefresh('overview')}>
+                  <Button variant="quiet" disabled={busy} onClick={() => requestRefresh('sources')}>
                     <RefreshCw size={14} />
                     {t('刷新来源')}
                   </Button>
@@ -750,11 +739,10 @@ function Workspace({
               ])}
               action={
                 <div className="flex flex-wrap gap-2">
-                  <Button status={refreshFeedback.statusFor('sources')} autoDismiss={false} disabled={busy} onClick={() => requestRefresh('sources')}>
+                  <Button disabled={busy} onClick={() => requestRefresh('sources')}>
                     {t('刷新预测订单')}
                   </Button>
                   <Button
-                    status={manualOpening.isPending ? 'pending' : manualOpening.isError ? 'error' : manualOpening.isSuccess ? 'success' : 'idle'}
                     disabled={busy || !sourceRows.length}
                     onClick={() => {
                       if (
@@ -812,6 +800,11 @@ function Workspace({
                 '仅同步数据，自动保护单功能已取消。持仓最近同步：{0}；订单最近同步：{1}',
                 [date(orders.data?.position_updated_at), date(orders.data?.trailing_updated_at)],
               )}
+              action={
+                <Button disabled={busy} onClick={() => requestRefresh('orders')}>
+                  {t('同步持仓与订单')}
+                </Button>
+              }
             >
               <DataTable
                 loading={orders.isPending}
@@ -879,7 +872,6 @@ function Workspace({
                       {intent.request_id || t('旧版记录缺失')}
                     </p>
                     <Button
-                      status={resolve.variables?.id === intent.id ? (resolve.isPending ? 'pending' : resolve.isError ? 'error' : resolve.isSuccess ? 'success' : 'idle') : 'idle'}
                       disabled={resolve.isPending || !intent.owner}
                       onClick={() => {
                         if (
