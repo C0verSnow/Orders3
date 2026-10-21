@@ -7,10 +7,6 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
-      run_visual_checks:
-        description: Run optional EXE/Docker screenshot, font and pixel diagnostics
-        type: boolean
-        default: false
       publish_preview:
         description: Publish a verified prerelease for this exact branch SHA
         type: boolean
@@ -81,7 +77,7 @@ jobs:
           ORDERS_VERSION: ci-${{ github.run_id }}
           ORDERS_COMMIT: ${{ github.sha }}
       - run: node scripts/smoke-runtime.mjs
-      - name: Desktop browser checks and targeted phone refresh regression
+      - name: Browser checks at desktop, tablet and phone sizes
         run: |
           npx playwright install --with-deps chromium
           sudo apt-get install -y fonts-noto-cjk
@@ -140,17 +136,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Directory -Force dist/release | Out-Null
           Copy-Item $target dist/release/
-      - name: Capture actual Windows EXE browser
-        if: inputs.run_visual_checks && matrix.os == 'windows'
-        run: |
-          npx playwright install chromium
-          node scripts/capture-platform.mjs windows
-      - uses: actions/upload-artifact@v7.0.1
-        if: always() && inputs.run_visual_checks && matrix.os == 'windows'
-        with:
-          name: platform-windows
-          path: tests/artifacts/platform-windows/
-          if-no-files-found: error
       - name: Build, install and run the actual Debian package
         if: matrix.os == 'linux'
         env:
@@ -172,7 +157,7 @@ jobs:
 
   container-build:
     name: Native ${{ matrix.arch }} container
-    needs: [publication]
+    needs: [checks, packages, publication]
     strategy:
       fail-fast: false
       matrix:
@@ -227,21 +212,6 @@ jobs:
           trap 'docker logs orders-ci-random; docker rm -f orders-ci-random' EXIT
           bash start-docker.sh --cached
           test -s docker.md
-      - uses: actions/setup-node@v6
-        if: inputs.run_visual_checks && matrix.arch == 'amd64'
-        with: { node-version: '24.22.0', cache: npm }
-      - name: Capture actual Linux Docker browser
-        if: inputs.run_visual_checks && matrix.arch == 'amd64'
-        run: |
-          npm ci --no-audit --no-fund
-          npx playwright install --with-deps chromium
-          node scripts/capture-platform.mjs docker
-      - uses: actions/upload-artifact@v7.0.1
-        if: always() && inputs.run_visual_checks && matrix.arch == 'amd64'
-        with:
-          name: platform-docker
-          path: tests/artifacts/platform-docker/
-          if-no-files-found: error
       - uses: docker/login-action@v4.6.0
         if: needs.publication.outputs.enabled == 'true'
         with:
@@ -276,37 +246,9 @@ jobs:
           path: digests/*
           if-no-files-found: error
 
-  visual-comparison:
-    if: inputs.run_visual_checks
-    name: Windows EXE vs Linux Docker pixels
-    needs: [packages, container-build]
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with: { persist-credentials: false }
-      - uses: actions/download-artifact@v8.0.1
-        with: { pattern: platform-*, path: tests/artifacts/ }
-      - uses: actions/setup-python@v6
-        with: { python-version: '3.12' }
-      - run: python -m pip install Pillow==11.3.0
-      - run: python scripts/compare-platforms.py
-      - name: Add visual report to run summary
-        if: always()
-        run: cat tests/artifacts/platform-diff/report.md >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7.0.1
-        if: always()
-        with:
-          name: platform-visual-comparison
-          path: tests/artifacts/platform-diff/
-          if-no-files-found: error
-
   container:
-    needs: [publication, checks, packages, container-build, visual-comparison]
-    if: >-
-      !cancelled() && needs.publication.outputs.enabled == 'true' &&
-      needs.checks.result == 'success' && needs.packages.result == 'success' &&
-      needs['container-build'].result == 'success' &&
-      (needs['visual-comparison'].result == 'success' || needs['visual-comparison'].result == 'skipped')
+    needs: [publication, container-build]
+    if: needs.publication.outputs.enabled == 'true'
     runs-on: ubuntu-24.04
     permissions: { contents: read, packages: write }
     outputs:

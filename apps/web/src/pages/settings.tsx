@@ -3,7 +3,7 @@ import { t, useLanguage, dateLocale } from '../i18n';
 import { Button, Input, Select, Panel } from '../components/ui';
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { KeyRound, Save, Clock3, Palette, ShieldCheck, ChevronRight, ArrowLeft } from 'lucide-react';
+import { KeyRound, Save, Clock3 } from 'lucide-react';
 import type { Settings, Schedule } from '../../../../packages/shared/types.ts';
 import { TwoToneTitle } from '../components/motion';
 import { api, post } from '../services/api';
@@ -12,13 +12,6 @@ import { circularReveal } from '../circular-reveal';
 
 export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (value: Theme) => void }) {
   useLanguage();
-  const [section, setSection] = useState<string | null>(null);
-  const sections = [
-    { id: 'appearance', title: '外观设置', description: '主题与界面偏好', icon: Palette },
-    { id: 'connections', title: '连接与存储', description: '数据库连接、凭证与存储', icon: KeyRound },
-    { id: 'prediction', title: '预测抓取', description: '定时抓取与执行间隔', icon: Clock3 },
-    { id: 'opening', title: '自动开仓', description: '自动入场与安全限制', icon: ShieldCheck },
-  ];
   const settings = useQuery({
     queryKey: ['settings'],
     queryFn: () => api<Settings>('/api/settings'),
@@ -56,16 +49,8 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
   if (!settings.data || !schedule.data)
     return <p role="alert">{t((settings.error || schedule.error)?.message)}</p>;
   return (
-    <div data-ui="settings" className="settings-content">
-      {section === null ? <div data-ui="settings-overview" className="grid gap-4">
-        {sections.map(({ id, title, description, icon: Icon }) => <Button key={id} data-settings-section={id} className="settings-card" onClick={() => setSection(id)}>
-          <Icon size={22} aria-hidden="true" />
-          <span className="grid min-w-0 flex-1 gap-1 text-left"><strong className="text-sm font-semibold"><StableText text={t(title)} /></strong><span className="text-xs text-zinc-500 dark:text-zinc-400"><StableText text={t(description)} /></span></span>
-          <ChevronRight size={18} aria-hidden="true" />
-        </Button>)}
-      </div> : <Button data-ui="settings-back" className="mb-5" onClick={() => setSection(null)}><ArrowLeft size={16} />{t('返回设置')}</Button>}
-      <div className="grid items-start gap-6 [&_form]:grid [&_form]:gap-5 [&_form_label:not(:has(input[type=checkbox]))]:grid [&_form_label]:gap-2 [&_form_label]:text-xs [&_form_label]:font-medium [&_form_button]:justify-self-start [&_form_p]:text-xs [&_form_p[role=alert]]:text-red-600 [&_form_p[role=status]]:text-zinc-500 [&_section>p]:mb-5">
-      <div hidden={section !== 'appearance'}><Panel data-ui="appearance-settings">
+    <div className="grid items-start gap-6 xl:grid-cols-2 [&_form]:grid [&_form]:gap-5 [&_form_label:not(:has(input[type=checkbox]))]:grid [&_form_label]:gap-2 [&_form_label]:text-xs [&_form_label]:font-medium [&_form_button]:justify-self-start [&_form_p]:text-xs [&_form_p[role=alert]]:text-red-600 [&_form_p[role=status]]:text-zinc-500 [&_section>p]:mb-5">
+      <Panel className="xl:col-span-2" data-ui="appearance-settings">
         <TwoToneTitle title={t('外观主题')} description={t('界面偏好')} />
         <label className="mt-5 grid max-w-sm gap-2 text-xs font-medium">
           <StableText text={t('主题模式')} />
@@ -82,8 +67,8 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
             <option value="system">{t('跟随系统')}</option>
           </Select>
         </label>
-      </Panel></div>
-      <div hidden={section !== 'connections'}><Panel>
+      </Panel>
+      <Panel>
         <div className="mb-4 flex flex-wrap items-center gap-2 [&>svg]:size-[18px] [&>svg]:text-zinc-500">
           <KeyRound size={18} />
           <TwoToneTitle title={t('连接与存储')} description={t('凭证与数据')} />
@@ -179,14 +164,17 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
               <StableText text={t('数据目录将在重启后生效，请先备份并手动搬移旧数据库。')} />
             </p>
           )}
-          <Button variant="primary" status={save.isPending ? 'pending' : save.isError ? 'error' : save.isSuccess ? 'success' : 'idle'} disabled={save.isPending}>
+          <Button variant="primary" disabled={save.isPending}>
             <Save size={16} />
-            {t('保存程序配置')}
+            {save.isPending ? t('正在保存…') : t('保存程序配置')}
           </Button>
-          {save.error && <p role="alert">{t(save.error.message)}</p>}
+          <p role={save.error ? 'alert' : 'status'}>
+            {t(save.error?.message) ||
+              (save.isSuccess ? t('配置已保存，备用凭证在后台刷新。') : '')}
+          </p>
         </form>
-      </Panel></div>
-      <div hidden={section !== 'prediction'}><Panel>
+      </Panel>
+      <Panel>
         <div className="mb-4 flex flex-wrap items-center gap-2 [&>svg]:size-[18px] [&>svg]:text-zinc-500">
           <Clock3 size={18} />
           <TwoToneTitle title={t('预测抓取')} description={t('定时与周期')} />
@@ -197,12 +185,11 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
           value={schedule.data!}
           save={(body) => timer.mutate(body)}
           pending={timer.isPending}
-          status={timer.isPending ? 'pending' : timer.isError ? 'error' : timer.isSuccess ? 'success' : 'idle'}
         />
-        {timer.error && <p role="alert">{t(timer.error.message)}</p>}
-      </Panel></div>
-      <div hidden={section !== 'opening'}><Panel>
-        <div className="mb-5">
+        <p role={timer.error ? 'alert' : 'status'}>
+          {t(timer.error?.message) || (timer.isSuccess ? t('定时配置已保存。') : '')}
+        </p>
+        <div className="mt-8 mb-5">
           <TwoToneTitle title={t('自动开仓')} description={t('独立授权与周期')} />
         </div>
         <p className="mb-4 text-xs leading-relaxed text-zinc-500">
@@ -216,9 +203,10 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
           value={schedule.data.opening!}
           save={(body) => opening.mutate(body)}
           pending={opening.isPending}
-          status={opening.isPending ? 'pending' : opening.isError ? 'error' : opening.isSuccess ? 'success' : 'idle'}
         />
-        {opening.error && <p role="alert">{t(opening.error.message)}</p>}
+        <p role={opening.error ? 'alert' : 'status'}>
+          {t(opening.error?.message) || (opening.isSuccess ? t('自动开仓配置已保存。') : '')}
+        </p>
         <div className="mt-8 rounded-xl border border-zinc-200 bg-zinc-50 p-5 text-xs leading-relaxed text-zinc-500 dark:border-zinc-700 dark:bg-zinc-950 [&_strong]:text-zinc-900 dark:[&_strong]:text-zinc-100 [&_p]:mt-2">
           <strong><StableText text={t('独立的持仓同步')} /></strong>
           <p>
@@ -227,8 +215,7 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
             )} />
           </p>
         </div>
-      </Panel></div>
-      </div>
+      </Panel>
     </div>
   );
 }
@@ -237,13 +224,11 @@ function ScheduleForm({
   save,
   pending,
   label,
-  status,
 }: {
   label: string;
   value: Schedule;
   save: (body: Schedule) => void;
   pending: boolean;
-  status: 'idle' | 'pending' | 'success' | 'error';
 }) {
   useLanguage();
   const [enabled, setEnabled] = useState(value.enabled),
@@ -296,9 +281,9 @@ function ScheduleForm({
         <StableText text={t('下次执行：')} />
         {value.next_run ? new Date(value.next_run).toLocaleString(dateLocale()) : t('已停用')}
       </p>
-      <Button variant="primary" status={status} disabled={pending}>
+      <Button variant="primary" disabled={pending}>
         <Save size={16} />
-        {t('保存定时配置')}
+        {pending ? t('正在保存…') : t('保存定时配置')}
       </Button>
     </form>
   );
