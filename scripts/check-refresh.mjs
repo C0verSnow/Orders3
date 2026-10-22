@@ -1,7 +1,7 @@
 // Remote CI only. Refresh fixtures never contact an exchange or submit trades.
 import assert from 'node:assert/strict';
 
-export async function checkRefresh(browser, base, token, output) {
+export async function checkRefresh(browser, base, output) {
   for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors = [];
@@ -10,7 +10,7 @@ export async function checkRefresh(browser, base, token, output) {
       localStorage.setItem('orders-language', 'zh');
       localStorage.setItem('orders-theme', theme);
     }, theme);
-    await page.goto(`${base}/#token=${token}`);
+    await page.goto(`${base}/`);
     await page.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
     const navigate = async name => {
       if (width <= 768) await page.getByRole('button', { name: '打开导航', exact: true }).click();
@@ -21,14 +21,6 @@ export async function checkRefresh(browser, base, token, output) {
     const all = page.locator('[data-ui=refresh-all]');
     const source = page.getByRole('button').filter({ hasText: '刷新来源' });
     const predicted = page.getByRole('button').filter({ hasText: '刷新预测订单' });
-    const logout = async () => {
-      if (width <= 768) await page.getByRole('button', {name:'打开导航',exact:true}).click();
-      const response = page.waitForResponse(response => response.url().endsWith('/api/session') && response.request().method() === 'DELETE');
-      await page.locator('[data-ui=logout]').click();
-      assert.equal((await response).status(), 200, 'logout API succeeds');
-      await page.getByRole('button', {name:/连接工作台/}).waitFor({timeout:4000});
-      assert.equal(await all.count(), 0, 'Workspace actually unmounted');
-    };
     const state = async (button, expected) => {
       await page.waitForFunction(({el, expected}) => el.dataset.feedback === expected,
         {el: await button.elementHandle(), expected}, {timeout: 2500});
@@ -56,7 +48,8 @@ export async function checkRefresh(browser, base, token, output) {
     await state(source, 'idle');
     assert.equal(orderRequests, 0, 'source refresh keeps its original API scope');
     await navigate('预测订单');
-    assert.equal(await predicted.getAttribute('data-feedback'), 'idle');
+    assert.equal(await predicted.count(), 0);
+    assert.equal(await page.getByRole('button', {name:/手动开仓/}).count(), 1);
     await navigate('交易概览');
     assert.equal(await source.getAttribute('data-feedback'), 'idle', 'expired success cannot replay on remount');
     await page.waitForTimeout(100);
@@ -67,17 +60,16 @@ export async function checkRefresh(browser, base, token, output) {
     await navigate('交易概览');
     assert.equal(await all.getAttribute('data-feedback'), 'idle', 'global button cannot replay expired success after remount');
     // A page-local request keeps its owner while its button is unmounted.
-    await navigate('预测订单');
     gate = new Promise(resolve => { release = resolve; });
-    await predicted.click();
-    await state(predicted, 'pending');
+    await source.click();
+    await state(source, 'pending');
+    await navigate('预测订单');
     assert.equal(await all.getAttribute('data-feedback'), 'idle');
-    await navigate('交易概览');
-    assert.equal(await source.getAttribute('data-feedback'), 'idle');
+    assert.equal(await source.count(), 0);
     release();
     await page.waitForTimeout(1300);
     await navigate('预测订单');
-    assert.equal(await predicted.getAttribute('data-feedback'), 'idle', 'off-page feedback expires without a mounted button');
+    assert.equal(await predicted.count(), 0);
     await navigate('交易概览');
 
     // Refresh all stays pending until BOTH operations finish. Then a new
@@ -153,32 +145,11 @@ export async function checkRefresh(browser, base, token, output) {
     assert.equal(await source.getAttribute('data-feedback'), 'idle');
     assert.equal(await all.getAttribute('data-feedback'), 'idle');
     await page.screenshot({path:`${output}/refresh-idle-${width}-${theme}.png`,fullPage:true});
-    // A real logout unmounts Workspace while its result timer exists.
+    // Reload actually unmounts Workspace; timer state must not survive.
     await page.route('**/api/refresh', route => route.fulfill({json:{error:null}}));
     await all.click();
     await state(all, 'success');
-    await logout();
-    await page.waitForTimeout(1100);
-    await page.getByLabel('工作台登录令牌', {exact:true}).fill(token);
-    await page.getByRole('button', {name:/连接工作台/}).click();
-    await page.getByRole('heading', {name:'交易概览',exact:true}).waitFor();
-    assert.equal(await all.getAttribute('data-feedback'), 'idle');
-    assert.equal(await source.getAttribute('data-feedback'), 'idle');
-    // Also resolve a request after Workspace has actually unmounted.
-    let finishRequest;
-    const finished = new Promise(resolve => { finishRequest = resolve; });
-    gate = new Promise(resolve => { release = resolve; });
-    await page.route('**/api/refresh', async route => {
-      await gate;
-      try { await route.fulfill({json:{error:null}}); } finally { finishRequest(); }
-    });
-    await source.click();
-    await state(source, 'pending');
-    await logout();
-    release();
-    await finished;
-    await page.getByLabel('工作台登录令牌', {exact:true}).fill(token);
-    await page.getByRole('button', {name:/连接工作台/}).click();
+    await page.reload();
     await page.getByRole('heading', {name:'交易概览',exact:true}).waitFor();
     await page.waitForTimeout(1100);
     assert.equal(await all.getAttribute('data-feedback'), 'idle');

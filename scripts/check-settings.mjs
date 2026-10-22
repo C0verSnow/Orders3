@@ -1,12 +1,12 @@
 // Runs only in remote CI against an already built server. No exchange access.
 import assert from 'node:assert/strict';
-export async function checkSettings(browser, base, token, output) {
+export async function checkSettings(browser, base, output) {
   for (const width of [1440]) for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) {
     const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(({language, theme}) => { localStorage.setItem('orders-language', language); localStorage.setItem('orders-theme', theme); }, {language, theme});
-    await page.goto(`${base}/#token=${token}`);
+    await page.goto(`${base}/`);
     const zh = language === 'zh';
     const nav = async () => {
       if (width <= 768) await page.getByRole('button', {name: zh ? '打开导航' : 'Open navigation', exact: true}).click();

@@ -10,7 +10,7 @@ import { syncEntries } from '../../apps/server/src/services/entry-history.ts';
 import { syncPositions } from '../../apps/server/src/services/positions.ts';
 import { openOrders } from '../../apps/server/src/services/trading.ts';
 import { Credentials } from '../../apps/server/src/services/credentials.ts';
-import { Sessions } from '../../apps/server/src/security/session.ts';
+import { WorkspaceOrigin } from '../../apps/server/src/security/origin.ts';
 import { createServer } from '../../apps/server/src/api/index.ts';
 
 const position = { contract: 'BTC_USDT', size: '2', entry_price: '100', leverage_max: '20', unrealised_pnl: '0', realised_pnl: '0', initial_margin: '1', mark_price: '101' };
@@ -60,12 +60,12 @@ test('F05 API rejects settings while source fetch is pending; fallback changes w
   let releaseFetch!: () => void;
   const waiting = new Promise<void>(resolve => { releaseFetch = resolve; });
   const f = fixture(t, async url => { if (url.hostname === 'supabase.invalid') { await waiting; return response([]); } return response(list([])); });
-  const credentials = new Credentials(f.config, f.http), sessions = new Sessions('test-token-for-regression-at-least-32-chars');
+  const credentials = new Credentials(f.config, f.http), sessions = new WorkspaceOrigin();
   sessions.origin = 'http://localhost';
   const app = createServer(f.dashboard, new Scheduler(f.config, f.dashboard), credentials, f.log, sessions);
   t.after(() => { credentials.stop(); return app.close(); });
   const work = f.dashboard.refreshSources();
-  const result = await app.inject({ method: 'POST', url: '/api/settings', headers: { origin: sessions.origin, authorization: `Bearer ${sessions.token}` }, payload: { API_KEY: 'replacement-key' } });
+  const result = await app.inject({ method: 'POST', url: '/api/settings', headers: { origin: sessions.origin }, payload: { API_KEY: 'replacement-key' } });
   assert.equal(result.statusCode, 409); assert.equal(f.config.connection().gateKey, 'test-key');
   f.config.setFallback({ API_KEY: 'deferred' }); assert.equal(f.config.fallback.API_KEY, undefined);
   releaseFetch(); await work;

@@ -1,6 +1,7 @@
 // Remote CI only, against the built production server; no exchange calls or mocked API.
 import { chromium } from 'playwright';
 import { checkSettings } from './check-settings.mjs';
+import { checkTables } from './check-tables.mjs';
 import { checkRefresh } from './check-refresh.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
@@ -16,9 +17,8 @@ seed.saveTrailing([{ id: '123', contract: 'BTC_USDT', activation_price: '100.005
 const seededPosition = { contract: 'BTC_USDT', size: '2', entry_price: '100.005', value: '20.001', leverage_max: '20', unrealised_pnl: '0.005', realised_pnl: '-0.004', initial_margin: '1.005', mark_price: '100.1234', close_price: '101.005', quanto_multiplier: '0.1', order_price_round: '0.0001' };
 seed.savePositions([seededPosition], [seededPosition]);
 seed.close();
-const token = 'ci-browser-access-token-at-least-32-characters';
 const child = spawn(process.execPath, [resolve('dist/server.cjs'), '--cached', '--no-browser', '--port', '18091'], { cwd: directory,
-  env: { ...process.env, ORDERS_DATA_DIR: directory, ORDERS_CONFIG_PATH: join(directory, 'config'), ORDERS_ACCESS_TOKEN: token } });
+  env: { ...process.env, ORDERS_DATA_DIR: directory, ORDERS_CONFIG_PATH: join(directory, 'config') } });
 let output=''; child.stderr.on('data',chunk=>{output+=chunk;});
 const base='http://127.0.0.1:18091';
 let browser;
@@ -27,39 +27,17 @@ try {
   for(let index=0;index<100;index++) { if(child.exitCode!==null)throw new Error(output); try {if((await fetch(base+'/health')).ok){ready=true;break;}}catch{} await new Promise(resolve=>setTimeout(resolve,100)); }
   assert.ok(ready);
   browser=await chromium.launch();mkdirSync('tests/artifacts',{recursive:true});
-  await checkRefresh(browser, base, token, 'tests/artifacts');
-  // Hold an anonymous session GET until after the real login POST succeeds.
-  // A late anonymous response must never replace the authenticated cache.
-  const bootstrap = await browser.newPage();
-  let releaseSession, captureSession;
-  const sessionHeld = new Promise(resolve => { releaseSession = resolve; });
-  const sessionCaptured = new Promise(resolve => { captureSession = resolve; });
-  let held = false;
-  let finishSession;
-  const sessionFinished = new Promise(resolve => { finishSession = resolve; });
-  await bootstrap.route('**/api/session', async route => {
-    if (route.request().method() === 'GET' && !held) {
-      held = true;
-      const response = await route.fetch();
-      assert.equal((await response.json()).authenticated, false);
-      captureSession();
-      await sessionHeld;
-      // Cancellation may already have aborted the browser's request.
-      try { await route.fulfill({ response }); } finally { finishSession(); }
-    } else {
-      if (route.request().method() === 'POST') await sessionCaptured;
-      await route.continue();
-    }
-  });
-  await bootstrap.goto(`${base}/#token=${token}`);
-  await bootstrap.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
-  releaseSession();
-  await sessionFinished;
-  await bootstrap.waitForTimeout(300);
-  assert.ok(await bootstrap.getByRole('heading', { name: '交易概览', exact: true }).isVisible(), 'late anonymous session cannot undo login');
-  await bootstrap.close();
+  await checkRefresh(browser, base, 'tests/artifacts');
+  const direct = await browser.newPage();
+  const sessionRequests = [];
+  direct.on('request', request => { if (request.url().includes('/api/session')) sessionRequests.push(request.url()); });
+  await direct.goto(`${base}/`);
+  await direct.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
+  assert.equal(await direct.locator('input[type=password]').count(), 0);
+  assert.deepEqual(sessionRequests, []);
+  await direct.close();
   const precision = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-  await precision.goto(`${base}/#token=${token}`);
+  await precision.goto(`${base}/`);
   await precision.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
   for (const name of ['预测订单', '跟踪订单', '当前持仓']) {
     await precision.getByRole('button', { name, exact: true }).click();
@@ -74,7 +52,7 @@ try {
   for(const width of [1920,1440,1280]) {
     const page=await browser.newPage({viewport:{width,height:1000},reducedMotion:'reduce'}), errors=[];
     page.on('pageerror',error=>errors.push(error.message));
-    await page.goto(`${base}/#token=${token}`);await page.getByRole('heading',{name:'交易概览',exact:true}).waitFor();
+    await page.goto(`${base}/`);await page.getByRole('heading',{name:'交易概览',exact:true}).waitFor();
     assert.equal(await page.evaluate(()=>location.hash),'');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no document overflow');
     await page.screenshot({path:`tests/artifacts/overview-${width}-light.png`,fullPage:true});
@@ -93,7 +71,7 @@ try {
   for (const width of [1440]) {
     for (const theme of ['light', 'dark']) {
       const detail = await browser.newPage({ viewport: { width, height: 850 } });
-      await detail.goto(`${base}/#token=${token}`);
+      await detail.goto(`${base}/`);
       await detail.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
       if (theme === 'dark') await detail.locator('[data-ui="theme-switch"]').click();
       if (width <= 768) await detail.getByRole('button', { name: '打开导航', exact: true }).click();
@@ -128,7 +106,7 @@ try {
   const motion = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const motionErrors = [];
   motion.on('pageerror', error => motionErrors.push(error.message));
-  await motion.goto(`${base}/#token=${token}`);
+  await motion.goto(`${base}/`);
   await motion.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
   await motion.getByRole('cell', { name: 'UI00 / USDT', exact: true }).waitFor();
   assert.equal(await motion.getByText('服务端确认 · 十进制计算 · 原始记录可追溯', { exact: true }).count(), 0);
@@ -155,21 +133,13 @@ try {
   await motion.waitForFunction(() => getComputedStyle(document.querySelector('[data-ui="nav-indicator"]')).opacity === '1');
   assert.equal(await indicator.evaluate(el => getComputedStyle(el).opacity), '1', 'keyboard focus gets the same indicator');
   const fade = motion.locator('[data-ui="scroll-fade"]').first(), viewport = fade.locator('[data-ui="fade-viewport"]');
-  await motion.waitForFunction(() => document.querySelector('[data-ui="scroll-fade"]').dataset.more === 'true');
-  assert.equal(await fade.locator('[data-ui="bottom-fade"]').evaluate(el => getComputedStyle(el).pointerEvents), 'none');
-  await viewport.evaluate(el => { const row = el.querySelectorAll('tbody [data-ui="row"]')[8]; el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().bottom + 24; });
-  await motion.waitForTimeout(50);
-  const edgeRows = await viewport.locator('tbody [data-ui="row"]').evaluateAll(rows => rows.map(row => Number(row.style.getPropertyValue('--scroll-opacity'))));
-  assert.ok(edgeRows.some(value => value > 0 && value < 1), 'row opacity follows its actual position in the bottom 48px');
-  assert.equal(await viewport.locator('thead').evaluate(el => getComputedStyle(el).filter), 'none');
-  assert.equal(await viewport.locator('tbody td:last-child').first().evaluate(el => getComputedStyle(el).filter), 'none', 'details remain legible and usable at the edge');
-  await viewport.evaluate(el => { el.scrollTop = el.scrollHeight; });
-  await motion.waitForFunction(() => document.querySelector('[data-ui="scroll-fade"]').dataset.more === 'false');
-  await motion.getByRole('button', { name: '查看第 20 条记录详情', exact: true }).click();
+  assert.equal(await viewport.locator('tbody [data-ui="row"]').count(), 4);
+  assert.equal(await fade.getAttribute('data-more'), 'false', 'all four rows fit without vertical fade');
+  await motion.getByRole('button', { name: '查看第 4 条记录详情', exact: true }).click();
   await motion.getByRole('dialog').waitFor(); await motion.keyboard.press('Escape');
   await motion.getByRole('button', { name: '下一页', exact: true }).click();
-  await motion.getByRole('cell', { name: 'UI20 / USDT', exact: true }).waitFor();
-  await motion.waitForFunction(() => document.querySelectorAll('[data-ui="row-exit"]').length === 0);
+  await motion.getByRole('cell', { name: 'UI04 / USDT', exact: true }).waitFor();
+  assert.equal(await motion.locator('[data-ui="row-exit"]').count(), 0, 'old page does not add extra rows');
   assert.equal(await motion.getByRole('cell', { name: 'UI00 / USDT', exact: true }).count(), 0);
   const beforeFilter = await viewport.boundingBox();
   await motion.getByRole('searchbox', { name: '搜索预测订单', exact: true }).fill('UI44');
@@ -241,7 +211,7 @@ try {
   await motion.close(); uiStore.close();
 
   const appearance = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-  await appearance.goto(`${base}/#token=${token}`);
+  await appearance.goto(`${base}/`);
   await appearance.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
   assert.equal(await appearance.locator('header [aria-label="本地受信任会话"]').count(), 0);
   assert.equal(await appearance.locator('svg[data-ui="brand-logo"]').count(), 1);
@@ -288,7 +258,7 @@ try {
     const errors = [], writes = [];
     reveal.on('pageerror', error => errors.push(error.message));
     reveal.on('request', request => { if (request.method() === 'POST' && !request.url().endsWith('/api/session')) writes.push(request.url()); });
-    await reveal.goto(`${base}/#token=${token}`);
+    await reveal.goto(`${base}/`);
     await reveal.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
     assert.equal(await reveal.locator('header [data-ui="preferences"]').count(), 1);
     assert.equal(await reveal.locator('header [data-ui="theme-switch"]').count(), 1);
@@ -359,14 +329,7 @@ try {
     };
     await reveal.evaluate(() => window.scrollTo(0, 0));
     const chineseLayout = await layout();
-    // Mobile drawer is closed but still laid out, so its two actions can be compared.
-    const actions = await reveal.locator('aside [data-ui="download-database"], aside [data-ui="logout"]').evaluateAll(elements => elements.map(el => {
-      const button = el.getBoundingClientRect(), icon = el.querySelector('svg').getBoundingClientRect();
-      const text = document.createRange();
-      text.selectNodeContents(el.querySelector('[data-ui="stable-text"] > span:last-child'));
-      return [button.x, button.width, button.height, icon.x, icon.width, icon.height, text.getBoundingClientRect().x];
-    }));
-    assert.deepEqual(actions[0], actions[1], 'sidebar actions have identical dimensions, icon size and text left edges');
+    assert.equal(await reveal.locator('aside [data-ui="logout"]').count(), 0);
     assert.equal(await reveal.locator('[data-ui="theme-select"]').inputValue(), 'light');
     const coloursBefore = await reveal.locator('#main').evaluate(el => ({ background: getComputedStyle(el).backgroundColor, colour: getComputedStyle(el).color }));
     await runReveal(reveal.locator('[data-ui="language-switch"]'), 'english');
@@ -417,7 +380,7 @@ try {
 
   // Fault-injection regressions: production UI + real server, only /api/status failure is intercepted.
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-  await page.goto(`${base}/#token=${token}`);
+  await page.goto(`${base}/`);
   await page.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
   await page.getByRole('button', { name: '系统设置', exact: true }).click();
   await page.locator('[data-settings-section=prediction]').click();
@@ -446,8 +409,10 @@ try {
   assert.equal(await page.getByText('当前没有待核对请求。', { exact: true }).count(), 0);
   await page.screenshot({ path: 'tests/artifacts/status-unavailable.png', fullPage: true });
   await page.close();
-  await checkSettings(browser, base, token, 'tests/artifacts');
-  console.log('Browser checks passed at three desktop widths, both themes, session bootstrap, settings and secret fields');
+  await checkSettings(browser, base, 'tests/artifacts');
+  const paginationStore = new Storage(join(directory, 'data.db'));
+  try { await checkTables(browser, base, paginationStore, 'tests/artifacts'); } finally { paginationStore.close(); }
+  console.log('Browser checks passed at three desktop widths, both themes, direct workspace access, settings and secret fields');
 } finally {
   await browser?.close();child.kill('SIGTERM');
   if(child.exitCode===null)await new Promise(resolve=>{child.once('exit',resolve);setTimeout(()=>{child.kill('SIGKILL');resolve();},5000).unref();});

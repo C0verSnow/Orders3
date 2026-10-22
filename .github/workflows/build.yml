@@ -130,13 +130,16 @@ jobs:
           if (-not $tool) { throw 'Windows SDK signtool not found' }
           "SIGNTOOL=$($tool.FullName)" >> $env:GITHUB_ENV
       - run: npm run package:exe
+      - run: node scripts/package-desktop.mjs
       - name: Run the standalone Windows exe outside checkout
         if: matrix.os == 'windows'
         shell: pwsh
         run: |
           $target = Join-Path $env:RUNNER_TEMP "orders-windows-x64_v-$($env:FILE_VERSION).exe"
-          Copy-Item dist/orders-win32-x64.exe $target
-          node scripts/smoke-runtime.mjs $target
+          Copy-Item dist/desktop-release/orders-windows-x64.exe $target
+          node scripts/smoke-runtime.mjs (Resolve-Path dist/orders-win32-x64.exe)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/check-desktop.mjs $target
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Directory -Force dist/release | Out-Null
           Copy-Item $target dist/release/
@@ -158,12 +161,20 @@ jobs:
           VERSION: ${{ needs.publication.outputs.version }}
         run: |
           set -euo pipefail
-          bash scripts/package-deb.sh "$ARCH" "$VERSION"
+          test -s "dist/desktop-release/orders3_${FILE_VERSION}_${ARCH}.deb"
           mkdir -p dist/release
           asset="dist/release/orders3_v-${FILE_VERSION}_${ARCH}.deb"
-          cp "dist/orders3_${VERSION}_${ARCH}.deb" "$asset"
-          sudo dpkg -i "$asset"
+          cp "dist/desktop-release/orders3_${FILE_VERSION}_${ARCH}.deb" "$asset"
+          sudo apt-get update
+          sudo apt-get install -y xvfb "$PWD/$asset"
           node scripts/smoke-runtime.mjs /usr/bin/orders3
+          xvfb-run -a node scripts/check-desktop.mjs /usr/bin/orders3
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: desktop-evidence-${{ matrix.os }}-${{ matrix.arch }}
+          path: tests/artifacts/desktop/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: orders-${{ matrix.os }}-${{ matrix.arch }}
@@ -213,14 +224,14 @@ jobs:
         run: |
           set -euo pipefail
           test "$(docker image inspect orders-dashboard:ci --format '{{.Architecture}}')" = "$EXPECTED_ARCH"
-          docker run -d --name orders-ci -p 127.0.0.1:8090:8090 -e ORDERS_ACCESS_TOKEN=ci-container-token-with-at-least-32-chars orders-dashboard:ci --cached
+          docker run -d --name orders-ci -p 127.0.0.1:8090:8090 orders-dashboard:ci --cached
           trap 'docker logs orders-ci; docker rm -f orders-ci' EXIT
           for attempt in {1..60}; do
             curl -fsS http://127.0.0.1:8090/health && break || sleep 1
           done
           curl -fsS http://127.0.0.1:8090/health
           curl -fsS http://127.0.0.1:8090/ | grep -q '<html'
-          curl -fsS -H 'Authorization: Bearer ci-container-token-with-at-least-32-chars' http://127.0.0.1:8090/api/data
+          curl -fsS http://127.0.0.1:8090/api/data
           docker rm -f orders-ci
           trap - EXIT
           export ORDERS_IMAGE=orders-dashboard:ci ORDERS_PULL_POLICY=never ORDERS_CONTAINER_NAME=orders-ci-random

@@ -57,13 +57,8 @@ export const english: Record<string, string> = {
   成交编号: 'Fill ID',
   '正在连接工作台…': 'Connecting to your workspace…',
   连接你的交易工作台: 'Connect to your trading workspace',
-  '输入服务启动时显示的登录令牌。凭证与交易调度由你的服务端管理。':
-    'Enter the access token shown when your server starts. Credentials and trading schedules are managed by your server.',
-  工作台登录令牌: 'Workspace access token',
   连接工作台: 'Connect',
   '连接中…': 'Connecting…',
-  '在服务器运行日志中查找“登录令牌”，或使用管理员设置的 ORDERS_ACCESS_TOKEN。':
-    'Find the access token in the server startup log, or use the ORDERS_ACCESS_TOKEN set by your administrator.',
   '刷新完成，以下为服务端确认的数据。': 'Refreshed. The data below is confirmed by the server.',
   '手动开仓完成，请核对执行结果。': 'Manual entry completed. Please check the results.',
   '已记录人工核对，未重新发送交易。': 'Manual review recorded. No trade request was resent.',
@@ -80,7 +75,6 @@ export const english: Record<string, string> = {
   深色模式: 'Dark mode',
   跟随系统: 'Use system theme',
   外观主题: 'Appearance',
-  退出工作台: 'Sign out',
   打开导航: 'Open navigation',
   下载数据库: 'Download database',
   '真实数据同步，保留完整业务记录。': 'Sync live data and keep complete business records.',
@@ -347,8 +341,6 @@ export const english: Record<string, string> = {
   'Cron 在未来八年内没有执行时间': 'Cron has no execution time in the next eight years',
   定时配置格式无效: 'Invalid schedule configuration format',
   自动开仓授权已失效: 'Automatic entry authorisation is no longer valid',
-  'ORDERS_ACCESS_TOKEN 须为 32 至 512 位无空格文本':
-    'ORDERS_ACCESS_TOKEN must contain 32 to 512 characters without spaces',
   请从受信任的工作台页面发起操作: 'Start this operation from the trusted workspace page',
   登录令牌无效: 'Invalid access token',
   '会话过多，请稍后再试': 'Too many sessions. Try again later',

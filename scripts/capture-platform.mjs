@@ -14,7 +14,6 @@ mkdirSync(out,{recursive:true});
 const fontURL='https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/Variable/TTF/Subset/NotoSansSC-VF.ttf';
 const fontResponse=await fetch(fontURL);assert.ok(fontResponse.ok);
 const font=Buffer.from(await fontResponse.arrayBuffer());
-const token='ci-platform-visual-token-at-least-32-characters';
 const base='http://127.0.0.1:18093';
 const manifest={platform,commit:process.env.GITHUB_SHA,fontURL,fontSHA256:createHash('sha256').update(font).digest('hex'),browser:null,deviceScaleFactor:1,timezone:'UTC',renderedFonts:[],cases:[]};
 const browser=await chromium.launch({args:['--disable-lcd-text','--font-render-hinting=none','--disable-font-subpixel-positioning']});
@@ -32,8 +31,8 @@ try {
     }
     let child;
     const name='orders-platform-visual';
-    if(platform==='windows') child=spawn(resolve('dist/orders-win32-x64.exe'),['--cached','--no-browser','--host','127.0.0.1','--port','18093'],{cwd:directory,env:{...process.env,ORDERS_DATA_DIR:directory,ORDERS_CONFIG_PATH:join(directory,'config'),ORDERS_ACCESS_TOKEN:token}});
-    else child=spawn('docker',['run','--rm','--name',name,'-p','127.0.0.1:18093:8090','-v',`${directory}:/data`,'-e',`ORDERS_ACCESS_TOKEN=${token}`,'-e',`ORDERS_ALLOWED_ORIGIN=${base}`,'orders-dashboard:ci','--cached']);
+    if(platform==='windows') child=spawn(resolve('dist/orders-win32-x64.exe'),['--cached','--no-browser','--host','127.0.0.1','--port','18093'],{cwd:directory,env:{...process.env,ORDERS_DATA_DIR:directory,ORDERS_CONFIG_PATH:join(directory,'config')}});
+    else child=spawn('docker',['run','--rm','--name',name,'-p','127.0.0.1:18093:8090','-v',`${directory}:/data`,'-e',`ORDERS_ALLOWED_ORIGIN=${base}`,'orders-dashboard:ci','--cached']);
     let logs='';child.stdout.on('data',b=>{logs+=b;});child.stderr.on('data',b=>{logs+=b;});
     try {
       let ready=false;
@@ -44,7 +43,7 @@ try {
         await page.addInitScript(({language,theme})=>{localStorage.setItem('orders-language',language);localStorage.setItem('orders-theme',theme);},{language,theme});
         // Serve identical font bytes locally; external dependencies never reach the application.
         await page.route('**/__ci_font.ttf',route=>route.fulfill({contentType:'font/ttf',body:font}));
-        const documentResponse = await page.goto(`${base}/#token=${token}`);
+        const documentResponse = await page.goto(`${base}/`);
         assert.equal(documentResponse.status(),200,'actual artifact serves the trusted browser origin');
         await page.getByRole('heading',{name:language==='zh'?'交易概览':'Overview',exact:true}).waitFor();
         await page.addStyleTag({content:"@font-face { font-family: CIVisual; src: url('/__ci_font.ttf'); font-weight: 100 900; } *, *::before, *::after { font-family: CIVisual !important; }"});

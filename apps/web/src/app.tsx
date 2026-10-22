@@ -14,7 +14,6 @@ import {
   History,
   LayoutDashboard,
   ListOrdered,
-  LogOut,
   Menu,
   RefreshCw,
   Settings2,
@@ -138,100 +137,10 @@ const historyColumns = columns([
 export function App() {
   useLanguage();
   const themeState = useTheme();
-  const [token, setToken] = useState(''),
-    [initialToken] = useState(() => new URLSearchParams(location.hash.slice(1)).get('token'));
-  const session = useQuery({
-    queryKey: ['session'],
-    queryFn: ({ signal }) => api<{ authenticated: boolean }>('/api/session', { signal }),
-    retry: false,
-  });
-  const client = useQueryClient();
-  const login = useMutation({
-    mutationFn: (value: string) =>
-      api<{ authenticated: boolean }>('/api/session', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${value}` },
-      }),
-    onSuccess: async (data) => {
-      await client.cancelQueries({ queryKey: ['session'] });
-      setToken('');
-      client.setQueryData(['session'], data);
-    },
-  });
-  useEffect(() => {
-    if (initialToken) {
-      history.replaceState(null, '', location.pathname + location.search);
-      login.mutate(initialToken);
-    }
-    // The URL bootstrap is consumed exactly once; never retain it in storage.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  if (session.isPending)
-    return (
-      <main className="mx-auto grid min-h-dvh max-w-xl place-content-center p-6 [&_form]:mt-6 [&_form]:grid [&_form]:gap-5 [&_label]:grid [&_label]:gap-2 [&_label]:text-sm [&_h1]:my-6 [&_h1]:text-2xl [&_h1]:font-semibold">
-        <p role="status">{t('正在连接工作台…')}</p>
-      </main>
-    );
-  if (!session.data?.authenticated)
-    return (
-      <main className="mx-auto grid min-h-dvh max-w-xl place-content-center p-6 [&_form]:mt-6 [&_form]:grid [&_form]:gap-5 [&_label]:grid [&_label]:gap-2 [&_label]:text-sm [&_h1]:my-6 [&_h1]:text-2xl [&_h1]:font-semibold">
-        <div className="mb-6 min-w-0 rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-sm md:p-6 dark:border-zinc-700 dark:bg-zinc-900">
-          <BrandLogo />
-          <h1>{t('连接你的交易工作台')}</h1>
-          <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-            {t('输入服务启动时显示的登录令牌。凭证与交易调度由你的服务端管理。')}
-          </p>
-          <form
-            onSubmit={(event: FormEvent) => {
-              event.preventDefault();
-              login.mutate(token);
-            }}
-          >
-            <label>
-              {t('工作台登录令牌')}
-              <Input
-                type="password"
-                value={token}
-                onChange={(event) => setToken(event.target.value)}
-                autoComplete="off"
-                required
-                autoFocus
-              />
-            </label>
-            <Button variant="primary" status={login.isPending ? 'pending' : login.isError ? 'error' : 'idle'} disabled={login.isPending}>
-              {t('连接工作台')}
-              <ArrowUpRight size={16} />
-            </Button>
-            <p role="alert">{login.error?.message || session.error?.message}</p>
-          </form>
-          <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-            {t('在服务器运行日志中查找“登录令牌”，或使用管理员设置的 ORDERS_ACCESS_TOKEN。')}
-          </p>
-        </div>
-      </main>
-    );
-  return (
-    <Workspace
-      onLogout={async () => {
-        await client.cancelQueries();
-        // Keep the mounted session observer informed while discarding all
-        // business data and mutation variables from the previous session.
-        client.setQueryData(['session'], { authenticated: false });
-        client.removeQueries({ predicate: query => query.queryKey[0] !== 'session' });
-        client.getMutationCache().clear();
-      }}
-      themeState={themeState}
-    />
-  );
+  return <Workspace themeState={themeState} />;
 }
 
-function Workspace({
-  onLogout,
-  themeState,
-}: {
-  onLogout: () => void;
-  themeState: ReturnType<typeof useTheme>;
-}) {
+function Workspace({ themeState }: { themeState: ReturnType<typeof useTheme> }) {
   const language = useLanguage();
   const refreshFeedback = useRefreshFeedback();
   const client = useQueryClient(),
@@ -361,11 +270,6 @@ function Workspace({
     },
     onError: (error) => setNotice(error.message),
   });
-  const logout = useMutation({
-    mutationFn: () => api('/api/session', { method: 'DELETE' }),
-    onSuccess: onLogout,
-    onError: (error) => setNotice(error.message),
-  });
   const download = useMutation({
     mutationFn: async () => {
       const response = await fetch('/api/download', { credentials: 'same-origin' });
@@ -491,10 +395,6 @@ function Workspace({
           >
             <ArrowDownToLine size={16} />
             <StableText text={t('下载数据库')} />
-          </Button>
-          <Button variant="quiet" data-ui="logout" className="h-10 w-full justify-start! gap-2! px-3! py-2!" onClick={() => logout.mutate()} status={logout.isPending ? 'pending' : logout.isError ? 'error' : 'idle'} disabled={logout.isPending}>
-            <LogOut size={16} />
-            {t('退出工作台')}
           </Button>
         </div>
       </aside>
@@ -750,9 +650,6 @@ function Workspace({
               ])}
               action={
                 <div className="flex flex-wrap gap-2">
-                  <Button status={refreshFeedback.statusFor('sources')} autoDismiss={false} disabled={busy} onClick={() => requestRefresh('sources')}>
-                    {t('刷新预测订单')}
-                  </Button>
                   <Button
                     status={manualOpening.isPending ? 'pending' : manualOpening.isError ? 'error' : manualOpening.isSuccess ? 'success' : 'idle'}
                     disabled={busy || !sourceRows.length}
