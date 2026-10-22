@@ -4,7 +4,7 @@ const { join } = require('node:path');
 
 let backend, window, quitting = false, backendExited = false;
 const args = process.argv.slice(app.isPackaged ? 1 : 2).filter(arg => arg !== '--desktop' && !/^--(?:remote-debugging|inspect|no-sandbox|disable-gpu)/.test(arg));
-const headless = args.some(arg => ['--no-browser', '--list', '--fetch-only', '--help', '-h', '--version', '-v'].includes(arg));
+const headless = args.some(arg => ['--no-browser', '--browser', '--list', '--fetch-only', '--help', '-h', '--version', '-v'].includes(arg));
 const service = join(process.resourcesPath, 'service', process.platform === 'win32' ? 'orders-service.exe' : 'orders-service');
 
 async function stop() {
@@ -35,6 +35,7 @@ function start() {
     stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
   });
   backend.stdin.on('error', () => {});
+  backend.stdout.setEncoding('utf8'); backend.stderr.setEncoding('utf8');
   let output = '';
   const ready = new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('本地服务在 30 秒内未就绪，请检查端口与数据目录。')), 30000);

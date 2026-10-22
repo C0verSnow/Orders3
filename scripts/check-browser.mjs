@@ -257,7 +257,7 @@ try {
     const reveal = await browser.newPage({ viewport: { width, height: 1000 } });
     const errors = [], writes = [];
     reveal.on('pageerror', error => errors.push(error.message));
-    reveal.on('request', request => { if (request.method() === 'POST' && !request.url().endsWith('/api/session')) writes.push(request.url()); });
+    reveal.on('request', request => { if (request.method() === 'POST') writes.push(request.url()); });
     await reveal.goto(`${base}/`);
     await reveal.getByRole('heading', { name: '交易概览', exact: true }).waitFor();
     assert.equal(await reveal.locator('header [data-ui="preferences"]').count(), 1);
