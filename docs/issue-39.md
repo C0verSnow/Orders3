@@ -22,4 +22,8 @@ Electron 45.0.0 + electron-builder 26.15.3 在远端打包 Windows x64 便携 EX
 - 远端业务与安全：覆盖免登录读取、删除的会话接口、Host/Origin 拒绝和手动交易确认。
 - 远端浏览器：真实生产 HTTP + SQLite 验证四表的 0/1/2/3/4/5/8/9/10 数据边界，1440px 和 390px、固定高度、无垂直裁切、分页去重、末页筛选、排序和详情；刷新专项验证来源与全局刷新。
 - 远端发行包：`check-desktop.mjs` 启动实际便携 EXE / 已安装 DEB，连接其嵌入 Chromium，检查五个页面、无密码输入、无 Node 权限、刷新、关窗停止服务和原目录原端口重启。Linux 使用 Xvfb 图形会话，不能代替所有真实用户桌面环境的人工体验验收。
-- 当前等待远端结果；未通过前不记为完成。
+- 最终运行源码：`52cd7fd7aa538bce651a674a09835cccc16c34eb`。两轮完整远端 CI 均成功：[PR 检查 39822478787](https://github.com/C0verSnow/Orders3/actions/runs/39822478787)、[分支检查 39822467748](https://github.com/C0verSnow/Orders3/actions/runs/39822467748)。
+- 分项结果：业务/安全/类型/构建与浏览器成功；Windows x64、Linux AMD64、Linux ARM64 实际发行包启动、内嵌页面、关窗停止后端、同目录同端口重启成功；两架构原生容器成功。
+- 证据附件在上述 PR 检查页：`browser-evidence`、`desktop-evidence-windows-x64`、`desktop-evidence-linux-amd64`、`desktop-evidence-linux-arm64`；发行包附件为 `orders-windows-x64`、`orders-linux-amd64`、`orders-linux-arm64`。
+- 可选 Windows EXE/Docker 像素对比未执行；Release、镜像发布和生产部署按 feature 分支条件跳过，不计为通过。没有本地编译验证或真实交易。
+- PR #40 当前没有评论；关联 PR #37 的界面要求与 issue #39 开头取消令牌的要求已核对。保留 PR #37 界面，PR 保持开放等待用户 review；不合并。
