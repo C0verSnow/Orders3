@@ -240,6 +240,14 @@ jobs:
           trap 'docker logs orders-ci-random; docker rm -f orders-ci-random' EXIT
           bash start-docker.sh --cached
           test -s docker.md
+          actual="$(docker port orders-ci-random | head -n 1 | awk '{print $3}')"
+          test "$(sed -n '2p' docker.md)" = "$actual"
+          curl --noproxy '*' -fsS "http://$actual/health"
+          # Redeploy the same volume: graceful shutdown must release the lock.
+          bash start-docker.sh --cached
+          actual="$(docker port orders-ci-random | head -n 1 | awk '{print $3}')"
+          test "$(sed -n '2p' docker.md)" = "$actual"
+          curl --noproxy '*' -fsS "http://$actual/health"
       - uses: actions/setup-node@v6
         if: needs.publication.outputs.visual_checks == 'true' && matrix.arch == 'amd64'
         with: { node-version: '24.22.1', cache: npm }
@@ -411,7 +419,7 @@ jobs:
         with:
           authkey: ${{ secrets.AUTH_KEY }}
           ping: ${{ secrets.DEPLOY_HOST }}
-      - name: Upload host script and deploy the verified image
+      - name: Upload host script, check readiness and verify ~/docker.md
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}

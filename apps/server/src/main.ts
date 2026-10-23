@@ -16,6 +16,7 @@ import { WorkspaceOrigin } from './security/origin.ts';
 import { createServer } from './api/index.ts';
 import { AppError, safeError } from './utils/errors.ts';
 
+let startupStage = 'configuration';
 async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     host: { type: 'string' }, port: { type: 'string' }, cached: { type: 'boolean' }, 'fetch-only': { type: 'boolean' }, list: { type: 'boolean' },
@@ -32,10 +33,13 @@ async function main() {
   }
   const directory = dirname(config.databasePath); mkdirSync(directory, { recursive: true, mode: 0o700 });
   // One service per data directory protects quota, logs, and trading across processes.
-  const release = await lockfile.lock(directory, { lockfilePath: resolve(directory, '.orders-process.lock'), stale: 300000, update: 5000, retries: 0 });
+  startupStage = 'process-lock';
+  console.log('检查数据目录进程锁；异常退出遗留锁最多等待约 5 分钟，不会强删活动锁');
+  const release = await lockfile.lock(directory, { lockfilePath: resolve(directory, '.orders-process.lock'), stale: 300000, update: 5000, retries: { retries: 65, minTimeout: 5000, maxTimeout: 5000, factor: 1 } });
   let storage: Storage | undefined;
   let stopped = false;
   try {
+    startupStage = 'storage';
     storage = new Storage(config.databasePath);
     const activity = new Activity(), log = new RequestLog(resolve(directory, 'logs')), http = new HttpClient(activity, log);
     const credentials = new Credentials(config, http), dashboard = new Dashboard(config, storage, http, activity), scheduler = new Scheduler(config, dashboard);
@@ -51,6 +55,7 @@ async function main() {
     if (!/^\d+$/.test(portText) || Number(portText) > 65535) throw new AppError('端口必须为 0 至 65535');
     if (host !== 'localhost' && !isIP(host)) throw new AppError('监听地址须为 IP 或 localhost');
     const workspace = new WorkspaceOrigin(), app = createServer(dashboard, scheduler, credentials, log, workspace);
+    startupStage = 'listen';
     await app.listen({ host, port: Number(portText) });
     const address = app.server.address();
     if (!address || typeof address === 'string') throw new AppError('无法读取监听地址');
@@ -88,4 +93,8 @@ async function main() {
     if (values.list || values['fetch-only'] || !process.listenerCount('SIGTERM')) { storage?.close(); await release(); }
   }
 }
-main().catch(error => { console.error(safeError(error)); process.exitCode = 1; });
+main().catch(error => {
+  const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' && /^[A-Z][A-Z0-9_]{0,40}$/.test(error.code) ? error.code : 'UNKNOWN';
+  console.error(`启动失败：stage=${startupStage} code=${code}；${safeError(error)}`);
+  process.exitCode = 1;
+});

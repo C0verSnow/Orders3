@@ -34,7 +34,10 @@ case "$pull_policy" in
 esac
 if docker container inspect "$container_name" >/dev/null 2>&1; then
     printf '正在删除同名旧容器：%s（保留数据卷）\n' "$container_name"
-    docker rm -f "$container_name" >/dev/null
+    # SIGKILL leaves the five-minute data-directory lock behind. Give the
+    # service time to stop requests, close SQLite and release that lock.
+    docker stop --time 45 "$container_name" >/dev/null
+    docker rm "$container_name" >/dev/null
 fi
 
 start_mapped_dashboard() {
@@ -53,6 +56,7 @@ start_mapped_dashboard() {
         if docker start "$container_id" >/dev/null 2>"$failure"; then
             rm -f "$failure"
             dashboard_port="$port"
+            dashboard_container_id="$container_id"
             return 0
         fi
         # Remove only the container created by this attempt; preserve its data volume.
@@ -69,19 +73,46 @@ start_mapped_dashboard() {
     return 1
 }
 
+dashboard_container_id=''
 dashboard_port=''
 start_mapped_dashboard "$@"
-dashboard_url="http://127.0.0.1:$dashboard_port/"
-for attempt in {1..60}; do
-    if [[ "$(docker inspect --format '{{.State.Running}}' "$container_name")" != true ]]; then
-        docker logs "$container_name" >&2
+# Docker inspection, not the requested random value, is the source of truth.
+read_mapping() {
+    local binding
+    binding="$(docker port "$dashboard_container_id" "$dashboard_port/tcp")" || return 1
+    [[ "$binding" =~ ^127\.0\.0\.1:([0-9]+)$ ]] || {
+        echo '实际端口映射不是唯一的本机回环地址，停止记录。' >&2
+        return 1
+    }
+    actual_port="${BASH_REMATCH[1]}"
+}
+diagnose() {
+    echo "部署诊断：container=$dashboard_container_id requested_port=$dashboard_port actual_port=${actual_port:-unknown} last_http=${last_http:-none}" >&2
+    docker inspect --format 'running={{.State.Running}} restarting={{.State.Restarting}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} restarts={{.RestartCount}}' "$dashboard_container_id" >&2 || true
+    docker port "$dashboard_container_id" >&2 || true
+    # No inspect of Config.Env: it can contain exchange credentials.
+    docker logs --tail 100 "$dashboard_container_id" >&2 || true
+}
+actual_port=''
+last_http='none'
+if ! read_mapping; then diagnose; exit 1; fi
+dashboard_url="http://127.0.0.1:$actual_port/"
+# A crash can leave a live-looking lock for five minutes; never delete that lock
+# or weaken process exclusion. The service retries until it can safely acquire it.
+for attempt in {1..360}; do
+    if [[ "$(docker inspect --format '{{.State.Running}}' "$dashboard_container_id")" != true ]]; then
+        diagnose
         echo '容器已退出，看板启动失败。' >&2
         exit 1
     fi
-    if curl --fail --silent --connect-timeout 1 --max-time 2 "$dashboard_url" >/dev/null; then
-        # Same address as the successful readiness check and deployment output.
-        # Write beside the invocation (SSH deploy runs in the remote user's home).
-        # A temporary file keeps the previous record intact on write failure.
+    last_http="$(curl --noproxy '*' --fail --silent --connect-timeout 1 --max-time 2 --output /dev/null --write-out '%{http_code}' "${dashboard_url}health")" || last_http="${last_http:-000}"
+    if [[ "$last_http" == 200 ]] && curl --noproxy '*' --fail --silent --connect-timeout 1 --max-time 2 "$dashboard_url" >/dev/null; then
+        # Recheck identity and binding before publishing the checked address.
+        confirmed_port="$actual_port"
+        if ! read_mapping || [[ "$actual_port" != "$confirmed_port" ]] \
+            || [[ "$(docker inspect --format '{{.State.Running}}' "$dashboard_container_id")" != true ]]; then
+            diagnose; echo '就绪后容器或映射已变化，保留原有 docker.md。' >&2; exit 1
+        fi
         if [[ -d docker.md ]]; then
             echo '无法保存看板地址：docker.md 是目录。' >&2
             exit 1
@@ -90,17 +121,19 @@ for attempt in {1..60}; do
             echo '无法创建看板地址临时文件，保留原有 docker.md。' >&2
             exit 1
         fi
-        if ! printf '本地看板：\n127.0.0.1:%s\n' "$dashboard_port" > "$address_file" \
+        if ! printf '本地看板：\n127.0.0.1:%s\n' "$actual_port" > "$address_file" \
             || ! mv -f "$address_file" docker.md; then
             rm -f "$address_file"
             echo '无法保存看板地址，保留原有 docker.md。' >&2
             exit 1
         fi
-        printf '本地看板：%s\n容器名称：%s\n' "$dashboard_url" "$container_name"
+        test -s docker.md
+        [[ "$(sed -n '2p' docker.md)" == "127.0.0.1:$actual_port" ]]
+        printf '本地看板：%s\n容器名称：%s\n地址记录：%s/docker.md\n' "$dashboard_url" "$container_name" "$PWD"
         exit 0
     fi
     sleep 1
 done
-docker logs "$container_name" >&2
-echo "看板未就绪，请检查容器 $container_name 的日志。" >&2
+diagnose
+echo "看板未就绪（已等待 360 次检查），保留原有 docker.md。" >&2
 exit 1

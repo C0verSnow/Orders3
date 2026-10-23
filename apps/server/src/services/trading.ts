@@ -7,11 +7,11 @@ import { object, text } from '../exchange/http.ts';
 import { syncEntries } from './entry-history.ts';
 import { AppError, safeError } from '../utils/errors.ts';
 
-export type TradingAuthorization = { kind: 'manual' } | { kind: 'scheduled'; runId: string; assertAllowed: () => void };
+export type TradingAuthorization = { kind: 'manual' } | { kind: 'maintenance'; runId: string; assertAllowed: () => void } | { kind: 'scheduled'; runId: string; assertAllowed: () => void };
 function checkAuthorization(storage: Storage, authorization?: TradingAuthorization) {
   if (!authorization) throw new AppError('缺少开仓授权', 403);
   if (authorization.kind === 'manual') return;
-  if (authorization.kind !== 'scheduled' || storage.run(authorization.runId)?.state !== 'running') throw new AppError('自动开仓执行记录无效', 403);
+  if (!['scheduled', 'maintenance'].includes(authorization.kind) || storage.run(authorization.runId)?.task !== (authorization.kind === 'maintenance' ? 'maintenance' : 'opening') || storage.run(authorization.runId)?.state !== 'running') throw new AppError('自动开仓执行记录无效', 403);
   authorization.assertAllowed();
 }
 interface Desired { contract: string; amount: string; activation_price: string }
@@ -30,7 +30,7 @@ export function matchOrders(desired: Desired[], trailing: TrailOrder[], reduceOn
   }
   return { retained, candidates, results };
 }
-async function writeExchange(gate: Gate, storage: Storage, operation: 'stop' | 'create', body: string, onSuccess: (data: Record<string, unknown>) => void, authorization: TradingAuthorization) {
+export async function writeExchange(gate: Gate, storage: Storage, operation: 'stop' | 'create', body: string, onSuccess: (data: Record<string, unknown>) => void, authorization: TradingAuthorization) {
   checkAuthorization(storage, authorization);
   if (storage.intents().length) throw new AppError('存在结果未知的交易，已禁止自动重试。请先核对 Gate 并在运行状态中处理', 409);
   const requestId = `t-${randomUUID().replaceAll('-', '').slice(0, 28)}`;
