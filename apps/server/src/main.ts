@@ -27,6 +27,7 @@ async function main() {
   if (values.desktop) throw new AppError('请使用桌面发行包启动内嵌窗口；服务端可用 --browser 打开浏览器');
   if (positionals.length > 1 || (values.list && values['fetch-only']) || (values.cached && (values.list || values['fetch-only']))) throw new AppError('启动参数冲突');
   const config = new Configuration();
+  const container = existsSync('/.dockerenv') || existsSync('/run/.containerenv');
   if (positionals.length) {
     if (!['.db', '.sqlite', '.sqlite3'].includes(extname(positionals[0]).toLowerCase())) throw new AppError('位置参数只能是 SQLite 数据库文件');
     config.databasePath = resolve(positionals[0]);
@@ -34,8 +35,8 @@ async function main() {
   const directory = dirname(config.databasePath); mkdirSync(directory, { recursive: true, mode: 0o700 });
   // One service per data directory protects quota, logs, and trading across processes.
   startupStage = 'process-lock';
-  console.log('检查数据目录进程锁；异常退出遗留锁最多等待约 5 分钟，不会强删活动锁');
-  const release = await lockfile.lock(directory, { lockfilePath: resolve(directory, '.orders-process.lock'), stale: 300000, update: 5000, retries: { retries: 65, minTimeout: 5000, maxTimeout: 5000, factor: 1 } });
+  if (container) console.log('检查数据目录进程锁；异常退出遗留锁最多等待约 5 分钟，不会强删活动锁');
+  const release = await lockfile.lock(directory, { lockfilePath: resolve(directory, '.orders-process.lock'), stale: 300000, update: 5000, retries: container ? { retries: 65, minTimeout: 5000, maxTimeout: 5000, factor: 1 } : 0 });
   let storage: Storage | undefined;
   let stopped = false;
   try {
@@ -49,7 +50,6 @@ async function main() {
       finally { credentials.stop(); http.controller.abort(); }
       console.log('已保存数据'); return;
     }
-    const container = existsSync('/.dockerenv') || existsSync('/run/.containerenv');
     const host = values.host || process.env.ORDERS_HOST || (container ? '0.0.0.0' : '127.0.0.1');
     const portText = values.port ?? process.env.ORDERS_PORT ?? (container ? '8090' : '0');
     if (!/^\d+$/.test(portText) || Number(portText) > 65535) throw new AppError('端口必须为 0 至 65535');

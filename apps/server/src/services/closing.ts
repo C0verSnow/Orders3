@@ -43,9 +43,11 @@ export async function closeOrders(gate: Gate, storage: Storage, authorization: A
   }
   for (const id of stops) if (!/^[1-9]\d*$/.test(id) || BigInt(id) > 9223372036854775807n) throw new AppError('旧平仓订单 ID 无效');
   if ((stops.size || candidates.length) && storage.intents().length) throw new AppError('存在结果未知的交易，平仓维护已暂停，请先核对 Gate', 409);
+  let failedContract = '', operation = '';
   try {
     for (const id of stops) {
       const index = trailing.findIndex(row => row.id === id), row = trailing[index];
+      failedContract = row.contract; operation = 'stop';
       const liveOrder = (await gate.trailing()).find(order => order.id === id);
       if (!liveOrder || liveOrder.original_status !== 1) throw new AppError('旧平仓单状态已变化，保留并暂停本轮调整');
       await writeExchange(gate, storage, 'stop', `{"id":${id}}`, () => {
@@ -54,6 +56,7 @@ export async function closeOrders(gate: Gate, storage: Storage, authorization: A
       results.push({ action: 'stopped', contract: row.contract, id });
     }
     for (const target of candidates) {
+      failedContract = target.contract; operation = 'create';
       // Re-read immediately before writing. A partial close or concurrent entry
       // invalidates this round's quantity and target; let the next poll recalculate.
       const live = (await gate.positions()).find(row => row.contract === target.contract && decimal(row.size).isNegative() !== decimal(target.amount).isNegative());
@@ -71,6 +74,6 @@ export async function closeOrders(gate: Gate, storage: Storage, authorization: A
       }, authorization);
       results.push({ action: 'created', contract: target.contract, id: exchangeId });
     }
-  } catch (error) { results.push({ action: 'failed', contract: '', error: safeError(error) }); }
+  } catch (error) { results.push({ action: 'failed', contract: failedContract, operation, error: safeError(error) }); }
   return results;
 }
