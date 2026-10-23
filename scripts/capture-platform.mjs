@@ -11,11 +11,19 @@ const platform = process.argv[2];
 assert.ok(['windows','docker'].includes(platform));
 const out = resolve(`tests/artifacts/platform-${platform}`);
 mkdirSync(out,{recursive:true});
-const fontURL='https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/Variable/TTF/Subset/NotoSansSC-VF.ttf';
-const fontResponse=await fetch(fontURL);assert.ok(fontResponse.ok);
-const font=Buffer.from(await fontResponse.arrayBuffer());
+// Static font faces avoid platform-dependent named-instance selection in the
+// variable font (Windows selected Medium while Linux selected Thin).
+const fontBase='https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/SubsetOTF/SC/';
+const fonts=await Promise.all([[400,'Regular'],[500,'Medium'],[700,'Bold']].map(async ([weight,name])=>{
+  const url=`${fontBase}NotoSansSC-${name}.otf`;
+  const response=await fetch(url);assert.ok(response.ok,`font download failed: ${name}`);
+  const bytes=Buffer.from(await response.arrayBuffer());
+  return {weight,url,bytes,sha256:createHash('sha256').update(bytes).digest('hex')};
+}));
+const fontCSS=fonts.map(font=>`@font-face { font-family: CIVisual; src: url('/__ci_font-${font.weight}.otf') format('opentype'); font-weight: ${font.weight}; font-style: normal; }`).join('\n')+
+  ' *, *::before, *::after { font-family: CIVisual !important; font-synthesis: none !important; }';
 const base='http://127.0.0.1:18093';
-const manifest={platform,commit:process.env.GITHUB_SHA,fontURL,fontSHA256:createHash('sha256').update(font).digest('hex'),browser:null,deviceScaleFactor:1,timezone:'UTC',renderedFonts:[],cases:[]};
+const manifest={platform,commit:process.env.GITHUB_SHA,fonts:fonts.map(({weight,url,sha256})=>({weight,url,sha256})),browser:null,deviceScaleFactor:1,timezone:'UTC',renderedFonts:[],cases:[]};
 const browser=await chromium.launch({args:['--disable-lcd-text','--font-render-hinting=none','--disable-font-subpixel-positioning']});
 manifest.browser=browser.version();
 try {
@@ -42,11 +50,15 @@ try {
         const page=await browser.newPage({viewport:{width,height:1000},deviceScaleFactor:1,reducedMotion:'reduce',timezoneId:'UTC',locale:'en-US',bypassCSP:true});
         await page.addInitScript(({language,theme})=>{localStorage.setItem('orders-language',language);localStorage.setItem('orders-theme',theme);},{language,theme});
         // Serve identical font bytes locally; external dependencies never reach the application.
-        await page.route('**/__ci_font.ttf',route=>route.fulfill({contentType:'font/ttf',body:font}));
+        await page.route('**/__ci_font-*.otf',route=>{
+          const font=fonts.find(font=>new URL(route.request().url()).pathname===`/__ci_font-${font.weight}.otf`);
+          assert.ok(font,'only serve declared static font weights');
+          return route.fulfill({contentType:'font/otf',body:font.bytes});
+        });
         const documentResponse = await page.goto(`${base}/`);
         assert.equal(documentResponse.status(),200,'actual artifact serves the trusted browser origin');
         await page.getByRole('heading',{name:language==='zh'?'交易概览':'Overview',exact:true}).waitFor();
-        await page.addStyleTag({content:"@font-face { font-family: CIVisual; src: url('/__ci_font.ttf'); font-weight: 100 900; } *, *::before, *::after { font-family: CIVisual !important; }"});
+        await page.addStyleTag({content:fontCSS});
         await page.evaluate(()=>document.fonts.ready);
         if(width<=768) await page.getByRole('button',{name:language==='zh'?'打开导航':'Open navigation',exact:true}).click();
         await page.getByRole('button',{name:language==='zh'?'预测订单':'Predicted orders',exact:true}).click();

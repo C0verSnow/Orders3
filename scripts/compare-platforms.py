@@ -15,7 +15,7 @@ report = {'channel_tolerance': CHANNEL_TOLERANCE, 'max_difference_ratio': MAX_DI
 try:
     a = json.loads((windows / 'manifest.json').read_text())
     b = json.loads((linux / 'manifest.json').read_text())
-    for key in ['commit', 'browser', 'fontSHA256', 'deviceScaleFactor', 'timezone']:
+    for key in ['commit', 'browser', 'fonts', 'deviceScaleFactor', 'timezone']:
         assert a[key] == b[key], f'{key} differs: {a[key]} / {b[key]}'
     assert len(a['cases']) == len(b['cases']) == 96
     assert [case['id'] for case in a['cases']] == [case['id'] for case in b['cases']]
