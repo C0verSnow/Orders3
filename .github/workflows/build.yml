@@ -288,7 +288,7 @@ jobs:
           if-no-files-found: error
 
   visual-comparison:
-    if: inputs.run_visual_checks
+    if: ${{ !cancelled() && needs.packages.result == 'success' && needs['container-build'].result == 'success' }}
     name: Windows EXE vs Linux Docker pixels
     needs: [packages, container-build]
     runs-on: ubuntu-24.04
@@ -361,7 +361,7 @@ jobs:
 
   release:
     needs: [publication, checks, packages, container]
-    if: needs.publication.outputs.enabled == 'true'
+    if: ${{ !cancelled() && needs.publication.outputs.enabled == 'true' && needs.checks.result == 'success' && needs.packages.result == 'success' && needs.container.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions: { contents: write }
     steps:
@@ -396,7 +396,7 @@ jobs:
   deploy:
     name: Deploy default branch over Tailscale and SSH
     needs: [container, release]
-    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.container.result == 'success' && needs.release.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     concurrency: { group: deploy-production, cancel-in-progress: false }
