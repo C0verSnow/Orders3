@@ -14,16 +14,16 @@ mkdirSync(out,{recursive:true});
 // Static font faces avoid platform-dependent named-instance selection in the
 // variable font (Windows selected Medium while Linux selected Thin).
 const fontBase='https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/SubsetOTF/SC/';
-const fonts=await Promise.all([[400,'Regular'],[500,'Medium'],[700,'Bold']].map(async ([weight,name])=>{
+const fontFaces=await Promise.all([[400,'Regular'],[500,'Medium'],[700,'Bold']].map(async ([weight,name])=>{
   const url=`${fontBase}NotoSansSC-${name}.otf`;
   const response=await fetch(url);assert.ok(response.ok,`font download failed: ${name}`);
   const bytes=Buffer.from(await response.arrayBuffer());
   return {weight,url,bytes,sha256:createHash('sha256').update(bytes).digest('hex')};
 }));
-const fontCSS=fonts.map(font=>`@font-face { font-family: CIVisual; src: url('/__ci_font-${font.weight}.otf') format('opentype'); font-weight: ${font.weight}; font-style: normal; }`).join('\n')+
+const fontCSS=fontFaces.map(font=>`@font-face { font-family: CIVisual; src: url('/__ci_font-${font.weight}.otf') format('opentype'); font-weight: ${font.weight}; font-style: normal; }`).join('\n')+
   ' *, *::before, *::after { font-family: CIVisual !important; font-synthesis: none !important; }';
 const base='http://127.0.0.1:18093';
-const manifest={platform,commit:process.env.GITHUB_SHA,fonts:fonts.map(({weight,url,sha256})=>({weight,url,sha256})),browser:null,deviceScaleFactor:1,timezone:'UTC',renderedFonts:[],cases:[]};
+const manifest={platform,commit:process.env.GITHUB_SHA,fonts:fontFaces.map(({weight,url,sha256})=>({weight,url,sha256})),browser:null,deviceScaleFactor:1,timezone:'UTC',renderedFonts:[],cases:[]};
 const browser=await chromium.launch({args:['--disable-lcd-text','--font-render-hinting=none','--disable-font-subpixel-positioning']});
 manifest.browser=browser.version();
 try {
@@ -51,7 +51,7 @@ try {
         await page.addInitScript(({language,theme})=>{localStorage.setItem('orders-language',language);localStorage.setItem('orders-theme',theme);},{language,theme});
         // Serve identical font bytes locally; external dependencies never reach the application.
         await page.route('**/__ci_font-*.otf',route=>{
-          const font=fonts.find(font=>new URL(route.request().url()).pathname===`/__ci_font-${font.weight}.otf`);
+          const font=fontFaces.find(font=>new URL(route.request().url()).pathname===`/__ci_font-${font.weight}.otf`);
           assert.ok(font,'only serve declared static font weights');
           return route.fulfill({contentType:'font/otf',body:font.bytes});
         });
