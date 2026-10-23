@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      run_visual_checks:
+        description: Run optional EXE/Docker screenshot, font and pixel diagnostics
+        type: boolean
+        default: false
       publish_preview:
         description: Publish a verified prerelease for this exact branch SHA
         type: boolean
@@ -77,7 +81,7 @@ jobs:
           ORDERS_VERSION: ci-${{ github.run_id }}
           ORDERS_COMMIT: ${{ github.sha }}
       - run: node scripts/smoke-runtime.mjs
-      - name: Browser checks at desktop, tablet and phone sizes
+      - name: Desktop browser checks and targeted phone refresh regression
         run: |
           npx playwright install --with-deps chromium
           sudo apt-get install -y fonts-noto-cjk
@@ -126,16 +130,30 @@ jobs:
           if (-not $tool) { throw 'Windows SDK signtool not found' }
           "SIGNTOOL=$($tool.FullName)" >> $env:GITHUB_ENV
       - run: npm run package:exe
+      - run: node scripts/package-desktop.mjs
       - name: Run the standalone Windows exe outside checkout
         if: matrix.os == 'windows'
         shell: pwsh
         run: |
           $target = Join-Path $env:RUNNER_TEMP "orders-windows-x64_v-$($env:FILE_VERSION).exe"
-          Copy-Item dist/orders-win32-x64.exe $target
-          node scripts/smoke-runtime.mjs $target
+          Copy-Item dist/desktop-release/orders-windows-x64.exe $target
+          node scripts/smoke-runtime.mjs (Resolve-Path dist/orders-win32-x64.exe)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/check-desktop.mjs $target
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Directory -Force dist/release | Out-Null
           Copy-Item $target dist/release/
+      - name: Capture actual Windows EXE browser
+        if: inputs.run_visual_checks && matrix.os == 'windows'
+        run: |
+          npx playwright install chromium
+          node scripts/capture-platform.mjs windows
+      - uses: actions/upload-artifact@v7.0.1
+        if: always() && inputs.run_visual_checks && matrix.os == 'windows'
+        with:
+          name: platform-windows
+          path: tests/artifacts/platform-windows/
+          if-no-files-found: error
       - name: Build, install and run the actual Debian package
         if: matrix.os == 'linux'
         env:
@@ -143,12 +161,20 @@ jobs:
           VERSION: ${{ needs.publication.outputs.version }}
         run: |
           set -euo pipefail
-          bash scripts/package-deb.sh "$ARCH" "$VERSION"
+          test -s "dist/desktop-release/orders3_${FILE_VERSION}_${ARCH}.deb"
           mkdir -p dist/release
           asset="dist/release/orders3_v-${FILE_VERSION}_${ARCH}.deb"
-          cp "dist/orders3_${VERSION}_${ARCH}.deb" "$asset"
-          sudo dpkg -i "$asset"
+          cp "dist/desktop-release/orders3_${FILE_VERSION}_${ARCH}.deb" "$asset"
+          sudo apt-get update
+          sudo apt-get install -y xvfb "$PWD/$asset"
           node scripts/smoke-runtime.mjs /usr/bin/orders3
+          xvfb-run -a node scripts/check-desktop.mjs /usr/bin/orders3
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: desktop-evidence-${{ matrix.os }}-${{ matrix.arch }}
+          path: tests/artifacts/desktop/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: orders-${{ matrix.os }}-${{ matrix.arch }}
@@ -157,7 +183,7 @@ jobs:
 
   container-build:
     name: Native ${{ matrix.arch }} container
-    needs: [checks, packages, publication]
+    needs: [publication]
     strategy:
       fail-fast: false
       matrix:
@@ -198,20 +224,35 @@ jobs:
         run: |
           set -euo pipefail
           test "$(docker image inspect orders-dashboard:ci --format '{{.Architecture}}')" = "$EXPECTED_ARCH"
-          docker run -d --name orders-ci -p 127.0.0.1:8090:8090 -e ORDERS_ACCESS_TOKEN=ci-container-token-with-at-least-32-chars orders-dashboard:ci --cached
+          docker run -d --name orders-ci -p 127.0.0.1:8090:8090 orders-dashboard:ci --cached
           trap 'docker logs orders-ci; docker rm -f orders-ci' EXIT
           for attempt in {1..60}; do
             curl -fsS http://127.0.0.1:8090/health && break || sleep 1
           done
           curl -fsS http://127.0.0.1:8090/health
           curl -fsS http://127.0.0.1:8090/ | grep -q '<html'
-          curl -fsS -H 'Authorization: Bearer ci-container-token-with-at-least-32-chars' http://127.0.0.1:8090/api/data
+          curl -fsS http://127.0.0.1:8090/api/data
           docker rm -f orders-ci
           trap - EXIT
           export ORDERS_IMAGE=orders-dashboard:ci ORDERS_PULL_POLICY=never ORDERS_CONTAINER_NAME=orders-ci-random
           trap 'docker logs orders-ci-random; docker rm -f orders-ci-random' EXIT
           bash start-docker.sh --cached
           test -s docker.md
+      - uses: actions/setup-node@v6
+        if: inputs.run_visual_checks && matrix.arch == 'amd64'
+        with: { node-version: '24.22.0', cache: npm }
+      - name: Capture actual Linux Docker browser
+        if: inputs.run_visual_checks && matrix.arch == 'amd64'
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          node scripts/capture-platform.mjs docker
+      - uses: actions/upload-artifact@v7.0.1
+        if: always() && inputs.run_visual_checks && matrix.arch == 'amd64'
+        with:
+          name: platform-docker
+          path: tests/artifacts/platform-docker/
+          if-no-files-found: error
       - uses: docker/login-action@v4.6.0
         if: needs.publication.outputs.enabled == 'true'
         with:
@@ -246,9 +287,37 @@ jobs:
           path: digests/*
           if-no-files-found: error
 
+  visual-comparison:
+    if: inputs.run_visual_checks
+    name: Windows EXE vs Linux Docker pixels
+    needs: [packages, container-build]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/download-artifact@v8.0.1
+        with: { pattern: platform-*, path: tests/artifacts/ }
+      - uses: actions/setup-python@v6
+        with: { python-version: '3.12' }
+      - run: python -m pip install Pillow==11.3.0
+      - run: python scripts/compare-platforms.py
+      - name: Add visual report to run summary
+        if: always()
+        run: cat tests/artifacts/platform-diff/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: platform-visual-comparison
+          path: tests/artifacts/platform-diff/
+          if-no-files-found: error
+
   container:
-    needs: [publication, container-build]
-    if: needs.publication.outputs.enabled == 'true'
+    needs: [publication, checks, packages, container-build, visual-comparison]
+    if: >-
+      !cancelled() && needs.publication.outputs.enabled == 'true' &&
+      needs.checks.result == 'success' && needs.packages.result == 'success' &&
+      needs['container-build'].result == 'success' &&
+      (needs['visual-comparison'].result == 'success' || needs['visual-comparison'].result == 'skipped')
     runs-on: ubuntu-24.04
     permissions: { contents: read, packages: write }
     outputs:

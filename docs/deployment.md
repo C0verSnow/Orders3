@@ -2,9 +2,9 @@
 
 ## 版本与产物
 
-远端 Build and release 先执行静态、类型、业务、安全、既有宿主机脚本和浏览器回归；原生 Windows / Linux AMD64 / ARM64 Runner 各自构建 Node SEA。Windows 去掉原 Node 签名后注入单文件 exe；Linux 制作 deb、dpkg 安装后实际启动 `/usr/bin/orders3`。未配置发布代码签名证书，Windows 下载可能显示未识别发布者；不要伪称已签名。
+远端 Build and release 先执行静态、类型、业务、安全、既有宿主机脚本和浏览器回归；原生 Windows / Linux AMD64 / ARM64 Runner 各自构建 Node SEA。Windows 去掉原 Node 签名后注入服务 exe，再与 Electron 45 打包为便携 EXE；Linux 制作包含窗口和服务的 deb，安装后分别验证无图形 CLI 与真实内嵌窗口。CI 在 Windows 图形会话及 Linux Xvfb 中启动实际发行包、检查页面、关窗和重启。未配置发布代码签名证书，Windows 下载可能显示未识别发布者；不要伪称已签名。
 
-两个原生 Linux Runner 分别构建和启动 Docker 镜像，验证架构、React 页面、认证 API、随机端口启动脚本，成功后按 digest 推送，最终合并双架构 manifest。没有 QEMU 或旧 Qt 构建。所有步骤必须通过才创建 Release。
+两个原生 Linux Runner 分别构建和启动 Docker 镜像，验证架构、React 页面、免登录 API、随机端口启动脚本，成功后按 digest 推送，最终合并双架构 manifest。没有 QEMU 或旧 Qt 构建。所有步骤必须通过才创建 Release。
 
 触发方式：`v1.2.3` 标签正式发布；默认分支 main 自动生成预发布；feature 分支手动 workflow_dispatch 的 publish_preview=true 生成预发布，不更新 latest、不部署。预发布 tag 为 `build-运行ID-重跑次数`，deb 使用有效 Debian 版本 `1.0.0+build.ID.attempt`，tag 源提交为同一个 GITHUB_SHA。exe `--version`、OCI revision、Release 说明和 container-image_v-1.0.0.txt 均记录该提交。
 
@@ -14,9 +14,9 @@ Release 资产：`orders-windows-x64_v-1.0.0.exe`、`orders3_v-1.0.0_amd64.deb`�
 
 ## 运行
 
-生产容器默认 UID/GID 1000，`/data` 为持久卷。升级旧 root 卷前先备份，停服务并修正权限；不会自动 chmod 全盘或删除旧库。不要给容器挂 Docker socket。默认映射回环端口，公开访问需 TLS 反向代理和强登录令牌；允许 Origin 必须与浏览器地址及保留的 Host 一致。
+生产容器默认 UID/GID 1000，`/data` 为持久卷。升级旧 root 卷前先备份，停服务并修正权限；不会自动 chmod 全盘或删除旧库。不要给容器挂 Docker socket。默认映射回环端口，公开访问需由 TLS 反向代理限制访问；允许 Origin 必须与浏览器地址及保留的 Host 一致。
 
-`ORDERS_ACCESS_TOKEN` 是工作台登录凭证，至少 32 个无空格字符，不是 Gate API Key。启动前注入即可；不设置时每次启动自动生成并在私有控制台日志显示。不要放进前端构建变量、URL 查询或 CI artifact。自动浏览器使用 fragment 登录后马上清除；页面不持久化令牌。
+按 issue #39 移除工作台令牌认证。`ORDERS_ACCESS_TOKEN` 已失效，不再生成、打印或传递令牌；直接进入工作台。Host/Origin 校验继续保留，但不验证用户身份。部署方如需远程访问限制，应在反向代理或网络层设置。
 
 `--cached` 仍启用周期任务；自动开仓由独立的 `[opening] enabled=true` 授权，默认关闭；`[schedule]` 仅管理预测抓取。首次升级先检查这两项配置。每分钟持仓和订单同步与来源开关独立，仅读取 Gate 数据。自动保护单功能已取消，已有保护单由用户自行管理。
 

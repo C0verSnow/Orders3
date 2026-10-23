@@ -2,7 +2,7 @@
 
 React + TypeScript 交易工作台，Node.js + TypeScript 负责真实 Supabase / Gate 业务、SQLite、签名、定时任务和凭证管理。当前运行与构建不依赖 C++、Qt、WebEngine 或 QWebChannel。
 
-前端使用 React 19、TypeScript、Vite、Tailwind CSS 4 和 TanStack Query/Table。界面全部使用 Tailwind 工具类，共用 Button/Input/Select/Panel/Badge 组件；旧手写 CSS 已移除。样式入口包含 Tailwind 导入、深色模式变体、字体/断点配置，以及浏览器圆形揭示过渡的伪元素与关键帧规则。数字与列表过渡使用浏览器 Web Animations API，支持系统减少动态效果设置，不改变交易数据与后端逻辑。
+前端使用 React 19、TypeScript、Vite、Tailwind CSS 4 和 TanStack Query/Table。界面使用 Tailwind 工具类，共用 Button/Input/Select/Panel/Badge 组件；共享动效、设置卡片及渐隐样式集中在 tailwind.css。样式入口还包含深色模式、字体/断点及浏览器圆形揭示规则。数字与列表过渡使用浏览器 Web Animations API，支持系统减少动态效果设置，不改变交易数据与后端逻辑。
 
 **仓库约定：不进行本地编译验证。** 代理修改时只做代码阅读、静态分析和差异检查；构建、类型检查、测试和发布包启动验证交给已有远端 Actions。未执行的检查不算通过。
 
@@ -12,8 +12,8 @@ React + TypeScript 交易工作台，Node.js + TypeScript 负责真实 Supabase 
 
 Release 附件统一带 `v-版本`，以下 `1.0.0` 为示例，请替换成实际下载版本。自动预发布使用 `1.0.0-build.运行ID.重试号`，旧 Release 附件不会自动改名。
 
-- Windows x64：下载 Release 的 `orders-windows-x64_v-1.0.0.exe`，双击或从终端运行。程序打开系统浏览器，不再提供 Qt 窗口。exe 包含 Node 和 React 资源，无需另装 Node。
-- Linux AMD64 / ARM64：下载对应 `.deb`，执行 `sudo dpkg -i orders3_v-版本_架构.deb`，再运行 `orders3`。
+- Windows x64：下载 Release 的 `orders-windows-x64_v-1.0.0.exe`，双击或从终端运行。程序直接打开独立 Electron 工作台窗口；便携 exe 内含窗口运行时、Node 服务和 React 资源，无需另装 Node。
+- Linux AMD64 / ARM64：下载对应 `.deb`，执行 `sudo dpkg -i orders3_v-版本_架构.deb`，再运行 `orders3` 打开内嵌窗口；`orders3 --no-browser` 保留无图形服务模式。安装器会安装 GTK/NSS 等系统依赖。
 - 容器：镜像位于 [GHCR Packages](https://github.com/C0verSnow/Orders3/pkgs/container/orders3)，支持 `linux/amd64` 和 `linux/arm64`。发布状态与产物以 [Actions](https://github.com/C0verSnow/Orders3/actions) 和 [Releases](https://github.com/C0verSnow/Orders3/releases) 为准。
 
 ```sh
@@ -31,9 +31,9 @@ docker run -d --name orders-dashboard --restart unless-stopped \
 docker logs orders-dashboard
 ```
 
-启动日志输出工作台地址和一次生成的**登录令牌**。自动打开浏览器时通过 URL fragment 传入令牌，登录后立即清除 fragment；手动访问时输入日志中的令牌。令牌不保存在浏览器存储，服务端签发 8 小时 HttpOnly / SameSite=Strict 会话。也可启动前设置至少 32 位的 `ORDERS_ACCESS_TOKEN`；该固定令牌不打印。重启后旧会话失效。不要将启动日志公开分享。
+直接进入工作台，无需登录令牌。已删除令牌输入、URL 令牌传递、会话 Cookie 和 `/api/session`；旧 `ORDERS_ACCESS_TOKEN` 不再生效。所有能连接服务的人都能访问工作台和业务 API；保留 Host/Origin 校验及写操作来源要求。默认仅监听回环地址，远程访问应由部署方在反向代理限制访问。
 
-默认宿主机只监听 `127.0.0.1`，端口 0 自动分配；容器默认 `0.0.0.0:8090`。`--cached` 只跳过启动抓取，已启用的预测抓取、自动开仓与每分钟持仓同步仍运行。`--list` 仅读取 Gate 列表，不下单。`--fetch-only` 只抓取并保存预测订单，不执行开仓。`--desktop` 已移除，使用 `--browser`。
+默认宿主机只监听 `127.0.0.1`，端口 0 自动分配；容器默认 `0.0.0.0:8090`。`--cached` 只跳过启动抓取，已启用的预测抓取、自动开仓与每分钟持仓同步仍运行。`--list` 仅读取 Gate 列表，不下单。`--fetch-only` 只抓取并保存预测订单，不执行开仓。桌面发行包默认内嵌窗口，也接受 `--desktop`；窗口关闭会停止其唯一后台服务。`--no-browser` 使用无窗口服务，`--browser` 保留显式系统浏览器模式。源码 / Docker 只运行服务，不包含 Electron。
 
 ## 配置与旧数据迁移
 
@@ -77,17 +77,17 @@ ORDERS_ALLOWED_ORIGIN=http://127.0.0.1:5173 ORDERS_PORT=8090 npm run dev:server
 npm run dev
 ```
 
-Vite 默认代理 `/api` 到 8090；开发环境打开启动页后输入服务端登录令牌。独立前端部署推荐反向代理相同 Origin 的 `/api`，配置 `ORDERS_ALLOWED_ORIGIN` 为外部来源，保留原 Host；远程访问使用 TLS 或 SSH 隧道。
+Vite 默认代理 `/api` 到 8090；开发环境直接打开启动页，无需服务端登录令牌。独立前端部署推荐反向代理相同 Origin 的 `/api`，配置 `ORDERS_ALLOWED_ORIGIN` 为外部来源，保留原 Host；远程访问使用 TLS 或 SSH 隧道。
 
 以下由**远端 CI**执行，代理不得在本地运行构建/类型检查：`npm run typecheck`、`npm test`、`npm run build`、`npm run package:exe`、`npm run package:deb`。`npm run check` 只解析语法和检查架构，不发出或编译代码。
 
-Actions 验证精度、历史、匹配、未知交易、旧库、事务预算、配置脱敏、会话与 Origin；构建 React 后检查 1920/1440/1280/1024/768/390 六种宽度，双主题、登录、设置和页面溢出，并上传截图。Windows 与 Linux 两架构原生 Runner 制作、安装/启动真实 exe/deb，容器两架构分别启动后才合并 manifest。CI 不连接真实账户或下真实订单。
+Actions 验证精度、历史、匹配、未知交易、旧库、事务预算、配置脱敏、免登录访问与 Origin；构建 React 后检查 1920/1440/1280 三种桌面宽度，双主题、直接访问、设置和页面溢出，并上传截图。Windows 与 Linux 两架构原生 Runner 制作、安装/启动真实 exe/deb，容器两架构分别启动后才合并 manifest。CI 不连接真实账户或下真实订单。
 
 正式 `v*` 标签与默认分支 main 自动发布；手动运行工作流并勾选 `publish_preview` 可为 feature 分支当前 SHA 发布预发布版本，不更新 latest 或部署生产。Release 包含 exe、两种 deb、SHA256SUMS、源提交与容器 digest。默认分支的 Tailscale/SSH 自动部署使用本次验证的不可变 digest。工作流读取 GitHub 默认分支，后续改名不用再改发布条件。详情见 [部署说明](docs/deployment.md)。
 
 ## 宿主机 Docker 自动更新
 
-macOS/Linux 宿主机仍可运行 `bash start-docker.sh --cached`；它先拉取镜像，再替换旧容器，保留命名卷，自动映射回环随机端口，成功后写两行 `docker.md`。使用 `docker logs 容器名称` 读取登录令牌。旧卷若属于 root，升级前将卷内数据属主改为镜像 node 用户（UID/GID 1000），或明确配置合适的运行用户；新镜像默认非 root。
+macOS/Linux 宿主机仍可运行 `bash start-docker.sh --cached`；它先拉取镜像，再替换旧容器，保留命名卷，自动映射回环随机端口，成功后写两行 `docker.md`。使用 `docker logs 容器名称` 查看服务状态。旧卷若属于 root，升级前将卷内数据属主改为镜像 node 用户（UID/GID 1000），或明确配置合适的运行用户；新镜像默认非 root。
 
 远程使用 SSH 隧道，例如 `ssh -N -L 8090:127.0.0.1:服务器随机端口 用户@服务器`，浏览器访问本机 8090。此时需将服务端允许来源设为实际浏览器 Origin，并保留与之匹配的 Host；随机端口变化时更新隧道。首次可让本机隧道端口与服务器随机端口一致，使用默认来源校验。
 
@@ -112,3 +112,26 @@ cron = */15 * * * *
 界面使用统一四字名称和 SVG O 标志。右上角提供一个明暗主题切换按钮及 ZH / EN 语言切换；浅色、深色、跟随系统三项选择位于系统设置的外观主题中；下载数据库位于左侧导航底部。主题与中英文双向切换采用以实际点击按钮中心为原点的 600ms 圆形揭示，语言选择保存在当前浏览器；切换不重置搜索、分页或未保存的设置草稿。支持国际化的界面文案与已知服务端提示会翻译，原始来源记录、技术字段、第三方原始错误及交易数据保留原值。浏览器不支持 View Transitions 或系统要求减少动态效果时直接切换。数字/文字过渡为 850/550ms，行进入退出为 750ms、进入间隔 90ms；滚动边缘按行位置连续淡出，表头和详情按钮保持可见。系统减少动态效果时关闭非必要动画。
 
 手动交易保留在“预测订单 → 手动开仓”，先刷新并核对有效预测数据，再单独确认真实交易。该入口独立于自动任务开关；关闭自动开仓不禁止经确认的手动交易。刷新按钮本身始终只读。
+
+
+## Issue #36：设置导航与按钮反馈
+
+系统设置首页仅展示四张等高横向卡片：外观设置、连接与存储、预测抓取、自动开仓。点击卡片进入对应表单，使用“返回设置”回到概览。中英文同步；切换模块和语言保留未保存草稿，成功保存后按服务端结果更新。原有凭证清除、重启提示和独立自动开仓授权均保留。
+
+操作按钮统一采用 180ms 悬停上移 2px、按压缩放至 94% 的动效。异步操作在按钮内显示加载、成功或失败状态；保存按钮反馈 1.8 秒后恢复，刷新按钮成功 900ms、失败 1800ms 后恢复。刷新反馈只属于实际点击的按钮，切页不重播已过期的结果，旧计时器不影响新请求；保留可访问错误原因，禁用时阻止重复提交。预留各状态及中英文尺寸，避免标签切换推动相邻元素；减少动态效果时关闭位移。持仓页使用全局“统一刷新”及既有后台同步，移除多余同步按钮。
+
+可选远端视觉验收分别启动真实 Windows EXE 与 Linux Docker，固定 Chromium、字体、数据、UTC、缩放和桌面视口（1440/1280px），捕获 96 个场景，比较全表视口和底部 48px 两个区域。精确像素差异和预设容差结果分别报告：单通道差异超过 32/255 的像素不得超过比较区域的 2%。Artifacts 中的 `platform-windows`、`platform-docker` 保存原图与环境清单，`platform-visual-comparison` 保存差异 PNG、JSON 和 Markdown 报告。运行状态见 [PR #37](https://github.com/C0verSnow/Orders3/pull/37/checks)，尚未完成的运行不代表已验证。
+
+用户于 2026-10-20 要求跳过手机和平板检查。常规 CI 仅验收桌面（1920/1440/1280px）；按 PR #37 最新评论，另加 1440px/390px 明暗主题刷新专项回归。专项通过不代表完整移动端已验收，平板及跨平台截图/字体/像素检查仍跳过。
+
+按用户后续要求，跨平台截图、字体诊断和像素比较默认跳过。只有手动运行工作流并明确勾选 `run_visual_checks` 才执行；本次交付不把视觉一致性标记为通过。业务、桌面功能、类型、构建、安装包和容器检查继续执行。
+
+Issue #36 的保留验收项目已在[最终远端 CI](https://github.com/C0verSnow/Orders3/actions/runs/39385666385)全部通过；跨平台视觉检查按用户要求跳过，不作通过声明。具体源码行号、验证范围及历史报告见 [交付文档](docs/issue-36.md)。PR #37 保持开放，issue #36 已关闭。
+
+## Issue #39：桌面窗口与四行表格
+
+Windows x64、Linux AMD64/ARM64 桌面发行包集成 Electron 45，业务仍由原 Node SEA 服务运行。窗口禁用 Node 集成、开启上下文隔离与沙箱；等待本地服务就绪后再加载。关闭窗口通过父子进程私有管道正常停止服务；父进程退出时管道关闭也会触发清理。启动失败显示错误。
+
+预测订单、跟踪订单、当前持仓、入仓历史统一每页 4 条、64px 行高与 312px 表格视口（包含表头和横向滚动余量），不足部分保留空白。搜索和刷新使页码失效时调整到有效页；翻页不保留旧页退出行。预测页仅保留原手动开仓按钮，全局统一刷新与概览刷新来源继续可用。
+
+远端验证与具体限制见 [issue #39 说明](docs/issue-39.md)。

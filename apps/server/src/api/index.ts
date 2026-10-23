@@ -4,11 +4,11 @@ import type { Dashboard } from '../services/dashboard.ts';
 import type { Scheduler } from '../scheduler/index.ts';
 import type { Credentials } from '../services/credentials.ts';
 import type { RequestLog } from '../services/request-log.ts';
-import { Sessions } from '../security/session.ts';
+import { WorkspaceOrigin } from '../security/origin.ts';
 import { AppError, safeError } from '../utils/errors.ts';
 import { webAssets } from './web-assets.ts';
 
-export function createServer(dashboard: Dashboard, scheduler: Scheduler, credentials: Credentials, log: RequestLog, sessions: Sessions) {
+export function createServer(dashboard: Dashboard, scheduler: Scheduler, credentials: Credentials, log: RequestLog, workspace: WorkspaceOrigin) {
   const app = Fastify({ logger: false, bodyLimit: 32768, requestTimeout: 300000, trustProxy: false, disableRequestLogging: true });
   app.addHook('onRequest', async (request, reply) => {
     reply.header('Cache-Control', 'no-store').header('X-Content-Type-Options', 'nosniff').header('Referrer-Policy', 'no-referrer')
@@ -16,10 +16,10 @@ export function createServer(dashboard: Dashboard, scheduler: Scheduler, credent
     const path = request.url.split('?')[0];
     // A public health probe exposes no data and must also work behind a proxy.
     if (path === '/health') return;
-    // Block Host/DNS rebinding, including same-origin cookie and token bootstrap requests.
+    // Block Host/DNS rebinding, for all workspace requests.
     const host = request.headers.host;
-    const allowed = dashboard.config.environment.ORDERS_ALLOWED_ORIGIN || sessions.origin;
-    if (sessions.origin) {
+    const allowed = dashboard.config.environment.ORDERS_ALLOWED_ORIGIN || workspace.origin;
+    if (workspace.origin) {
       try {
         const expected = new URL(allowed), actual = new URL(`${expected.protocol}//${host}`);
         if (!host || actual.origin !== expected.origin || actual.username || actual.password || actual.pathname !== '/' || actual.search || actual.hash) throw new Error('invalid host');
@@ -28,9 +28,7 @@ export function createServer(dashboard: Dashboard, scheduler: Scheduler, credent
     if (!path.startsWith('/api/')) return;
     const origin = request.headers.origin;
     if (origin && origin !== allowed) throw new AppError('来源地址未获授权', 403);
-    if (request.method !== 'GET' && request.method !== 'HEAD') sessions.sameOrigin(request, dashboard.config.environment.ORDERS_ALLOWED_ORIGIN);
-    if (path === '/api/session') return;
-    if (!sessions.authenticated(request)) throw new AppError('请先使用启动时的登录令牌连接工作台', 401);
+    if (request.method !== 'GET' && request.method !== 'HEAD') workspace.sameOrigin(request, dashboard.config.environment.ORDERS_ALLOWED_ORIGIN);
   });
   app.addHook('onResponse', async (request, reply) => {
     // Never log untrusted paths which could contain a pasted token/credential.
@@ -43,9 +41,6 @@ export function createServer(dashboard: Dashboard, scheduler: Scheduler, credent
     reply.code(status).send({ error: error instanceof AppError ? error.message : status < 500 ? '请求格式或参数无效' : safeError(error) });
   });
   app.get('/health', () => ({ ok: true }));
-  app.get('/api/session', request => ({ authenticated: sessions.authenticated(request) }));
-  app.post('/api/session', (request, reply) => sessions.create(request, reply));
-  app.delete('/api/session', (request, reply) => sessions.clear(request, reply));
   app.get('/api/data', () => ({ ...dashboard.sources(), schedule: scheduler.snapshot() }));
   app.get('/api/orders', () => dashboard.orders());
   app.get('/api/activity', () => dashboard.activity.snapshot());

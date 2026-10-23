@@ -97,7 +97,6 @@ for attempt in {1..60}; do
             exit 1
         fi
         printf '本地看板：%s\n容器名称：%s\n' "$dashboard_url" "$container_name"
-        printf '登录令牌请查看：docker logs %s\n' "$container_name"
         exit 0
     fi
     sleep 1

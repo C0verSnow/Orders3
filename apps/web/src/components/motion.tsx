@@ -181,8 +181,10 @@ export function MotionList({
   items,
   as = 'tbody',
   className = '',
+  retainExiting = true,
 }: {
   items: MotionItem[];
+  retainExiting?: boolean;
   as?: 'tbody' | 'ol' | 'ul';
   className?: string;
 }) {
@@ -222,7 +224,7 @@ export function MotionList({
   const Tag = as,
     Item = as === 'tbody' ? 'tr' : 'li';
   const display = items.map((item) => ({ item, exiting: false }));
-  for (const item of [...snapshot.exiting].sort((a, b) => a.index - b.index)) {
+  for (const item of (retainExiting ? [...snapshot.exiting] : []).sort((a, b) => a.index - b.index)) {
     display.splice(Math.min(item.index, display.length), 0, { item, exiting: true });
   }
   return (
@@ -287,15 +289,18 @@ export function ScrollFade({
   label,
   table = false,
   compact = false,
+  fourRows = false,
 }: {
   children: ReactNode;
   label: string;
   table?: boolean;
   compact?: boolean;
+  fourRows?: boolean;
 }) {
   const viewport = useRef<HTMLDivElement>(null),
     content = useRef<HTMLDivElement>(null),
-    [more, setMore] = useState(false);
+    [more, setMore] = useState(false),
+    [insets, setInsets] = useState({ right: 0, bottom: 0 });
   useLayoutEffect(() => {
     const element = viewport.current!,
       body = content.current!;
@@ -304,7 +309,12 @@ export function ScrollFade({
       const remaining = element.scrollHeight - element.clientHeight - element.scrollTop;
       const more = remaining > 2;
       setMore(more);
-      const bottom = element.getBoundingClientRect().bottom;
+      // Native scrollbar dimensions vary by OS; end the fade at the actual
+      // scrollable content edge instead of assuming a fixed scrollbar width.
+      const right = element.offsetWidth - element.clientWidth;
+      const bottomInset = element.offsetHeight - element.clientHeight;
+      setInsets(previous => previous.right === right && previous.bottom === bottomInset ? previous : { right, bottom: bottomInset });
+      const bottom = element.getBoundingClientRect().top + element.clientHeight;
       for (const row of body.querySelectorAll<HTMLElement>(
         '[data-ui="row"], [data-ui="row-exit"]',
       )) {
@@ -331,7 +341,7 @@ export function ScrollFade({
       cancelAnimationFrame(frame);
     };
   }, []);
-  const height = table ? (compact ? 'h-[180px]' : 'h-[clamp(240px,48vh,560px)]') : 'max-h-[560px]';
+  const height = fourRows ? 'h-[312px]' : table ? (compact ? 'h-[180px]' : 'h-[clamp(240px,48vh,560px)]') : 'max-h-[560px]';
   return (
     <div data-ui="scroll-fade" data-more={more} className="relative isolate min-w-0">
       <div
@@ -347,7 +357,8 @@ export function ScrollFade({
       <span
         data-ui="bottom-fade"
         aria-hidden="true"
-        className={`pointer-events-none absolute right-3 bottom-0 left-0 z-20 h-12  transition-opacity duration-200 motion-reduce:transition-none  ${more ? 'opacity-100' : 'opacity-0'}`}
+        style={insets}
+        className={`pointer-events-none absolute left-0 z-20 h-12  transition-opacity duration-200 motion-reduce:transition-none  ${more ? 'opacity-100' : 'opacity-0'}`}
       />
     </div>
   );

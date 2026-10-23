@@ -1,0 +1,12 @@
+{
+  "appId": "capital.troy.orders3",
+  "productName": "Orders3",
+  "electronVersion": "45.0.0",
+  "directories": { "app": "dist/desktop", "output": "dist/desktop-release" },
+  "files": ["main.cjs", "package.json"],
+  "extraResources": [{ "from": "dist/desktop-service", "to": "service" }],
+  "win": { "target": ["portable"], "signAndEditExecutable": false },
+  "portable": { "artifactName": "orders-windows-x64.exe", "requestExecutionLevel": "user" },
+  "linux": { "target": ["deb"], "executableName": "orders3-desktop", "category": "Office", "maintainer": "Orders3 maintainers <orders3@example.invalid>", "artifactName": "orders3_${version}_${arch}.deb" },
+  "deb": { "afterInstall": "desktop/after-install.sh", "afterRemove": "desktop/after-remove.sh", "depends": ["libgtk-3-0", "libnss3", "libxss1", "libxtst6", "xdg-utils", "libatspi2.0-0", "libdrm2", "libgbm1", "libasound2t64", "libnotify4", "libsecret-1-0"] }
+}

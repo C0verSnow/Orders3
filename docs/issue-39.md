@@ -1,0 +1,29 @@
+# Issue #39 实施与验证
+
+以 issue 开头随笔为准，移除全部工作台令牌认证；不实施下文已被覆盖的自动令牌登录要求。仅在 `feature/issue-36-settings-feedback` 工作。
+
+## 桌面窗口
+
+Electron 45.0.0 + electron-builder 26.15.3 在远端打包 Windows x64 便携 EXE 和 Linux AMD64/ARM64 DEB。窗口加载原 React 工作台，原生 Node 24 SEA 独立承担数据库、调度和交易。桌面服务强制回环监听，端口默认随机，端口冲突和初始化失败显示错误。窗口就绪前等待服务；关窗正常退出，父进程管道断开也会清理服务；同数据目录仍由原进程锁保护。界面没有 Node 权限，拒绝权限请求、弹窗和跨来源导航。
+
+删除 Sessions、Bearer/Cookie 登录校验、登录表单、退出按钮、URL token、会话 API 和环境示例。保留 Host/Origin、CSP、手动开仓确认。Docker 与无图形 Web 模式继续直接使用服务。
+
+## 四行表格
+
+四个业务页面复用公共 DataTable：每页 4 条、每行 64px、视口 312px（表头 + 四行 + 横向滚动余量）。不足四条保持空白，无伪造记录。页码失效自动归位；翻页不会继续显示旧页退场记录。保留搜索、排序、详情与横向滚动。
+
+## 刷新入口
+
+仅删除预测页刷新按钮，保留原手动开仓 JSX、确认文案和禁用条件。统一刷新及概览刷新来源沿用原 Mutation 和业务 API。
+
+## 验证记录
+
+- 本地仅阅读、静态与差异检查，未进行编译、构建、测试或启动程序。
+- 远端业务与安全：覆盖免登录读取、删除的会话接口、Host/Origin 拒绝和手动交易确认。
+- 远端浏览器：真实生产 HTTP + SQLite 验证四表的 0/1/2/3/4/5/8/9/10 数据边界，1440px 和 390px、固定高度、无垂直裁切、分页去重、末页筛选、排序和详情；刷新专项验证来源与全局刷新。
+- 远端发行包：`check-desktop.mjs` 启动实际便携 EXE / 已安装 DEB，连接其嵌入 Chromium，检查五个页面、无密码输入、无 Node 权限、刷新、关窗停止服务和原目录原端口重启。Linux 使用 Xvfb 图形会话，不能代替所有真实用户桌面环境的人工体验验收。
+- 最终运行源码：`52cd7fd7aa538bce651a674a09835cccc16c34eb`。两轮完整远端 CI 均成功：[PR 检查 39822478787](https://github.com/C0verSnow/Orders3/actions/runs/39822478787)、[分支检查 39822467748](https://github.com/C0verSnow/Orders3/actions/runs/39822467748)。
+- 分项结果：业务/安全/类型/构建与浏览器成功；Windows x64、Linux AMD64、Linux ARM64 实际发行包启动、内嵌页面、关窗停止后端、同目录同端口重启成功；两架构原生容器成功。
+- 证据附件在上述 PR 检查页：`browser-evidence`、`desktop-evidence-windows-x64`、`desktop-evidence-linux-amd64`、`desktop-evidence-linux-arm64`；发行包附件为 `orders-windows-x64`、`orders-linux-amd64`、`orders-linux-arm64`。
+- 可选 Windows EXE/Docker 像素对比未执行；Release、镜像发布和生产部署按 feature 分支条件跳过，不计为通过。没有本地编译验证或真实交易。
+- PR #40 当前没有评论；关联 PR #37 的界面要求与 issue #39 开头取消令牌的要求已核对。保留 PR #37 界面，PR 保持开放等待用户 review；不合并。

@@ -5,7 +5,7 @@ import { writeFileSync } from 'node:fs';
 import { fixture, response, source, list } from './helpers.ts';
 import { Scheduler } from '../../apps/server/src/scheduler/index.ts';
 import { createServer } from '../../apps/server/src/api/index.ts';
-import { Sessions } from '../../apps/server/src/security/session.ts';
+import { WorkspaceOrigin } from '../../apps/server/src/security/origin.ts';
 import { Credentials } from '../../apps/server/src/services/credentials.ts';
 import { openOrders } from '../../apps/server/src/services/trading.ts';
 const start = new Date('2026-10-19T12:00:00Z').getTime();
@@ -114,15 +114,15 @@ test('source identity survives insertion before an existing source row', t => {
   assert.notEqual(shifted.record_position, original.record_position);
 });
 
-test('manual trading requires authenticated explicit confirmation and is independent of disabled automatic opening', async t => {
+test('manual trading requires trusted origin and explicit confirmation and is independent of disabled automatic opening', async t => {
   let posts = 0; const f = setup(t, () => posts++);
   f.storage.saveSources([source]); const scheduler = new Scheduler(f.config, f.dashboard);
   assert.equal(scheduler.snapshot().opening?.enabled, false);
-  const sessions = new Sessions('manual-trading-regression-token-at-least-32'); sessions.origin = 'http://localhost';
+  const sessions = new WorkspaceOrigin(); sessions.origin = 'http://localhost';
   const app = createServer(f.dashboard, scheduler, new Credentials(f.config, f.http), f.log, sessions);
   t.after(() => app.close());
-  const headers = { origin: sessions.origin, authorization: `Bearer ${sessions.token}` };
-  assert.equal((await app.inject({ method: 'POST', url: '/api/opening/manual', headers: { origin: sessions.origin }, payload: { confirmed_trade_execution: true } })).statusCode, 401);
+  const headers = { origin: sessions.origin };
+  assert.equal((await app.inject({ method: 'POST', url: '/api/opening/manual', headers: { origin: 'http://evil.invalid' }, payload: { confirmed_trade_execution: true } })).statusCode, 403);
   assert.equal((await app.inject({ method: 'POST', url: '/api/opening/manual', headers, payload: {} })).statusCode, 400);
   assert.equal(posts, 0);
   assert.equal((await app.inject({ method: 'POST', url: '/api/opening/manual', headers, payload: { confirmed_trade_execution: true } })).statusCode, 200);

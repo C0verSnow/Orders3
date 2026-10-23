@@ -55,11 +55,16 @@ export function DataTable<T extends object>({
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 20 } },
+    initialState: { pagination: { pageSize: 4 } },
   });
   useEffect(() => {
     if (selected && !dialog.current?.open) dialog.current?.showModal();
   }, [selected]);
+  const pageCount = table.getPageCount();
+  const pageIndex = table.getState().pagination.pageIndex;
+  useEffect(() => {
+    if (pageIndex >= Math.max(1, pageCount)) table.setPageIndex(Math.max(0, pageCount - 1));
+  }, [pageCount, pageIndex, table]);
   const visibleRows = table.getRowModel().rows;
   const items = useMemo(
     () =>
@@ -74,6 +79,7 @@ export function DataTable<T extends object>({
             <td>
               <Button
                 variant="text"
+                className="relative z-30"
                 onClick={() => setSelected(row.original)}
                 aria-label={t('查看第 {0} 条记录详情', [row.index + 1])}
               >
@@ -102,10 +108,10 @@ export function DataTable<T extends object>({
           {t('{0} 条记录', [table.getFilteredRowModel().rows.length])}
         </span>
       </div>
-      <ScrollFade table compact={rows.length <= 3} label={t('{0}表格，可横向或纵向滚动', [label])}>
-        <table className="w-full font-sans text-zinc-900 dark:text-zinc-100 border-collapse text-left text-xs whitespace-nowrap [&_th]:border-y [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:px-4 [&_th]:py-1 [&_th]:font-medium [&_th]:text-zinc-500 [&_td]:text-inherit [&_td]:font-sans [&_td]:max-w-[340px] [&_td]:overflow-hidden [&_td]:border-b [&_td]:border-zinc-200 [&_td]:px-4 [&_td]:py-4 [&_td]:text-ellipsis dark:[&_th]:border-zinc-800 dark:[&_th]:bg-zinc-950 dark:[&_td]:border-zinc-800 [&_tbody_tr]:transition-[background-color] [&_tbody_tr:hover]:bg-zinc-50 dark:[&_tbody_tr:hover]:bg-zinc-800/50">
+      <ScrollFade table fourRows label={t('{0}表格，可横向或纵向滚动', [label])}>
+        <table className="w-full font-sans text-zinc-900 dark:text-zinc-100 border-collapse text-left text-xs whitespace-nowrap [&_th]:border-y [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:px-4 [&_th]:py-1 [&_th]:font-medium [&_th]:text-zinc-500 [&_td]:text-inherit [&_td]:font-sans [&_td]:max-w-[340px] [&_td]:overflow-hidden [&_td]:border-b [&_td]:border-zinc-200 [&_td]:px-4 [&_td]:py-3 [&_tbody_tr]:h-16 [&_td]:text-ellipsis dark:[&_th]:border-zinc-800 dark:[&_th]:bg-zinc-950 dark:[&_td]:border-zinc-800 [&_tbody_tr]:transition-[background-color] [&_tbody_tr:hover]:bg-zinc-50 dark:[&_tbody_tr:hover]:bg-zinc-800/50">
           <caption className="sr-only">{label}</caption>
-          <thead className="sticky top-0 z-10">
+          <thead className="sticky top-0 z-40">
             {table.getHeaderGroups().map((group) => (
               <tr key={group.id}>
                 {group.headers.map((header) => (
@@ -133,18 +139,18 @@ export function DataTable<T extends object>({
               </tr>
             ))}
           </thead>
-          <MotionList items={items} />
+          <MotionList items={items} retainExiting={false} />
         </table>
-        {loading && (
+        {loading && !visibleRows.length && (
           <FadeIn
-            className="flex min-h-36 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-zinc-500 [&>strong]:font-medium [&>strong]:text-zinc-900 dark:[&>strong]:text-zinc-100 [&>p]:text-xs"
+            className="flex h-64 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-zinc-500 [&>strong]:font-medium [&>strong]:text-zinc-900 dark:[&>strong]:text-zinc-100 [&>p]:text-xs"
             role="status"
           >
             {t('正在读取{0}…', [label])}
           </FadeIn>
         )}
         {!loading && !table.getRowModel().rows.length && (
-          <FadeIn className="flex min-h-36 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-zinc-500 [&>strong]:font-medium [&>strong]:text-zinc-900 dark:[&>strong]:text-zinc-100 [&>p]:text-xs">
+          <FadeIn className="flex h-64 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-zinc-500 [&>strong]:font-medium [&>strong]:text-zinc-900 dark:[&>strong]:text-zinc-100 [&>p]:text-xs">
             <Search size={24} aria-hidden="true" />
             <strong>{filter ? t('没有匹配的记录') : t('还没有订单数据')}</strong>
             <p>

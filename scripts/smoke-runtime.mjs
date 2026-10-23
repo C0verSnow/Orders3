@@ -5,13 +5,12 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import assert from 'node:assert/strict';
 const directory = mkdtempSync(join(tmpdir(), 'orders-runtime-'));
-const token = 'ci-only-runtime-access-token-0123456789';
 const [executable = process.execPath, ...args] = process.argv.slice(2);
 const port = 18090;
 const processArgs = args.length ? args : executable === process.execPath ? ['dist/server.cjs'] : [];
 const command = resolve(executable), resolvedArgs = processArgs.map(value => value.endsWith('.cjs') ? resolve(value) : value);
 const child = spawn(command, [...resolvedArgs, '--cached', '--no-browser', '--host', '127.0.0.1', '--port', String(port)], { cwd: directory,
-  env: { ...process.env, ORDERS_DATA_DIR: directory, ORDERS_CONFIG_PATH: join(directory, 'config'), ORDERS_ACCESS_TOKEN: token } });
+  env: { ...process.env, ORDERS_DATA_DIR: directory, ORDERS_CONFIG_PATH: join(directory, 'config') } });
 let output = '';
 child.stdout.on('data', chunk => { output += chunk; }); child.stderr.on('data', chunk => { output += chunk; });
 const base = `http://127.0.0.1:${port}`;
@@ -25,9 +24,9 @@ try {
   assert.ok(ready, 'artifact readiness');
   const html = await (await fetch(base)).text(); assert.match(html, /<html/); assert.doesNotMatch(html, /qwebchannel|QtWebEngine/i);
   for (const path of [...html.matchAll(/(?:src|href)="(\/assets\/[^\"]+)"/g)].map(match => match[1])) assert.equal((await fetch(base + path)).status, 200);
-  assert.equal((await fetch(base + '/api/data')).status, 401);
-  const headers = { Authorization: `Bearer ${token}`, Origin: base, 'Content-Type': 'application/json' };
-  assert.equal((await fetch(base + '/api/session', { method: 'POST', headers, body: '{}' })).status, 200);
+  assert.equal((await fetch(base + '/api/data')).status, 200);
+  const headers = { Origin: base, 'Content-Type': 'application/json' };
+  assert.equal((await fetch(base + '/api/session')).status, 404);
   assert.equal((await fetch(base + '/api/data', { headers })).status, 200);
   assert.equal((await fetch(base + '/api/orders', { headers })).status, 200);
   const schedule = await fetch(base + '/api/schedule', { method: 'POST', headers, body: JSON.stringify({ enabled: false, cron: '*/15 * * * *' }) }); assert.equal(schedule.status, 200);
@@ -37,7 +36,7 @@ try {
   assert.equal((await fetch(base + '/api/download', { headers })).status, 200);
   assert.equal((await fetch(base + '/config')).status, 404);
   assert.ok(existsSync(join(directory, 'data.db')));
-  console.log('Actual artifact passed authenticated HTTP, React assets, persistence, download and origin checks');
+  console.log('Actual artifact passed direct HTTP, React assets, persistence, download and origin checks');
 } finally {
   child.kill('SIGTERM');
   if (child.exitCode === null) await new Promise(resolve => { child.once('exit', resolve); setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 5000).unref(); });

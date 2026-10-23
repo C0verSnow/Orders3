@@ -12,7 +12,7 @@ import { HttpClient } from './exchange/http.ts';
 import { Credentials } from './services/credentials.ts';
 import { Dashboard } from './services/dashboard.ts';
 import { Scheduler } from './scheduler/index.ts';
-import { Sessions } from './security/session.ts';
+import { WorkspaceOrigin } from './security/origin.ts';
 import { createServer } from './api/index.ts';
 import { AppError, safeError } from './utils/errors.ts';
 
@@ -23,7 +23,7 @@ async function main() {
   } });
   if (values.help) { console.log('Orders3：--cached --fetch-only --list --host IP --port 8090 --browser --no-browser [数据库.db]'); return; }
   if (values.version) { console.log(`Orders3 ${process.env.ORDERS_VERSION || '1.0.0'} (${process.env.ORDERS_COMMIT || 'development'})`); return; }
-  if (values.desktop) throw new AppError('Qt 窗口已移除，请使用 --browser 在系统浏览器打开工作台');
+  if (values.desktop) throw new AppError('请使用桌面发行包启动内嵌窗口；服务端可用 --browser 打开浏览器');
   if (positionals.length > 1 || (values.list && values['fetch-only']) || (values.cached && (values.list || values['fetch-only']))) throw new AppError('启动参数冲突');
   const config = new Configuration();
   if (positionals.length) {
@@ -50,15 +50,14 @@ async function main() {
     const portText = values.port ?? process.env.ORDERS_PORT ?? (container ? '8090' : '0');
     if (!/^\d+$/.test(portText) || Number(portText) > 65535) throw new AppError('端口必须为 0 至 65535');
     if (host !== 'localhost' && !isIP(host)) throw new AppError('监听地址须为 IP 或 localhost');
-    const sessions = new Sessions(config.startup.ORDERS_ACCESS_TOKEN), app = createServer(dashboard, scheduler, credentials, log, sessions);
+    const workspace = new WorkspaceOrigin(), app = createServer(dashboard, scheduler, credentials, log, workspace);
     await app.listen({ host, port: Number(portText) });
     const address = app.server.address();
     if (!address || typeof address === 'string') throw new AppError('无法读取监听地址');
     const displayHost = ['0.0.0.0', '::'].includes(host) ? '127.0.0.1' : host.includes(':') ? `[${host}]` : host;
     const url = `http://${displayHost}:${address.port}`;
-    sessions.origin = url;
+    workspace.origin = url;
     console.log(`本地看板：${url}/`);
-    if (!config.startup.ORDERS_ACCESS_TOKEN) console.log(`登录令牌：${sessions.token}`);
     const shutdown = async () => {
       if (stopped) return; stopped = true;
       scheduler.stop(); credentials.stop(); http.controller.abort();
@@ -67,6 +66,10 @@ async function main() {
       storage?.close(); storage = undefined; await release();
     };
     process.once('SIGINT', () => { void shutdown(); }); process.once('SIGTERM', () => { void shutdown(); });
+    if (process.env.ORDERS_DESKTOP_CHILD === '1') {
+      process.stdin.once('end', () => { void shutdown(); });
+      process.stdin.resume();
+    }
     scheduler.start();
     const ready = credentials.refresh();
     void ready.then(async () => {
@@ -75,10 +78,10 @@ async function main() {
       await Promise.allSettled([dashboard.refreshOrders(), ...(scheduler.value.enabled ? [dashboard.refreshSources()] : [])]);
     });
     if (!values['no-browser'] && (values.browser || (!container && process.env.ORDERS_NO_BROWSER !== '1'))) {
-      const target = `${url}/#token=${encodeURIComponent(sessions.token)}`;
+      const target = `${url}/`;
       const command = process.platform === 'win32' ? 'rundll32.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open';
       const args = process.platform === 'win32' ? ['url.dll,FileProtocolHandler', target] : [target];
-      const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true }); child.on('error', () => console.error('请手动打开工作台地址并输入登录令牌')); child.unref();
+      const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true }); child.on('error', () => console.error('请手动打开工作台地址')); child.unref();
     }
   } finally {
     // Long-lived server owns cleanup in shutdown; single-shot and startup failures clean here.

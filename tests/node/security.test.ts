@@ -2,24 +2,27 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { fixture, response } from './helpers.ts';
-import { Sessions } from '../../apps/server/src/security/session.ts';
+import { WorkspaceOrigin } from '../../apps/server/src/security/origin.ts';
 import { Scheduler } from '../../apps/server/src/scheduler/index.ts';
 import { Credentials } from '../../apps/server/src/services/credentials.ts';
 import { createServer } from '../../apps/server/src/api/index.ts';
 import { credential } from '../../apps/server/src/config/index.ts';
 
-test('authenticated API rejects missing auth, hostile origins, hosts, and secret reflection', async t => {
-  const f=fixture(t), sessions=new Sessions('test-workspace-token-with-at-least-32-chars');sessions.origin='http://localhost';
-  const app=createServer(f.dashboard,new Scheduler(f.config,f.dashboard),new Credentials(f.config,f.http),f.log,sessions);t.after(()=>app.close());
-  assert.equal((await app.inject({method:'GET',url:'/api/data'})).statusCode,401);
-  const login=await app.inject({method:'POST',url:'/api/session',headers:{origin:'http://localhost',authorization:`Bearer ${sessions.token}`}});
-  assert.equal(login.statusCode,200); const cookie=String(login.headers['set-cookie']).split(';')[0];
-  assert.match(String(login.headers['set-cookie']),/HttpOnly; SameSite=Strict/);
-  const settings=await app.inject({method:'GET',url:'/api/settings',headers:{cookie}});assert.equal(settings.statusCode,200);assert.doesNotMatch(settings.body,/test-secret|test-key|test-anon/);
-  assert.equal((await app.inject({method:'POST',url:'/api/schedule',headers:{cookie,origin:'http://evil.invalid'},payload:{enabled:false,cron:'* * * * *'}})).statusCode,403);
-  assert.equal((await app.inject({method:'GET',url:'/api/orders',headers:{cookie,host:'evil.invalid'}})).statusCode,403);
-  assert.equal((await app.inject({method:'GET',url:'/config',headers:{cookie}})).statusCode,404);
-  assert.equal((await app.inject({method:'POST',url:'/api/settings',headers:{cookie,origin:'http://localhost'},payload:{INFISICAL_CLIENT_SECRET:'bad'}})).statusCode,400);
+test('workspace opens without login while hostile origins, hosts and secret reflection stay blocked', async t => {
+  const f=fixture(t), workspace=new WorkspaceOrigin(); workspace.origin='http://localhost';
+  const app=createServer(f.dashboard,new Scheduler(f.config,f.dashboard),new Credentials(f.config,f.http),f.log,workspace);t.after(()=>app.close());
+  for (const url of ['/api/data','/api/orders','/api/settings','/api/history','/api/activity'])
+    assert.equal((await app.inject({method:'GET',url})).statusCode,200);
+  for (const method of ['GET','POST','DELETE'] as const)
+    assert.equal((await app.inject({method,url:'/api/session',headers:{origin:workspace.origin}})).statusCode,404);
+  const settings=await app.inject({method:'GET',url:'/api/settings'});
+  assert.doesNotMatch(settings.body,/test-secret|test-key|test-anon/);
+  assert.equal(settings.headers['set-cookie'],undefined);
+  assert.equal((await app.inject({method:'POST',url:'/api/schedule',headers:{origin:'http://evil.invalid'},payload:{enabled:false,cron:'* * * * *'}})).statusCode,403);
+  assert.equal((await app.inject({method:'POST',url:'/api/schedule',payload:{enabled:false}})).statusCode,403);
+  assert.equal((await app.inject({method:'GET',url:'/api/orders',headers:{host:'evil.invalid'}})).statusCode,403);
+  assert.equal((await app.inject({method:'GET',url:'/config'})).statusCode,404);
+  assert.equal((await app.inject({method:'POST',url:'/api/settings',headers:{origin:workspace.origin},payload:{INFISICAL_CLIENT_SECRET:'bad'}})).statusCode,400);
 });
 test('configuration blanks retain secrets, explicit clear persists and rejects placeholder values', t => {
   const f=fixture(t);f.config.update({API_KEY:'',API_SECRET:''});assert.equal(f.config.connection().gateKey,'test-key');
