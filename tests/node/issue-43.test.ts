@@ -53,7 +53,7 @@ test('43 failed position query does not advance successful sync and later cycle 
   assert.equal(f.storage.rows('position_entry_history', 'entry_time').length, 1);
 });
 
-function tradingFixture(t: Parameters<typeof fixture>[0], options: { unknown?: boolean; activated?: boolean; short?: boolean; missingPolicy?: boolean; changedPosition?: boolean } = {}) {
+function tradingFixture(t: Parameters<typeof fixture>[0], options: { unknown?: boolean; unknownStop?: boolean; activated?: boolean; short?: boolean; missingPolicy?: boolean; changedPosition?: boolean } = {}) {
   t.mock.timers.enable({ apis: ['Date'], now });
   const writes: Record<string, unknown>[] = [];
   const pos = { ...position, initial_margin: '1', size: options.short ? '-2' : '2' };
@@ -62,7 +62,7 @@ function tradingFixture(t: Parameters<typeof fixture>[0], options: { unknown?: b
   const f = fixture(t, async (url, init) => {
     if (init.method === 'POST') {
       const body = JSON.parse(String(init.body)); writes.push(body);
-      if (options.unknown) throw new Error('response lost');
+      if (options.unknown || (options.unknownStop && url.pathname.endsWith('/stop'))) throw new Error('response lost');
       if (url.pathname.endsWith('/stop')) live = live.filter(row => row.id !== String(body.id));
       else live.push({ ...body, id: String(100 + writes.length), original_status: 1 });
       return response({ code: 0, data: { id: String(100 + writes.length) } });
@@ -164,4 +164,16 @@ test('43 maintenance API failure is persisted as failed and next ten-minute cycl
   t.mock.timers.setTime(now + 1200000); await scheduler.tick();
   assert.equal(calls, 2); assert.equal(f.storage.lastRun('maintenance')?.state, 'completed');
   assert.equal(f.storage.watermark(f.gate.owner), now + 1200000);
+});
+
+test('43 unknown stop never creates replacement or retries the stop after restart', async t => {
+  const f = tradingFixture(t, { unknownStop: true }); let scheduler = new Scheduler(f.config, f.dashboard);
+  t.mock.timers.setTime(now + 600000); await scheduler.tick();
+  f.setPosition({ size: '1' });
+  t.mock.timers.setTime(now + 1200000); await scheduler.tick();
+  assert.equal(f.writes.length, 2); assert.ok(f.writes[1].id);
+  assert.equal(f.storage.intents()[0].operation, 'stop'); assert.equal(f.storage.intents()[0].state, 'unknown');
+  scheduler = new Scheduler(f.config, f.dashboard);
+  t.mock.timers.setTime(now + 1800000); await scheduler.tick();
+  assert.equal(f.writes.length, 2);
 });

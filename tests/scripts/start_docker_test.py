@@ -114,6 +114,23 @@ esac
         self.assertIn('last_http=', result.stderr)
         self.assertNotIn('Config.Env', result.stderr)
 
+    def test_existing_container_is_stopped_before_removal(self):
+        commands = self.base / 'commands'
+        self.command('docker', r'''printf '%s\n' "$1" >> "$COMMANDS"
+case "$1" in
+info|pull|stop|start|rm|logs) exit 0 ;;
+container) exit 0 ;;
+create) printf 'test-container\n' ;;
+port) printf '127.0.0.1:54321\n' ;;
+inspect) printf true ;;
+esac
+''')
+        result = self.run_script(COMMANDS=str(commands))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = commands.read_text().splitlines()
+        self.assertLess(calls.index('stop'), calls.index('rm'))
+        self.assertLess(calls.index('rm'), calls.index('create'))
+
     def test_directory_is_rejected(self):
         (self.base / 'docker.md').mkdir()
         result = self.run_script()
