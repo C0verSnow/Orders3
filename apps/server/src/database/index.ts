@@ -179,7 +179,7 @@ export class Storage {
       const previous = this.watermark(owner);
       if (through < previous) throw new AppError('入仓历史进度已变化');
       const insert = this.db.prepare('INSERT OR IGNORE INTO position_entry_history(event_id,entry_time,contract,side,initial_margin) VALUES (?,?,?,?,?)');
-      const margin = this.db.prepare(`INSERT INTO position_entry_margin VALUES (?,?,?,?,?,?) ON CONFLICT(owner,contract,side) DO UPDATE SET event_id=excluded.event_id,entry_time=excluded.entry_time,initial_margin=excluded.initial_margin WHERE excluded.entry_time>position_entry_margin.entry_time OR (excluded.entry_time=position_entry_margin.entry_time AND excluded.event_id>position_entry_margin.event_id)`);
+      const margin = this.db.prepare(`INSERT INTO position_entry_margin VALUES (?,?,?,?,?,?) ON CONFLICT(owner,contract,side) DO UPDATE SET event_id=excluded.event_id,entry_time=excluded.entry_time,initial_margin=excluded.initial_margin WHERE excluded.entry_time>position_entry_margin.entry_time OR (excluded.entry_time=position_entry_margin.entry_time AND (length(excluded.event_id)>length(position_entry_margin.event_id) OR (length(excluded.event_id)=length(position_entry_margin.event_id) AND excluded.event_id>position_entry_margin.event_id)))`);
       for (const event of events) {
         if (event.entry_time < through - 7 * 86400000 || event.entry_time > through || this.entrySeen(owner, event.event_id)) continue;
         if (event.initial_margin != null && decimal(event.initial_margin).lt(0)) throw new AppError('固定保证金不能为负');

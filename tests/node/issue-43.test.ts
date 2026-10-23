@@ -132,3 +132,36 @@ test('43 pending close order adjusts after partial reduction with fixed margin',
   assert.equal(f.writes.length, 3); assert.ok(f.writes[1].id);
   assert.equal(f.writes[2].amount, '-1'); assert.equal(f.writes[2].activation_price, '132.5');
 });
+
+test('43 margin backfill is account/contract/side isolated; same-time trade IDs use numeric ordering', t => {
+  const { storage } = fixture(t);
+  storage.history('owner-a', [
+    { event_id: '9', entry_time: now - 1, contract: 'BTC_USDT', side: 1 },
+    { event_id: '10', entry_time: now - 1, contract: 'BTC_USDT', side: 1 },
+    { event_id: '11', entry_time: now - 1, contract: 'BTC_USDT', side: -1 }
+  ], now, [{ contract: 'BTC_USDT', side: 1, initial_margin: '2' }]);
+  storage.history('owner-b', [{ event_id: '10', entry_time: now - 1, contract: 'BTC_USDT', side: 1 }], now,
+    [{ contract: 'BTC_USDT', side: 1, initial_margin: '5' }]);
+  const events = storage.rows('position_entry_history', 'event_id');
+  assert.equal(events.find(row => row.event_id === 'owner-a:9')?.initial_margin, null);
+  assert.equal(events.find(row => row.event_id === 'owner-a:10')?.initial_margin, '2');
+  assert.equal(events.find(row => row.event_id === 'owner-a:11')?.initial_margin, null);
+  assert.equal(events.find(row => row.event_id === 'owner-b:10')?.initial_margin, '5');
+});
+
+test('43 maintenance API failure is persisted as failed and next ten-minute cycle retries', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now });
+  let fail = true, calls = 0;
+  const f = fixture(t, async url => {
+    if (url.pathname.includes('my_trades_timerange')) { calls++; return response(fail ? {} : [], fail ? 503 : 200); }
+    return response(url.pathname.endsWith('/list') ? list([]) : []);
+  });
+  const scheduler = new Scheduler(f.config, f.dashboard);
+  t.mock.timers.setTime(now + 600000); await scheduler.tick();
+  assert.equal(f.storage.lastRun('maintenance')?.state, 'failed');
+  assert.equal(f.storage.watermark(f.gate.owner), -1);
+  fail = false;
+  t.mock.timers.setTime(now + 1200000); await scheduler.tick();
+  assert.equal(calls, 2); assert.equal(f.storage.lastRun('maintenance')?.state, 'completed');
+  assert.equal(f.storage.watermark(f.gate.owner), now + 1200000);
+});
