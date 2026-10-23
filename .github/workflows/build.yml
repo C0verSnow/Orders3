@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       run_visual_checks:
-        description: Run optional EXE/Docker screenshot, font and pixel diagnostics
+        description: Run EXE/Docker screenshot, font and pixel diagnostics
         type: boolean
-        default: false
+        default: true
       publish_preview:
         description: Publish a verified prerelease for this exact branch SHA
         type: boolean
@@ -26,6 +26,7 @@ jobs:
   publication:
     runs-on: ubuntu-24.04
     outputs:
+      visual_checks: ${{ github.event_name != 'workflow_dispatch' || inputs.run_visual_checks }}
       enabled: ${{ steps.version.outputs.enabled }}
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
@@ -65,7 +66,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with: { persist-credentials: false }
       - uses: actions/setup-node@v6
-        with: { node-version: '24.22.0', cache: npm }
+        with: { node-version: '24.22.1', cache: npm }
       - run: npm ci --no-audit --no-fund
       - run: npm run check
       - run: npm run typecheck
@@ -76,6 +77,7 @@ jobs:
           python3 tests/scripts/deploy_ssh_test.py
           python3 tests/scripts/start_docker_test.py
           python3 tests/scripts/publication_test.py
+          python3 tests/scripts/workflow_test.py
       - run: npm run build
         env:
           ORDERS_VERSION: ci-${{ github.run_id }}
@@ -119,7 +121,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with: { persist-credentials: false }
       - uses: actions/setup-node@v6
-        with: { node-version: '24.22.0', cache: npm }
+        with: { node-version: '24.22.1', cache: npm }
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - name: Locate Windows SDK signature tool
@@ -144,12 +146,12 @@ jobs:
           New-Item -ItemType Directory -Force dist/release | Out-Null
           Copy-Item $target dist/release/
       - name: Capture actual Windows EXE browser
-        if: matrix.os == 'windows'
+        if: needs.publication.outputs.visual_checks == 'true' && matrix.os == 'windows'
         run: |
           npx playwright install chromium
           node scripts/capture-platform.mjs windows
       - uses: actions/upload-artifact@v7.0.1
-        if: always() && inputs.run_visual_checks && matrix.os == 'windows'
+        if: always() && needs.publication.outputs.visual_checks == 'true' && matrix.os == 'windows'
         with:
           name: platform-windows
           path: tests/artifacts/platform-windows/
@@ -239,16 +241,16 @@ jobs:
           bash start-docker.sh --cached
           test -s docker.md
       - uses: actions/setup-node@v6
-        if: inputs.run_visual_checks && matrix.arch == 'amd64'
-        with: { node-version: '24.22.0', cache: npm }
+        if: needs.publication.outputs.visual_checks == 'true' && matrix.arch == 'amd64'
+        with: { node-version: '24.22.1', cache: npm }
       - name: Capture actual Linux Docker browser
-        if: inputs.run_visual_checks && matrix.arch == 'amd64'
+        if: needs.publication.outputs.visual_checks == 'true' && matrix.arch == 'amd64'
         run: |
           npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium
           node scripts/capture-platform.mjs docker
       - uses: actions/upload-artifact@v7.0.1
-        if: always() && matrix.arch == 'amd64'
+        if: always() && needs.publication.outputs.visual_checks == 'true' && matrix.arch == 'amd64'
         with:
           name: platform-docker
           path: tests/artifacts/platform-docker/
@@ -288,9 +290,9 @@ jobs:
           if-no-files-found: error
 
   visual-comparison:
-    if: ${{ !cancelled() && needs.packages.result == 'success' && needs['container-build'].result == 'success' }}
+    if: ${{ !cancelled() && needs.publication.outputs.visual_checks == 'true' && needs.packages.result == 'success' && needs['container-build'].result == 'success' }}
     name: Windows EXE vs Linux Docker pixels
-    needs: [packages, container-build]
+    needs: [publication, packages, container-build]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
@@ -299,7 +301,8 @@ jobs:
         with: { pattern: platform-*, path: tests/artifacts/ }
       - uses: actions/setup-python@v6
         with: { python-version: '3.12' }
-      - run: python -m pip install Pillow==11.3.0
+      - run: python -m pip install Pillow==11.3.0 pixelmatch==0.4.0
+      - run: python tests/scripts/platform_pixels_test.py
       - run: python scripts/compare-platforms.py
       - name: Add visual report to run summary
         if: always()
@@ -317,7 +320,8 @@ jobs:
       !cancelled() && needs.publication.outputs.enabled == 'true' &&
       needs.checks.result == 'success' && needs.packages.result == 'success' &&
       needs['container-build'].result == 'success' &&
-      (needs['visual-comparison'].result == 'success' || needs['visual-comparison'].result == 'skipped')
+      (needs['visual-comparison'].result == 'success' ||
+      (needs.publication.outputs.visual_checks == 'false' && needs['visual-comparison'].result == 'skipped'))
     runs-on: ubuntu-24.04
     permissions: { contents: read, packages: write }
     outputs:
