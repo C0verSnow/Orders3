@@ -1,4 +1,4 @@
-FROM node:24.22.0-bookworm-slim AS build
+FROM node:24.22.1-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/server/package.json apps/server/package.json
@@ -14,7 +14,7 @@ ARG APP_COMMIT=unknown
 ENV ORDERS_VERSION=$APP_VERSION ORDERS_COMMIT=$APP_COMMIT
 RUN npm run build
 
-FROM node:24.22.0-bookworm-slim
+FROM node:24.22.1-bookworm-slim
 WORKDIR /opt/orders
 RUN mkdir -p /data && chown node:node /data
 COPY --from=build --chown=node:node /app/dist/server.cjs ./server.cjs

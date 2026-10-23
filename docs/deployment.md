@@ -37,3 +37,10 @@ SSH 镜像参数接受严格校验的 GHCR `@sha256:<64位小写hex>`，手动�
 Infisical Universal Auth 获取函数原已在 services/credentials.ts 中实现；这次补齐宿主机 env-file 到容器的接线。机器认证字段见 example.env，应在远端独立配置并设置权限 600；SSH 脚本不从仓库或 CI 上传它。交易任务持有连接租约，期间拒绝保存设置，Infisical 备用字段更新在任务结束后生效。
 
 GHCR 包需允许远端读取；公开源码不代表包自动公开。拉取失败保留旧容器；替换时有短暂中断；失败不会假报成功，没有自动回滚。生产 secrets 不传入 PR 验证。权限、Runner 或 Registry 阻断需在仓库 Settings 修复，不能绕过检查发布。
+
+
+## Issue #41：截图与安全版本
+
+push、PR、标签触发默认执行 Windows EXE / Linux Docker 的截图与像素比较；手动工作流默认开启 `run_visual_checks`，显式关闭会连同两端截图上传和对比一起跳过。开启时必须对比成功才能合并镜像和发布；截图失败不能以跳过绕过发布门槛。
+
+CI 与 Docker 构建、运行阶段统一使用 Node 24.22.1，源码最低版本为 24.22.1；SEA 使用当前 CI 的原生 Node，升级后需重新构建、发布、部署才会替换旧运行时。Electron 窗口使用独立运行时，详细范围见 [安全维护说明](issue-41.md)。feature 分支可以用 `publish_preview=true` 验证 Release，生产部署仍只在默认分支 push 后执行，PR 不部署。
