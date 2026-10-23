@@ -144,7 +144,7 @@ jobs:
           New-Item -ItemType Directory -Force dist/release | Out-Null
           Copy-Item $target dist/release/
       - name: Capture actual Windows EXE browser
-        if: inputs.run_visual_checks && matrix.os == 'windows'
+        if: matrix.os == 'windows'
         run: |
           npx playwright install chromium
           node scripts/capture-platform.mjs windows
@@ -248,7 +248,7 @@ jobs:
           npx playwright install --with-deps chromium
           node scripts/capture-platform.mjs docker
       - uses: actions/upload-artifact@v7.0.1
-        if: always() && inputs.run_visual_checks && matrix.arch == 'amd64'
+        if: always() && matrix.arch == 'amd64'
         with:
           name: platform-docker
           path: tests/artifacts/platform-docker/
