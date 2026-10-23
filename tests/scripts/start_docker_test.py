@@ -16,19 +16,21 @@ class StartDockerTest(unittest.TestCase):
         self.bin = self.base / 'bin'
         self.bin.mkdir()
         self.env = {**os.environ, 'PATH': f"{self.bin}:{os.environ['PATH']}",
-                    'ORDERS_PULL_POLICY': 'always'}
-        self.command('docker', '''case "$1" in
+                    'ORDERS_PULL_POLICY': 'always', 'FAKE_DOCKER_ARGS': str(self.base / 'docker-args')}
+        self.command('docker', r'''case "$1" in
 info) exit 0 ;;
 pull) exit "${PULL_EXIT:-0}" ;;
 container) exit 1 ;;
-create) printf 'test-container\\n' ;;
+create) printf '%s\n' "$@" > "$FAKE_DOCKER_ARGS"; printf 'test-container\n' ;;
+port) if [[ -n "${BINDING:-}" ]]; then printf '%s\n' "$BINDING"; else sed -n 's/^127.0.0.1:\([0-9]*\):[0-9]*$/127.0.0.1:\1/p' "$FAKE_DOCKER_ARGS"; fi ;;
+stop) exit 0 ;;
 start) exit "${START_EXIT:-0}" ;;
-inspect) printf '%s\\n' "${RUNNING:-true}" ;;
+inspect) printf '%s\n' "${RUNNING:-true}" ;;
 logs|rm) exit 0 ;;
 *) exit 99 ;;
 esac
 ''')
-        self.command('curl', 'exit "${CURL_EXIT:-0}"\n')
+        self.command('curl', 'if [[ "$*" == *health* ]]; then printf 200; fi\nexit "${CURL_EXIT:-0}"\n')
         self.command('sleep', 'exit 0\n')
 
     def command(self, name, body):
@@ -55,10 +57,11 @@ esac
         env_file.write_text('INFISICAL_CLIENT_SECRET=$(touch should-not-execute)\n')
         args = self.base / 'create-args'
         self.command('docker', """case "$1" in
-info|pull|start|rm|logs) exit 0 ;;
+info|pull|start|stop|rm|logs) exit 0 ;;
 container) exit 1 ;;
 create) printf '%s\\n' "$@" > "$CREATE_ARGS"; printf 'test-container\\n' ;;
 inspect) printf 'true\\n' ;;
+port) printf '127.0.0.1:54321\\n' ;;
 esac
 """)
         result = self.run_script(ORDERS_ENV_FILE=str(env_file), CREATE_ARGS=str(args))
@@ -91,6 +94,42 @@ esac
     def test_failed_deploy_does_not_create_record(self):
         self.assertNotEqual(self.run_script(PULL_EXIT='1').returncode, 0)
         self.assertFalse((self.base / 'docker.md').exists())
+
+    def test_inspected_binding_is_the_recorded_port(self):
+        result = self.run_script(BINDING='127.0.0.1:54321')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.base / 'docker.md').read_text(), '本地看板：\n127.0.0.1:54321\n')
+
+    def test_public_or_ambiguous_binding_preserves_old_file(self):
+        for binding in ['0.0.0.0:54321', '127.0.0.1:54321\n[::]:54321']:
+            (self.base / 'docker.md').write_text('old')
+            result = self.run_script(BINDING=binding)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual((self.base / 'docker.md').read_text(), 'old')
+
+    def test_readiness_failure_has_state_and_http_diagnostics(self):
+        result = self.run_script(CURL_EXIT='1')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('部署诊断', result.stderr)
+        self.assertIn('last_http=', result.stderr)
+        self.assertNotIn('Config.Env', result.stderr)
+
+    def test_existing_container_is_stopped_before_removal(self):
+        commands = self.base / 'commands'
+        self.command('docker', r'''printf '%s\n' "$1" >> "$COMMANDS"
+case "$1" in
+info|pull|stop|start|rm|logs) exit 0 ;;
+container) exit 0 ;;
+create) printf 'test-container\n' ;;
+port) printf '127.0.0.1:54321\n' ;;
+inspect) printf true ;;
+esac
+''')
+        result = self.run_script(COMMANDS=str(commands))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = commands.read_text().splitlines()
+        self.assertLess(calls.index('stop'), calls.index('rm'))
+        self.assertLess(calls.index('rm'), calls.index('create'))
 
     def test_directory_is_rejected(self):
         (self.base / 'docker.md').mkdir()

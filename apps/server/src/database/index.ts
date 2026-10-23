@@ -174,12 +174,12 @@ export class Storage {
   }
   entrySeen(owner: string, id: string): boolean { return !!this.db.prepare('SELECT 1 FROM position_entry_seen WHERE event_id=? UNION ALL SELECT 1 FROM position_entry_history WHERE event_id=? LIMIT 1').get(`${owner}:${id}`, `${owner}:${id}`); }
   watermark(owner: string) { return this.exists('position_entry_sync') ? Number(this.db.prepare('SELECT through_ms FROM position_entry_sync WHERE owner=?').get(owner)?.through_ms ?? -1) : -1; }
-  history(owner: string, events: EntryEvent[], through: number) {
+  history(owner: string, events: EntryEvent[], through: number, observations: { contract: string; side: number; initial_margin: string }[] = []) {
     this.transaction(() => {
       const previous = this.watermark(owner);
       if (through < previous) throw new AppError('入仓历史进度已变化');
       const insert = this.db.prepare('INSERT OR IGNORE INTO position_entry_history(event_id,entry_time,contract,side,initial_margin) VALUES (?,?,?,?,?)');
-      const margin = this.db.prepare(`INSERT INTO position_entry_margin VALUES (?,?,?,?,?,?) ON CONFLICT(owner,contract,side) DO UPDATE SET event_id=excluded.event_id,entry_time=excluded.entry_time,initial_margin=excluded.initial_margin WHERE excluded.entry_time>position_entry_margin.entry_time OR (excluded.entry_time=position_entry_margin.entry_time AND excluded.event_id>position_entry_margin.event_id)`);
+      const margin = this.db.prepare(`INSERT INTO position_entry_margin VALUES (?,?,?,?,?,?) ON CONFLICT(owner,contract,side) DO UPDATE SET event_id=excluded.event_id,entry_time=excluded.entry_time,initial_margin=excluded.initial_margin WHERE excluded.entry_time>position_entry_margin.entry_time OR (excluded.entry_time=position_entry_margin.entry_time AND (length(excluded.event_id)>length(position_entry_margin.event_id) OR (length(excluded.event_id)=length(position_entry_margin.event_id) AND excluded.event_id>position_entry_margin.event_id)))`);
       for (const event of events) {
         if (event.entry_time < through - 7 * 86400000 || event.entry_time > through || this.entrySeen(owner, event.event_id)) continue;
         if (event.initial_margin != null && decimal(event.initial_margin).lt(0)) throw new AppError('固定保证金不能为负');
@@ -188,10 +188,25 @@ export class Storage {
         const result = insert.run(id, event.entry_time, event.contract, event.side, event.initial_margin ?? null);
         if (result.changes) margin.run(owner, event.contract, event.side, id, event.entry_time, event.initial_margin ?? null);
       }
+      for (const row of observations) {
+        if (decimal(row.initial_margin).lt(0)) throw new AppError('固定保证金不能为负');
+        // No entry event means no historical snapshot. Never fabricate an entry
+        // from the first time a position happened to be visible.
+        const latest = this.db.prepare('SELECT event_id FROM position_entry_margin WHERE owner=? AND contract=? AND side=? AND event_id<>?').get(owner, row.contract, row.side, '');
+        if (latest) {
+          this.db.prepare('UPDATE position_entry_margin SET initial_margin=? WHERE owner=? AND contract=? AND side=? AND initial_margin IS NULL').run(row.initial_margin, owner, row.contract, row.side);
+          const saved = this.db.prepare('SELECT initial_margin FROM position_entry_margin WHERE owner=? AND contract=? AND side=?').get(owner, row.contract, row.side)!;
+          this.db.prepare('UPDATE position_entry_history SET initial_margin=? WHERE event_id=? AND initial_margin IS NULL').run(saved.initial_margin!, latest.event_id!);
+        }
+      }
       this.db.prepare('DELETE FROM position_entry_seen WHERE entry_time<?').run(through - 7 * 86400000);
       this.db.exec('DELETE FROM position_entry_history WHERE event_id NOT IN (SELECT event_id FROM position_entry_history ORDER BY entry_time DESC,event_id DESC LIMIT 100)');
       this.db.prepare('INSERT OR REPLACE INTO position_entry_sync VALUES (?,?)').run(owner, through);
     });
+  }
+  entryMargin(owner: string, contract: string, side: number): string | null {
+    const value = this.db.prepare('SELECT initial_margin FROM position_entry_margin WHERE owner=? AND contract=? AND side=? AND event_id<>?').get(owner, contract, side, '')?.initial_margin;
+    return typeof value === 'string' ? value : null;
   }
   fixedMargin(owner: string, contract: string, side: number, observed: string): string {
     if (decimal(observed).lt(0)) throw new AppError('固定保证金不能为负');

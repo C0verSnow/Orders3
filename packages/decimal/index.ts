@@ -33,3 +33,13 @@ function orderPrice(price: Decimal, amount: string, rules: ContractRules, priceR
   if (rules.order_size_max && decimal(rules.order_size_max).gt(0) && size.abs().gt(decimal(rules.order_size_max))) throw new Error('数量超过 Gate 最大张数');
   return aligned.toFixed(step.decimalPlaces());
 }
+
+// Restored issue-21 policy, explicitly approved for issue 43. This is a trailing
+// activation target, not a guaranteed execution price or net return.
+export function closePrice(entry: string, size: string, margin: string, rules: ContractRules): string {
+  const quantity = decimal(integer(size)), price = decimal(entry), fixed = decimal(margin), multiplier = decimal(rules.quanto_multiplier);
+  if (price.lte(0) || fixed.lt(0) || multiplier.lte(0)) throw new Error('平仓计算参数无效');
+  const target = price.plus(fixed.times('3.1').div(quantity.times(multiplier)));
+  const activation = target.times(quantity.isNegative() ? '0.99' : '1.01');
+  return orderPrice(activation, quantity.negated().toFixed(0), rules, rules.order_price_round);
+}

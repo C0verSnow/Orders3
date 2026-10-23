@@ -5,7 +5,7 @@
 | 来源抓取 | fetchSourceRecords / parseSupabaseOrders | exchange/supabase、source-parser | 直接 orders，短页继续，总数变动/重复页失败，显式 null 空订单，全部校验后事务保存 |
 | 合约参数 | contractParameters | Gate.contract | 真实合约名、乘数、tick，新增最小/最大张数边界 |
 | 开仓 | createTrailingOrders | trading.openOrders/reconcile | 保留有符号量/价格匹配；状态 1 可停，2 保留；reduce_only=false；原固定参数 |
-| 持仓同步 | 旧平仓保护功能已取消 | positions.syncPositions | 每分钟及手动读取持仓和订单；不计算保护价、不生成/修改/停止保护单；已有 Gate 保护单由用户管理 |
+| 持仓与平仓 | issue #43 恢复历史策略 | positions.syncPositions、closing.closeOrders | 每分钟及手动只读；每 10 分钟独立同步成交、补齐保证金、维护只减仓追踪单；已激活单阻止同方向补单 |
 | 成交历史 | syncEntryHistory | entry-history.syncEntries | 七天完整回看分页、独立成交身份去重、最新方向保存观察保证金、原子水位 |
 | 7 天限制 | hasRecentEntry | Storage.recentEntry | 同合约同方向含 7 天边界；最多 100 条；加仓重新计时 |
 | 保证金 | fixedEntryMargin | Storage.fixedMargin/history | 只在真实新入仓/加仓更新；旧仓初始化；行情不覆盖 |

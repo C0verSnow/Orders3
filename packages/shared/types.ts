@@ -8,6 +8,7 @@ export interface SourceOrder {
 }
 export interface TrailOrder {
   id: string; contract: string; amount: DecimalText; activation_price: DecimalText;
+  price_type?: number; price_offset?: string; is_gte?: boolean; pos_margin_mode?: string; position_mode?: string;
   reduce_only: boolean; original_status: number; timestamp: number;
 }
 export interface Position {

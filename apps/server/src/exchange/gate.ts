@@ -82,7 +82,7 @@ export class Gate {
         seen.add(id);
         const amount = integer(row.amount), price = text(row.activation_price);
         if (decimal(price).lt(0) || typeof row.reduce_only !== 'boolean') throw new AppError('追踪订单参数无效', 502);
-        result.push({ id, contract: contractName(row.contract), amount, activation_price: price, reduce_only: row.reduce_only, original_status: timestamp(row.original_status), timestamp: time });
+        result.push({ ...(row.price_type !== undefined ? { price_type: timestamp(row.price_type) } : {}), ...(typeof row.price_offset === 'string' ? { price_offset: row.price_offset } : {}), ...(typeof row.is_gte === 'boolean' ? { is_gte: row.is_gte } : {}), ...(typeof row.pos_margin_mode === 'string' ? { pos_margin_mode: row.pos_margin_mode } : {}), ...(typeof row.position_mode === 'string' ? { position_mode: row.position_mode } : {}), id, contract: contractName(row.contract), amount, activation_price: price, reduce_only: row.reduce_only, original_status: timestamp(row.original_status), timestamp: time });
       }
       if (!paginate || rows.length === 0) break;
       if (result.length > 1_000_000) throw new AppError('追踪订单分页过多', 502);

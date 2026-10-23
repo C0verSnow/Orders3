@@ -33,17 +33,12 @@ export async function syncEntries(gate: Gate, storage: Storage, now = Date.now()
     offset += page.length;
     if (offset > 1_000_000) throw new AppError('成交历史分页过多');
   }
-  if (events.length) {
-    const positions = await gate.positions(), latest = new Map<string, EntryEvent>();
-    for (const event of events) {
-      const key = `${event.contract}:${event.side}`, old = latest.get(key);
-      if (!old || old.entry_time < event.entry_time || (old.entry_time === event.entry_time && old.event_id < event.event_id)) latest.set(key, event);
-    }
-    for (const row of positions) {
-      const side = decimal(row.size).isNegative() ? -1 : 1, event = latest.get(`${row.contract}:${side}`);
-      if (event) event.initial_margin = text(row.initial_margin);
-    }
-  }
-  storage.history(gate.owner, events, now);
+  // Always observe positions, including a repeat poll with no new fills: the
+  // latest confirmed entry may still be waiting for its first margin snapshot.
+  const positions = await gate.positions();
+  storage.history(gate.owner, events, now, positions.map(row => ({
+    contract: text(row.contract), side: decimal(row.size).isNegative() ? -1 : 1,
+    initial_margin: text(row.initial_margin)
+  })));
   return events.length > 0;
 }

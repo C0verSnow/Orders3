@@ -9,6 +9,7 @@ import { Gate } from '../exchange/gate.ts';
 import { fetchSources } from '../exchange/supabase.ts';
 import { sourceOrder } from './source-parser.ts';
 import { openOrders, type TradingAuthorization } from './trading.ts';
+import { closeOrders } from './closing.ts';
 import { syncPositions } from './positions.ts';
 import { AppError, safeError } from '../utils/errors.ts';
 
@@ -20,6 +21,7 @@ export class Dashboard {
   sourceError: string | null = null;
   ordersError: string | null = null;
   execution: Execution[] = [];
+  closeExecution: Execution[] = [];
   started = performance.now();
   config: Configuration;
   storage: Storage;
@@ -32,7 +34,7 @@ export class Dashboard {
   orders(): OrdersSnapshot {
     const positions = this.storage.positions();
     const total = (field: 'unrealised_pnl' | 'realised_pnl') => two(this.storage.rawPositions().reduce((sum, row) => sum.plus(String(row[field])), decimal('0')));
-    return { orders: this.storage.trailing(), positions, close_execution: [], updated_at: this.storage.updated('orders'), position_updated_at: this.storage.updated('positions'), trailing_updated_at: this.storage.updated('trailing'), error: this.ordersError ?? this.storage.schemaError,
+    return { orders: this.storage.trailing(), positions, close_execution: this.closeExecution, updated_at: this.storage.updated('orders'), position_updated_at: this.storage.updated('positions'), trailing_updated_at: this.storage.updated('trailing'), error: this.ordersError ?? this.storage.schemaError,
       refreshing: this.gateBusy, unrealised_pnl: total('unrealised_pnl'), realised_pnl: total('realised_pnl'), uptime_ms: Math.floor(performance.now() - this.started) };
   }
   async refreshSources() {
@@ -99,6 +101,26 @@ export class Dashboard {
     })();
     this.gateWork = work.catch(() => {});
     await work;
+  }
+  async maintainPositions(authorization: Extract<TradingAuthorization, { kind: 'maintenance' }>) {
+    if (this.gateBusy) throw new AppError('交易任务正在运行，请稍后', 409);
+    const release = this.config.acquireConnection();
+    this.gateBusy = true; this.ordersError = null; this.closeExecution = []; this.activity.begin('maintenance');
+    const gate = new Gate(this.http, this.config.connection(), 'maintenance');
+    const work = (async () => {
+      try {
+        if (this.storage.schemaError) throw new AppError(this.storage.schemaError);
+        await syncEntries(gate, this.storage);
+        await syncPositions(gate, this.storage);
+        this.closeExecution = await closeOrders(gate, this.storage, authorization);
+        const failure = this.closeExecution.find(row => row.action === 'failed');
+        if (failure) throw new AppError(failure.error || '平仓维护失败', 502);
+        this.activity.finish('maintenance', true);
+      } catch (error) { this.ordersError = safeError(error); this.activity.finish('maintenance', false); throw error; }
+      finally { this.gateBusy = false; release(); }
+    })();
+    this.gateWork = work.catch(() => {});
+    return work;
   }
   async refreshOrders(includePositions = true) {
     if (this.gateBusy) throw new AppError('交易任务正在运行，请稍后', 409);

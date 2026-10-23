@@ -47,6 +47,7 @@ export class Scheduler {
   gateTimer?: ReturnType<typeof setInterval>;
   private stopped = false;
   private ticking = false;
+  private maintenanceNext = Date.now() + 600000;
   constructor(config: Configuration, dashboard: Dashboard) {
     this.config = config; this.dashboard = dashboard;
     dashboard.storage.recoverRuns();
@@ -83,6 +84,20 @@ export class Scheduler {
     if (this.ticking) return;
     this.ticking = true;
     try {
+    // Independent ten-minute maintenance, regardless of source/opening settings.
+    if (!this.stopped && !this.dashboard.gateBusy && now.getTime() >= this.maintenanceNext) {
+      const due = Math.floor(now.getTime() / 600000) * 600000;
+      const id = this.dashboard.storage.claimRun('maintenance', due);
+      this.maintenanceNext = now.getTime() + 600000;
+      if (id) {
+        let error: string | null = null;
+        try { await this.dashboard.maintainPositions({ kind: 'maintenance', runId: id, assertAllowed: () => {
+          if (this.stopped) throw new AppError('平仓维护已停止', 403);
+        } }); }
+        catch (failure) { error = safeError(failure); }
+        this.dashboard.storage.finishRun(id, error ? 'failed' : 'completed', error);
+      }
+    }
     // Source refresh and opening are independent. If both are due, finish the read first.
     for (const task of ['schedule', 'opening'] as const) {
       const state = this.tasks[task];
