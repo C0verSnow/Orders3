@@ -4,7 +4,7 @@ import type { Configuration } from '../config/index.ts';
 import type { Storage } from '../database/index.ts';
 import type { Activity } from './activity.ts';
 import { HttpClient } from '../exchange/http.ts';
-import { syncEntries } from './entry-history.ts';
+import { syncEntries, EntryHistoryReadError } from './entry-history.ts';
 import { Gate } from '../exchange/gate.ts';
 import { fetchSources } from '../exchange/supabase.ts';
 import { sourceOrder } from './source-parser.ts';
@@ -127,16 +127,27 @@ export class Dashboard {
     if (this.gateBusy) throw this.busyError('交易任务正在运行，请稍后');
     this.ordersError = null; this.closeExecution = [];
     const work = this.runTask('maintenance', async http => {
+      let historyError: string | null = null;
       try {
         const gate = new Gate(http, this.config.connection(), 'maintenance');
         if (this.storage.schemaError) throw new AppError(this.storage.schemaError);
-        await syncEntries(gate, this.storage);
-        await syncPositions(gate, this.storage);
-        this.closeExecution = await closeOrders(gate, this.storage, authorization);
-        const failure = this.closeExecution.find(row => row.action === 'failed');
-        if (failure) throw new AppError(failure.error || '平仓维护失败', 502);
+        try { await syncEntries(gate, this.storage); }
+        catch (error) {
+          if (!(error instanceof EntryHistoryReadError)) throw error;
+          historyError = safeError(error);
+        }
+        // Use the same validated live snapshot for display and close sizing;
+        // closing still re-reads immediately before each close create.
+        const positions = await syncPositions(gate, this.storage);
+        this.closeExecution = await closeOrders(gate, this.storage, authorization, positions, historyError === null);
+        const failures = this.closeExecution.filter(row => row.action === 'failed');
+        if (failures.length) throw new AppError(failures.map(row => `${row.contract}：${row.error || '平仓维护失败'}`).join('；'), 502);
+        if (historyError) throw new AppError('已按最新持仓核对平仓单，入仓历史将在下轮重试', 502);
         this.maintenanceError = null;
-      } catch (error) { this.maintenanceError = safeError(error); throw error; }
+      } catch (error) {
+        this.maintenanceError = [historyError ? `入仓历史同步失败：${historyError}` : '', safeError(error)].filter(Boolean).join('；');
+        throw new AppError(this.maintenanceError, 502);
+      }
     });
     this.gateWork = work.catch(() => {});
     return work;

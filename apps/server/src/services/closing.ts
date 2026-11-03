@@ -8,15 +8,24 @@ import { AppError, safeError } from '../utils/errors.ts';
 
 type Authorization = Extract<TradingAuthorization, { kind: 'maintenance' }>;
 // Only the independent maintenance task can authorize these reduce-only writes.
-export async function closeOrders(gate: Gate, storage: Storage, authorization: Authorization): Promise<Execution[]> {
-  const positions = await gate.positions(), rules = new Map<string, ContractRules>();
+export async function closeOrders(gate: Gate, storage: Storage, authorization: Authorization,
+  positions: Awaited<ReturnType<Gate['positions']>>, historyComplete: boolean): Promise<Execution[]> {
+  const rules = new Map<string, ContractRules>();
   const desired: { contract: string; amount: string; activation_price: string; entry_price: string }[] = [];
   const results: Execution[] = [];
   for (const row of positions) {
     const contract = text(row.contract), size = integer(row.size), side = decimal(size).isNegative() ? -1 : 1;
     // Legacy positions without visible seven-day fills can use a first observed
     // fixed margin, without creating an entry event or changing the entry time.
-    const margin = storage.entryMargin(gate.owner, contract, side) ?? storage.fixedMargin(gate.owner, contract, side, text(row.initial_margin));
+    // When history is incomplete, reuse only a previously fixed value for this
+    // account/contract/side. Never initialize/reset it from an unconfirmed entry.
+    const margin = historyComplete
+      ? storage.entryMargin(gate.owner, contract, side) ?? storage.fixedMargin(gate.owner, contract, side, text(row.initial_margin))
+      : storage.savedMargin(gate.owner, contract, side);
+    if (margin === null) {
+      results.push({ action: 'failed', contract, error: '入仓历史未同步且缺少已确认固定保证金，保留该持仓旧单并暂停调整' });
+      continue;
+    }
     if (!rules.has(contract)) rules.set(contract, await gate.contract(contract));
     desired.push({ contract, amount: decimal(size).negated().toFixed(0), entry_price: text(row.entry_price),
       activation_price: closePrice(text(row.entry_price), size, margin, rules.get(contract)!) });

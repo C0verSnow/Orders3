@@ -5,7 +5,7 @@ import type { Gate } from '../exchange/gate.ts';
 import { text } from '../exchange/http.ts';
 
 // Read-only exchange sync. No source steps, target prices or protection reconciliation.
-export async function syncPositions(gate: Gate, storage: Storage): Promise<void> {
+export async function syncPositions(gate: Gate, storage: Storage): Promise<Awaited<ReturnType<Gate['positions']>>> {
   const raw = await gate.positions();
   const rules = new Map<string, ContractRules>(), positions: Position[] = [];
   for (const row of raw) {
@@ -19,4 +19,5 @@ export async function syncPositions(gate: Gate, storage: Storage): Promise<void>
       quanto_multiplier: rule.quanto_multiplier, order_price_round: rule.order_price_round });
   }
   storage.savePositions(positions, raw);
+  return raw;
 }

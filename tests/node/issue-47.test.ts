@@ -106,12 +106,14 @@ test('47 decimal close and reversal classification keeps exact signs and rejects
 });
 
 for (const failure of ['http', 'zero', 'conflict'] as const) {
-  test(`47 ${failure} on a later history page rolls back the batch and prevents close maintenance`, async t => {
+  test(`47 ${failure} on a later history page rolls back history while close maintenance reads live positions`, async t => {
     t.mock.timers.enable({ apis: ['Date'], now });
     let posts = 0;
     const f = fixture(t, async (url, init) => {
       if (init.method === 'POST') posts++;
-      assert.ok(url.pathname.includes('my_trades_timerange'), 'history failure must prevent later exchange work');
+      if (url.pathname.endsWith('/positions')) return response([]);
+      if (url.pathname.endsWith('/list')) return response(list([]));
+      assert.ok(url.pathname.includes('my_trades_timerange'));
       assert.equal(new Headers(init.headers).get('X-Gate-Size-Decimal'), '1');
       if (url.searchParams.get('offset') === '0') return response([fills[0]]);
       if (failure === 'http') return response({}, 503);
