@@ -46,4 +46,4 @@
 - 维护失败后普通刷新和重启仍显示错误，之后维护成功才清除；接口失败无写入。
 - 小数开多/开空、纯平仓、反手和真正无效输入的分类。
 
-最终远端验证结果与 PR 链接在 `tasklist.md` 记录。feature 分支提交 PR 供用户 review；合并和生产部署沿用 main 的既有流程。排查期间未改线上数据或镜像。
+[修复提交 06bcff2 的完整远端 CI](https://github.com/C0verSnow/Orders3/actions/runs/41556426465)已通过：94 项测试全部成功，类型/静态检查、构建、运行冒烟、桌面与手机浏览器、Windows EXE、Linux AMD64/ARM64 安装运行、双架构 Docker 与跨平台像素对比均成功。发布和部署在 feature/PR 上按规则跳过。[PR #48](https://github.com/C0verSnow/Orders3/pull/48)等待用户 review，issue #47 已按要求关闭。最终远端验证结果与 PR 链接也在 `tasklist.md` 记录。feature 分支提交 PR 供用户 review；合并和生产部署沿用 main 的既有流程。排查期间未改线上数据或镜像。
