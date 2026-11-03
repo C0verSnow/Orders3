@@ -26,6 +26,7 @@ export class Dashboard {
   phase = 'idle';
   sourceError: string | null = null;
   ordersError: string | null = null;
+  private maintenanceError: string | null = null;
   execution: Execution[] = [];
   closeExecution: Execution[] = [];
   started = performance.now();
@@ -33,7 +34,11 @@ export class Dashboard {
   storage: Storage;
   http: HttpClient;
   activity: Activity;
-  constructor(config: Configuration, storage: Storage, http: HttpClient, activity: Activity) { this.config = config; this.storage = storage; this.http = http; this.activity = activity; }
+  constructor(config: Configuration, storage: Storage, http: HttpClient, activity: Activity) {
+    this.config = config; this.storage = storage; this.http = http; this.activity = activity;
+    const maintenance = storage.schemaError ? undefined : storage.lastRun('maintenance');
+    if (maintenance && ['failed', 'unknown'].includes(String(maintenance.state))) this.maintenanceError = String(maintenance.error || '上次持仓维护未成功，请核对运行记录');
+  }
   private busyError(message: string) {
     const occupied = [this.sourceTask, this.gateTask].filter((row): row is RunningTask => !!row)
       .map(row => `${taskNames[row.task]}（${row.task}），已运行 ${Math.floor((performance.now() - row.started) / 1000)} 秒`).join('；');
@@ -59,7 +64,7 @@ export class Dashboard {
   orders(): OrdersSnapshot {
     const positions = this.storage.positions();
     const total = (field: 'unrealised_pnl' | 'realised_pnl') => two(this.storage.rawPositions().reduce((sum, row) => sum.plus(String(row[field])), decimal('0')));
-    return { orders: this.storage.trailing(), positions, close_execution: this.closeExecution, updated_at: this.storage.updated('orders'), position_updated_at: this.storage.updated('positions'), trailing_updated_at: this.storage.updated('trailing'), error: this.ordersError ?? this.storage.schemaError,
+    return { orders: this.storage.trailing(), positions, close_execution: this.closeExecution, updated_at: this.storage.updated('orders'), position_updated_at: this.storage.updated('positions'), trailing_updated_at: this.storage.updated('trailing'), error: this.ordersError ?? (this.maintenanceError ? `持仓维护失败：${this.maintenanceError}` : this.storage.schemaError),
       refreshing: this.gateBusy, unrealised_pnl: total('unrealised_pnl'), realised_pnl: total('realised_pnl'), uptime_ms: Math.floor(performance.now() - this.started) };
   }
   async refreshSources() {
@@ -130,7 +135,8 @@ export class Dashboard {
         this.closeExecution = await closeOrders(gate, this.storage, authorization);
         const failure = this.closeExecution.find(row => row.action === 'failed');
         if (failure) throw new AppError(failure.error || '平仓维护失败', 502);
-      } catch (error) { this.ordersError = safeError(error); throw error; }
+        this.maintenanceError = null;
+      } catch (error) { this.maintenanceError = safeError(error); throw error; }
     });
     this.gateWork = work.catch(() => {});
     return work;

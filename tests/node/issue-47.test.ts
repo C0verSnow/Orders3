@@ -104,3 +104,26 @@ test('47 decimal close and reversal classification keeps exact signs and rejects
   assert.throws(() => fillDirection('0', '0'));
   assert.throws(() => fillDirection('0.9', '-0.1'));
 });
+
+for (const failure of ['http', 'zero', 'conflict'] as const) {
+  test(`47 ${failure} on a later history page rolls back the batch and prevents close maintenance`, async t => {
+    t.mock.timers.enable({ apis: ['Date'], now });
+    let posts = 0;
+    const f = fixture(t, async (url, init) => {
+      if (init.method === 'POST') posts++;
+      assert.ok(url.pathname.includes('my_trades_timerange'), 'history failure must prevent later exchange work');
+      assert.equal(new Headers(init.headers).get('X-Gate-Size-Decimal'), '1');
+      if (url.searchParams.get('offset') === '0') return response([fills[0]]);
+      if (failure === 'http') return response({}, 503);
+      return response([{ ...fills[1], size: failure === 'zero' ? '0' : '0.1', close_size: failure === 'zero' ? '0' : '-0.1' }]);
+    });
+    const scheduler = new Scheduler(f.config, f.dashboard);
+    t.mock.timers.setTime(now + 600000); await scheduler.tick();
+    assert.equal(f.storage.lastRun('maintenance')?.state, 'failed');
+    assert.equal(f.storage.watermark(f.gate.owner), -1);
+    assert.equal(f.storage.rows('position_entry_history', 'event_id').length, 0);
+    assert.equal(f.storage.rows('position_entry_margin', 'contract').length, 0);
+    assert.equal(posts, 0);
+    assert.equal(f.dashboard.gateBusy, false);
+  });
+}
