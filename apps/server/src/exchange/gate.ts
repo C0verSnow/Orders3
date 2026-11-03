@@ -43,10 +43,10 @@ export class Gate {
     const missing = [!credential(this.connection.gateKey) ? 'API_KEY' : '', !credential(this.connection.gateSecret) ? 'API_SECRET' : ''].filter(Boolean);
     if (missing.length) throw new AppError(`Gate 配置缺少 ${missing.join('、')}`);
   }
-  async request(path: string, method = 'GET', body = '', authenticated = true) {
+  async request(path: string, method = 'GET', body = '', authenticated = true, headers: Record<string, string> = {}) {
     if (authenticated) this.requireCredentials();
     return this.http.request(this.task, new URL(path, 'https://api.gateio.ws'), method,
-      authenticated ? signedHeaders(method, path, body, this.connection.gateKey, this.connection.gateSecret) : { Accept: 'application/json' }, body || undefined);
+      { ...headers, ...(authenticated ? signedHeaders(method, path, body, this.connection.gateKey, this.connection.gateSecret) : { Accept: 'application/json' }) }, body || undefined);
   }
   async positions(): Promise<Record<string, unknown>[]> {
     const result = await this.request('/api/v4/futures/usdt/positions'); gateSuccess(result);

@@ -18,7 +18,12 @@ export async function syncEntries(gate: Gate, storage: Storage, now = Date.now()
   const from = Math.floor((now - 7 * 86400000) / 1000), to = Math.floor(now / 1000) + 1;
   const events: EntryEvent[] = [], seen = new Set<string>();
   for (let offset = 0; ; ) {
-    const response = await gate.request(`/api/v4/futures/usdt/my_trades_timerange?from=${from}&to=${to}&limit=100&offset=${offset}`); gateSuccess(response);
+    // Gate's legacy response truncates fractional fills (e.g. 0.9) to zero.
+    // Opt in on every history page; keep exact decimal size/close_size parsing.
+    // Official API and adapter design references: docs/issue-47-entry-history.md.
+    const response = await gate.request(`/api/v4/futures/usdt/my_trades_timerange?from=${from}&to=${to}&limit=100&offset=${offset}`,
+      'GET', '', true, { 'X-Gate-Size-Decimal': '1' });
+    gateSuccess(response);
     const page = array(response.data);
     if (!page.length) break;
     for (const item of page) {
