@@ -5,6 +5,7 @@ import { fixture, response, list } from './helpers.ts';
 import { Scheduler } from '../../apps/server/src/scheduler/index.ts';
 import { fillDirection } from '../../apps/server/src/services/entry-history.ts';
 import { Dashboard } from '../../apps/server/src/services/dashboard.ts';
+import { AppError } from '../../apps/server/src/utils/errors.ts';
 
 const now = new Date('2026-11-03T02:00:00Z').getTime();
 const position = { contract: 'SOL_USDT', size: '19', entry_price: '100', initial_margin: '1', leverage_max: '20', unrealised_pnl: '0', realised_pnl: '0', mark_price: '101' };
@@ -147,3 +148,37 @@ test('49 history fallback may reuse a previously fixed legacy margin without res
   assert.equal(f.writes.length, 1);
   assert.equal(f.storage.rows('position_entry_history', 'event_id').length, 0);
 });
+
+test('49 a database history commit failure aborts maintenance rather than falling back to trading', async t => {
+  const f = historyFailureFixture(t);
+  f.recover();
+  t.mock.method(f.storage, 'history', () => { throw new AppError('数据库写入失败'); });
+  const scheduler = new Scheduler(f.config, f.dashboard);
+  t.mock.timers.setTime(now + 600000); await scheduler.tick();
+  assert.equal(f.writes.length, 0);
+  assert.match(f.dashboard.orders().error!, /数据库写入失败/);
+  assert.equal(f.storage.watermark(f.gate.owner), now);
+});
+
+test('49 fallback never takes another account or direction fixed margin', async t => {
+  const f = historyFailureFixture(t, { noMargin: true });
+  f.storage.fixedMargin('another-owner', 'SOL_USDT', 1, '1');
+  f.storage.fixedMargin(f.gate.owner, 'SOL_USDT', -1, '1');
+  f.storage.fixedMargin(f.gate.owner, 'ETH_USDT', 1, '1');
+  const scheduler = new Scheduler(f.config, f.dashboard);
+  t.mock.timers.setTime(now + 600000); await scheduler.tick();
+  assert.equal(f.writes.length, 0);
+  assert.ok(f.dashboard.closeExecution.every(row => row.action === 'failed' && /固定保证金/.test(row.error!)));
+});
+
+for (const status of [1, 2]) {
+  test(`49 history fallback retains existing status ${status} close order when policy is incomplete or already activated`, async t => {
+    const f = historyFailureFixture(t);
+    f.setOrders([{ id: '88', contract: 'SOL_USDT', amount: '-19', activation_price: '101', reduce_only: true, original_status: status }]);
+    const scheduler = new Scheduler(f.config, f.dashboard);
+    t.mock.timers.setTime(now + 600000); await scheduler.tick();
+    assert.equal(f.writes.length, 0);
+    const result = f.dashboard.closeExecution.find(row => row.contract === 'SOL_USDT')!;
+    assert.equal(result.action, status === 2 ? 'skipped' : 'failed');
+  });
+}

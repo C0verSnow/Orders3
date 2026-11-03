@@ -67,7 +67,7 @@ function tradingFixture(t: Parameters<typeof fixture>[0], options: { unknown?: b
       else live.push({ ...body, id: String(100 + writes.length), original_status: 1 });
       return response({ code: 0, data: { id: String(100 + writes.length) } });
     }
-    if (url.pathname.endsWith('/positions')) { reads++; return response([{ ...pos, ...(options.changedPosition && reads >= 4 ? { size: options.short ? '-1' : '1' } : {}) }]); }
+    if (url.pathname.endsWith('/positions')) { reads++; return response([{ ...pos, ...(options.changedPosition && reads >= 3 ? { size: options.short ? '-1' : '1' } : {}) }]); }
     if (url.pathname.includes('/contracts/')) return response(rule);
     if (url.pathname.endsWith('/list')) return response(list(url.searchParams.get('page_num') === '1' ? live : []));
     return response([]);

@@ -49,10 +49,16 @@ export class Gate {
       { ...headers, ...(authenticated ? signedHeaders(method, path, body, this.connection.gateKey, this.connection.gateSecret) : { Accept: 'application/json' }) }, body || undefined);
   }
   async positions(): Promise<Record<string, unknown>[]> {
-    const result = await this.request('/api/v4/futures/usdt/positions'); gateSuccess(result);
+    // Read the actual position, including unsupported fractions: never size a
+    // close order from Gate's legacy truncated response. See docs/issue-49-position-close.md.
+    const result = await this.request('/api/v4/futures/usdt/positions', 'GET', '', true, { 'X-Gate-Size-Decimal': '1' }); gateSuccess(result);
     const rows = array(result.data).map(object), directions = new Set<string>();
     for (const row of rows) {
-      contractName(row.contract); const size = integer(row.size, true); row.size = size;
+      contractName(row.contract);
+      let size: string;
+      try { size = integer(row.size, true); }
+      catch { throw new AppError('持仓 size 必须为有效整数张数；不支持小数持仓，已暂停维护，未截断或取整', 502); }
+      row.size = size;
       if (size === '0') continue;
       const direction = `${row.contract}:${decimal(size).isNegative()}`;
       if (directions.has(direction)) throw new AppError('持仓接口返回重复合约方向', 502);

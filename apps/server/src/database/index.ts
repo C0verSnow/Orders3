@@ -208,6 +208,10 @@ export class Storage {
     const value = this.db.prepare('SELECT initial_margin FROM position_entry_margin WHERE owner=? AND contract=? AND side=? AND event_id<>?').get(owner, contract, side, '')?.initial_margin;
     return typeof value === 'string' ? value : null;
   }
+  savedMargin(owner: string, contract: string, side: number): string | null {
+    const value = this.db.prepare('SELECT initial_margin FROM position_entry_margin WHERE owner=? AND contract=? AND side=?').get(owner, contract, side)?.initial_margin;
+    return typeof value === 'string' ? value : null;
+  }
   fixedMargin(owner: string, contract: string, side: number, observed: string): string {
     if (decimal(observed).lt(0)) throw new AppError('固定保证金不能为负');
     return this.transaction(() => {

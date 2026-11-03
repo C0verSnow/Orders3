@@ -5,16 +5,36 @@ import { decimal } from '../../../../packages/decimal/index.ts';
 import type { EntryEvent } from '../../../../packages/shared/types.ts';
 import type { Storage } from '../database/index.ts';
 import { contractName } from './source-parser.ts';
-import { AppError } from '../utils/errors.ts';
+import { AppError, safeError } from '../utils/errors.ts';
+
+// Only exchange history reads may degrade to close-only maintenance. Database
+// failures and position validation errors must still abort before any writes.
+export class EntryHistoryReadError extends AppError {}
 
 export function fillDirection(size: string, close: string): number | null {
   const s = decimal(size), c = decimal(close);
-  if (s.isZero() || (!c.isZero() && s.isNegative() !== c.isNegative())) throw new AppError('成交历史 size 与 close_size 无效或方向冲突');
+  if (s.isZero()) throw new AppError('成交历史 size 不能为零；请核对数量精度');
+  if (!c.isZero() && s.isNegative() !== c.isNegative()) throw new AppError('成交历史 size 与 close_size 方向冲突');
   return s.abs().gt(c.abs()) ? s.isNegative() ? -1 : 1 : null;
 }
 export async function syncEntries(gate: Gate, storage: Storage, now = Date.now()): Promise<boolean> {
   const previous = storage.watermark(gate.owner);
   if (previous >= now) return false;
+  let fetched: EntryEvent[];
+  try { fetched = await readEntryEvents(gate, now); }
+  catch (error) { throw new EntryHistoryReadError(safeError(error), 502); }
+  const events = fetched.filter(event => !storage.entrySeen(gate.owner, event.event_id));
+  // Always observe positions, including a repeat poll with no new fills: the
+  // latest confirmed entry may still be waiting for its first margin snapshot.
+  const positions = await gate.positions();
+  storage.history(gate.owner, events, now, positions.map(row => ({
+    contract: text(row.contract), side: decimal(row.size).isNegative() ? -1 : 1,
+    initial_margin: text(row.initial_margin)
+  })));
+  return events.length > 0;
+}
+
+async function readEntryEvents(gate: Gate, now: number): Promise<EntryEvent[]> {
   const from = Math.floor((now - 7 * 86400000) / 1000), to = Math.floor(now / 1000) + 1;
   const events: EntryEvent[] = [], seen = new Set<string>();
   for (let offset = 0; ; ) {
@@ -33,17 +53,10 @@ export async function syncEntries(gate: Gate, storage: Storage, now = Date.now()
       const time = decimal(row.create_time).times(1000).floor();
       if (time.lt(0) || time.gt(Number.MAX_SAFE_INTEGER)) throw new AppError('成交历史时间无效');
       const contract = contractName(row.contract), side = fillDirection(text(row.size), text(row.close_size));
-      if (side !== null && time.gte(now - 7 * 86400000) && time.lte(now) && !storage.entrySeen(gate.owner, id)) events.push({ event_id: id, entry_time: time.toNumber(), contract, side });
+      if (side !== null && time.gte(now - 7 * 86400000) && time.lte(now)) events.push({ event_id: id, entry_time: time.toNumber(), contract, side });
     }
     offset += page.length;
     if (offset > 1_000_000) throw new AppError('成交历史分页过多');
   }
-  // Always observe positions, including a repeat poll with no new fills: the
-  // latest confirmed entry may still be waiting for its first margin snapshot.
-  const positions = await gate.positions();
-  storage.history(gate.owner, events, now, positions.map(row => ({
-    contract: text(row.contract), side: decimal(row.size).isNegative() ? -1 : 1,
-    initial_margin: text(row.initial_margin)
-  })));
-  return events.length > 0;
+  return events;
 }
