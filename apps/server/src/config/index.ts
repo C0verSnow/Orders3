@@ -141,7 +141,7 @@ export class Configuration {
     for (const name of parsed.data.clear ?? []) next[name] = '';
     if (next.SUPABASE_URL) serviceUrl(next.SUPABASE_URL, true);
     if (next.ORDERS_ALLOWED_ORIGIN && new URL(next.ORDERS_ALLOWED_ORIGIN).origin !== next.ORDERS_ALLOWED_ORIGIN) throw new AppError('允许来源须为完整 Origin，不带路径');
-    const closeMultiplier = closingMultiplier(parsed.data.close_multiplier ?? this.closeMultiplier);
+    const closeMultiplier = parsed.data.close_multiplier === undefined ? this.closeMultiplier : closingMultiplier(parsed.data.close_multiplier);
     const content = replaceSection(replaceSection(this.text(), 'environment', next), 'trading', { close_multiplier: closeMultiplier });
     this.saveText(content);
     this.closeMultiplier = closeMultiplier;

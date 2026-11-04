@@ -198,5 +198,28 @@ async function checkInteractions(browser, base, output) {
   assert.equal(await multiplier.inputValue(), '2.5', 'saved multiplier survives page reload');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   assert.equal(await save.locator('.button-surface').evaluate(el => getComputedStyle(el).transitionDuration), '0s');
+  let resolved = false, reviewWrites = 0;
+  const intent = { id: '11111111-1111-4111-8111-111111111111', operation: 'create', state: 'unknown', owner: 'test-owner', created_at: Date.now(), payload: '{}', request_id: 'test-request' };
+  await page.route('**/api/status', route => route.fulfill({ json: { pending: resolved ? [] : [intent], database_error: null } }));
+  await page.route('**/api/intents/resolve', route => {
+    reviewWrites++;
+    assert.deepEqual(route.request().postDataJSON(), { id: intent.id, evidence: 'Gate order 123456', confirmed_exchange_review: true });
+    resolved = true;
+    return route.fulfill({ json: { pending: [] } });
+  });
+  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  const evidence = page.getByLabel('Exchange review evidence', { exact: true });
+  await evidence.waitFor();
+  const review = evidence.locator('xpath=ancestor::form');
+  const submit = review.getByRole('button');
+  await submit.click();
+  assert.equal(reviewWrites, 0, 'missing evidence and confirmation cannot submit');
+  await evidence.fill('  Gate order 123456  ');
+  await submit.click();
+  assert.equal(reviewWrites, 0, 'evidence alone cannot clear the block');
+  await review.getByRole('switch').check();
+  await submit.click();
+  await page.waitForFunction(() => !document.querySelector('input[name=evidence]'));
+  assert.equal(reviewWrites, 1);
   await page.close();
 }
