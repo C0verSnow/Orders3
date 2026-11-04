@@ -35,6 +35,10 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
       client.setQueryData(['settings'], data);
     },
   });
+  const closing = useMutation({
+    mutationFn: (body: unknown) => post<Settings>('/api/settings', body),
+    onSuccess: data => client.setQueryData(['settings'], data),
+  });
   const timer = useMutation({
     mutationFn: (body: unknown) => post<Schedule>('/api/schedule', body),
     onSuccess: (data) => {
@@ -176,12 +180,12 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
         <p className="mt-4 text-xs text-zinc-500">{t('默认 3.1，必须大于零。保存后从下一轮持仓维护生效，不会立即下单；未激活的平仓单可能在下轮调整。')}</p>
         <form onSubmit={event => {
           event.preventDefault();
-          save.mutate({ close_multiplier: String(new FormData(event.currentTarget).get('close_multiplier')) });
+          closing.mutate({ close_multiplier: String(new FormData(event.currentTarget).get('close_multiplier')) });
         }}>
           <label><StableText text={t('平仓乘数')} /><Input name="close_multiplier" type="number" step="any" min="0" required defaultValue={settings.data.close_multiplier}
             onChange={event => event.currentTarget.setCustomValidity(event.currentTarget.value !== '' && Number(event.currentTarget.value) <= 0 ? t('平仓乘数必须是大于零的有效十进制数') : '')} /></label>
-          <Button variant="primary" status={save.isPending ? 'pending' : save.isError ? 'error' : save.isSuccess ? 'success' : 'idle'}>{t('保存平仓参数')}</Button>
-          {save.error && <p role="alert">{t(save.error.message)}</p>}
+          <Button variant="primary" status={closing.isPending ? 'pending' : closing.isError ? 'error' : closing.isSuccess ? 'success' : 'idle'}>{t('保存平仓参数')}</Button>
+          {closing.error && <p role="alert">{t(closing.error.message)}</p>}
         </form>
       </Panel></div>
       <div hidden={section !== 'prediction'}><Panel>

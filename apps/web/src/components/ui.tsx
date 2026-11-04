@@ -58,7 +58,7 @@ export function Button({
       aria-busy={feedback === 'pending'}
       className={`action-button inline-flex font-sans min-h-9 shrink-0 cursor-pointer touch-manipulation select-none items-center justify-center gap-2 [&_svg]:shrink-0 rounded-lg px-3 py-2 text-[13px] leading-5 font-medium disabled:cursor-default disabled:opacity-50 motion-reduce:transform-none motion-reduce:transition-none ${focus} ${variants[variant]} ${className}`}
       {...props}
-      disabled={props.disabled || status === 'pending'}
+      disabled={props.disabled || status === 'pending' || feedback === 'pending'}
       onClick={async event => {
         if (status !== undefined) { props.onClick?.(event); return; }
         timers.current.forEach(clearTimeout);
