@@ -279,6 +279,8 @@ try {
         window.revealClickBounds = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
       }, { capture: true, once: true }));
       await button.click();
+      assert.equal(await button.getAttribute('data-feedback'), 'idle', 'theme and language controls do not morph on click');
+      assert.equal(await button.getAttribute('aria-busy'), 'false');
       const bounds = await reveal.evaluate(() => window.revealClickBounds);
       await reveal.waitForFunction(() => document.getAnimations().some(a => a.animationName === 'circular-reveal'));
       const animation = await reveal.evaluate(() => {
