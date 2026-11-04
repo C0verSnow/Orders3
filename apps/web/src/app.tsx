@@ -31,7 +31,7 @@ import type {
 import { two } from '../../../packages/decimal/index.ts';
 import { api, post } from './services/api';
 import { DataTable } from './components/data-table';
-import { AnimatedValue, MotionList, ScrollFade, TwoToneTitle } from './components/motion';
+import { AnimatedValue, Stagger, MotionList, ScrollFade, TwoToneTitle } from './components/motion';
 import { Navigation } from './components/navigation';
 import { SettingsPage } from './pages/settings';
 import { useTheme } from './hooks/use-theme';
@@ -254,6 +254,10 @@ function Workspace({ themeState }: { themeState: ReturnType<typeof useTheme> }) 
         void client.invalidateQueries({ queryKey: [key] });
     },
   });
+  const reread = useMutation({
+    mutationFn: () => client.invalidateQueries({}, { throwOnError: true }),
+    onError: (error) => setNotice(error.message),
+  });
   const manualOpening = useMutation({
     mutationFn: () => post('/api/opening/manual', { confirmed_trade_execution: true }),
     onError: (error) => setNotice(error.message),
@@ -415,6 +419,7 @@ function Workspace({ themeState }: { themeState: ReturnType<typeof useTheme> }) 
           id="main"
           tabIndex={-1}
         >
+          <Stagger revision={page}>
           <div className="mb-8 flex flex-col items-start justify-between gap-5 xl:flex-row xl:items-center">
             <div>
               <p className="mb-3 text-[10px] font-semibold tracking-[.14em] text-zinc-500 dark:text-zinc-400">
@@ -485,9 +490,8 @@ function Workspace({ themeState }: { themeState: ReturnType<typeof useTheme> }) 
                 </p>
                 <Button
                   variant="text"
-                  onClick={() => {
-                    void client.invalidateQueries();
-                  }}
+                  status={reread.isPending ? 'pending' : reread.isError ? 'error' : reread.isSuccess ? 'success' : 'idle'}
+                  onClick={() => reread.mutate()}
                 >
                   {t('重新读取状态')}
                 </Button>
@@ -775,29 +779,25 @@ function Workspace({ themeState }: { themeState: ReturnType<typeof useTheme> }) 
                       {t('请求关联：')}
                       {intent.request_id || t('旧版记录缺失')}
                     </p>
-                    <Button
-                      status={resolve.variables?.id === intent.id ? (resolve.isPending ? 'pending' : resolve.isError ? 'error' : resolve.isSuccess ? 'success' : 'idle') : 'idle'}
-                      disabled={resolve.isPending || !intent.owner}
-                      onClick={() => {
-                        if (
-                          confirm(
-                            t(
-                              '你已在 Gate 核对这笔请求的真实结果，并确认允许后续自动策略继续执行？确认只解除本地阻断，不会重发原请求。',
-                            ),
-                          )
-                        ) {
-                          const evidence = prompt(
-                            t(
-                              '请填写 Gate 订单号、请求关联 text、成交记录或查询结果，至少 8 个字，作为本次人工核对依据：',
-                            ),
-                          );
-                          if (evidence && evidence.trim().length >= 8)
-                            resolve.mutate({ id: intent.id, evidence: evidence.trim() });
-                        }
-                      }}
-                    >
-                      {t('已在 Gate 核对，解除此项阻断')}
-                    </Button>
+                    <form className="mt-4 grid gap-3" onSubmit={event => {
+                      event.preventDefault();
+                      const values = new FormData(event.currentTarget);
+                      resolve.mutate({ id: intent.id, evidence: String(values.get('evidence')).trim() });
+                    }}>
+                      <label className="grid gap-2"><StableText text={t('人工核对依据')} />
+                        <Input name="evidence" aria-label={t('人工核对依据')} required minLength={8} maxLength={2000} disabled={resolve.isPending}
+                          placeholder={t('Gate 订单号、请求关联或成交记录，至少 8 个字')} />
+                      </label>
+                      <label className="flex items-center gap-3">
+                        <Input type="checkbox" name="confirmed" required disabled={resolve.isPending} />
+                        <StableText text={t('已在 Gate 核对真实结果，允许后续自动策略继续；只解除本地阻断，不重发请求。')} />
+                      </label>
+                      <Button type="submit"
+                        status={resolve.variables?.id === intent.id ? (resolve.isPending ? 'pending' : resolve.isError ? 'error' : resolve.isSuccess ? 'success' : 'idle') : 'idle'}
+                        disabled={resolve.isPending || !intent.owner}>
+                        {t('已在 Gate 核对，解除此项阻断')}
+                      </Button>
+                    </form>
                   </article>
                 ))}
                 {pending.data?.database_error && (
@@ -822,6 +822,7 @@ function Workspace({ themeState }: { themeState: ReturnType<typeof useTheme> }) 
               </Panel>
             </>
           )}
+          </Stagger>
           <footer className="pb-5 text-[10px] text-zinc-500">Orders3</footer>
         </main>
       </div>
@@ -831,6 +832,7 @@ function Workspace({ themeState }: { themeState: ReturnType<typeof useTheme> }) 
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
     <section
+      data-stagger-item=""
       data-ui="metric"
       className="min-w-0 p-5 not-first:border-l not-first:border-zinc-200 nth-3:border-t nth-3:border-l-0 nth-4:border-t xl:nth-3:border-t-0 xl:nth-3:border-l xl:nth-4:border-t-0 dark:not-first:border-zinc-700 [&>p]:text-xs [&>p]:text-zinc-500 [&>strong]:my-3 [&>strong]:block [&>strong]:text-3xl [&>strong]:font-semibold [&>span]:text-[10px] [&>span]:text-zinc-500"
     >

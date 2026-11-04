@@ -36,7 +36,7 @@
 .action-button:disabled { transform: none; box-shadow: none; }
 .settings-content { background: #f7f8fa; padding: 24px; border-radius: 12px; }
 .settings-card { width: 100%; height: 96px; padding: 20px 24px; border: 1px solid #e5e7eb; border-radius: 12px; background: white; gap: 16px; justify-content: flex-start; }
-.settings-card > svg:first-child { color: #2563eb; flex-shrink: 0; }
+.settings-card .button-label > svg:first-child { color: #2563eb; flex-shrink: 0; }
 .settings-card [data-ui="stable-text"] { max-width: 100%; }
 .settings-card [data-ui="stable-text"] > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-theme="dark"] .settings-content { background: #09090b; }
@@ -45,3 +45,56 @@
 [data-theme="dark"] [data-ui="bottom-fade"] { --table-surface: #18181b; }
 @media (max-width: 480px) { .settings-content { padding: 12px; } .settings-card { padding: 20px; gap: 12px; } }
 @media (prefers-reduced-motion: reduce) { .action-button, .action-button:not(:disabled):hover, .action-button:not(:disabled):active { transform: none; transition: none; } }
+
+/* The hit area stays stable while the visible surface morphs into a circle. */
+.action-button { position: relative; isolation: isolate; }
+.button-label { position: relative; transition: opacity 150ms ease-in-out; }
+.button-surface { position: absolute; z-index: -1; inset: 0; margin: auto; width: 100%; height: 100%; border-radius: inherit; transition: width 300ms ease-in-out, height 300ms ease-in-out, border-radius 300ms ease-in-out, background-color 300ms ease-in-out; }
+.button-feedback { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.action-button[data-feedback]:not([data-feedback="idle"]) { background: transparent !important; border-color: transparent !important; box-shadow: none; }
+.action-button[data-feedback]:not([data-feedback="idle"]) .button-label { opacity: 0; }
+.action-button[data-feedback]:not([data-feedback="idle"]) .button-surface { width: 36px; height: 36px; border-radius: 50%; }
+.action-button[data-feedback]:not([data-feedback="idle"]) .button-feedback { color: white; }
+.action-button[data-feedback="pending"] .button-feedback { animation: morph-loader 300ms ease-in-out both; }
+.action-button[data-feedback="pending"] .button-surface { background: #2563eb; }
+.action-button[data-feedback="success"] .button-surface { background: #15803d; }
+.action-button[data-feedback="error"] .button-surface { background: #b91c1c; }
+.morph-check polyline, .morph-check path { stroke-dasharray: 30; stroke-dashoffset: 30; animation: morph-check 300ms ease-out forwards; }
+@keyframes morph-check { to { stroke-dashoffset: 0; } }
+@keyframes morph-loader { from { opacity: 0; } to { opacity: 1; } }
+.settings-card .button-label { width: 100%; gap: 16px; text-align: left; }
+.jelly-toggle { position: relative; display: inline-flex; width: 44px; height: 26px; flex-shrink: 0; vertical-align: middle; }
+.jelly-toggle input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; z-index: 1; cursor: pointer; }
+.jelly-track { width: 100%; border-radius: 999px; background: #a1a1aa; transition: background-color 350ms; }
+.jelly-thumb { display: block; width: 20px; height: 20px; margin: 3px; border-radius: 999px; background: white; box-shadow: 0 1px 3px #0003; transform-origin: left; transition: transform 350ms cubic-bezier(.34,1.56,.64,1); }
+.jelly-toggle input:checked + .jelly-track { background: #15803d; }
+.jelly-toggle input:checked + .jelly-track .jelly-thumb { transform: translateX(18px); }
+.jelly-toggle:has(input:active) .jelly-thumb { width: 27px; }
+.jelly-toggle input:focus-visible + .jelly-track { outline: 2px solid #2563eb; outline-offset: 3px; }
+.jelly-toggle:has(input:disabled) { opacity: .5; }
+.jelly-toggle input:disabled { cursor: default; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid #e4e4e7; font-size: 13px; }
+.setting-group { border: 1px solid #e4e4e7; border-radius: 12px; padding: 0 16px; background: #fafafa; }
+.setting-group > :last-child { border-bottom: 0; }
+.segmented-choice { display: inline-flex; flex-wrap: wrap; padding: 3px; border-radius: 9px; background: #e4e4e7; }
+.segmented-choice label { position: relative; cursor: pointer; }
+.segmented-choice input { position: absolute; opacity: 0; width: 100%; height: 100%; }
+.segmented-choice label > span { display: block; padding: 6px 10px; border-radius: 7px; color: #71717a; }
+.segmented-choice input:checked + span { background: white; color: #18181b; box-shadow: 0 1px 4px #0002; }
+.segmented-choice input:focus-visible + span { outline: 2px solid #2563eb; }
+.field-control { display: grid; min-width: 0; gap: 6px; }
+.field-error { color: #dc2626; font-size: 12px; font-weight: 400; }
+.field-control input[aria-invalid=true] { border-color: #dc2626; }
+.settings-content form > label:not(:has(input[type=checkbox])) { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr); align-items: start; gap: 12px; }
+[data-theme="dark"] .setting-group { background: #09090b; border-color: #3f3f46; }
+[data-theme="dark"] .setting-row { border-color: #3f3f46; }
+[data-theme="dark"] .segmented-choice { background: #27272a; }
+[data-theme="dark"] .segmented-choice input:checked + span { background: #52525b; color: white; }
+@media (max-width: 640px) { .settings-content form > label:not(:has(input[type=checkbox])) { grid-template-columns: 1fr; } .setting-row { flex-wrap: wrap; } }
+@media (prefers-reduced-motion: reduce) { .button-label, .button-surface, .jelly-track, .jelly-thumb { transition: none; } .morph-check path, .morph-check polyline, .button-feedback { animation: none !important; stroke-dashoffset: 0; } }
+
+.jelly-thumb[data-slide="on"] { animation: jelly-on 350ms cubic-bezier(.34,1.56,.64,1); }
+.jelly-thumb[data-slide="off"] { animation: jelly-off 350ms cubic-bezier(.34,1.56,.64,1); }
+@keyframes jelly-on { 0% { transform: translateX(0) scaleX(1); } 50% { transform: translateX(9px) scaleX(1.35); } 100% { transform: translateX(18px) scaleX(1); } }
+@keyframes jelly-off { 0% { transform: translateX(18px) scaleX(1); } 50% { transform: translateX(9px) scaleX(1.35); } 100% { transform: translateX(0) scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .jelly-thumb[data-slide] { animation: none; } }

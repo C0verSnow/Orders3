@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { decimal } from '../../../../packages/decimal/index.ts';
 import type { Settings, Schedule } from '../../../../packages/shared/types.ts';
 import { AppError } from '../utils/errors.ts';
 
@@ -55,6 +56,7 @@ export class Configuration {
   fallback: Record<string, string> = {};
   startup: NodeJS.ProcessEnv;
   restartRequired = false;
+  closeMultiplier: string;
   private connectionUsers = 0;
   private pendingFallback: Record<string, string> | null = null;
   private defaultDataPath: string;
@@ -91,6 +93,7 @@ export class Configuration {
     const checkout = existsSync(join(root, 'apps/server/src/main.ts'));
     this.path = expand(this.startup.ORDERS_CONFIG_PATH || (checkout ? join(root, 'config') : join(homedir(), '.orders-dashboard/config')));
     const saved = iniSection(this.text(), 'environment');
+    this.closeMultiplier = closingMultiplier(iniSection(this.text(), 'trading').close_multiplier ?? '3.1');
     this.environment = Object.fromEntries(names.map(name => [name, saved[name] ?? this.startup[name] ?? '']));
     for (const name of ['API_KEY', 'API_SECRET']) this.environment[name] = credential(this.environment[name]);
     this.defaultDataPath = checkout ? join(root, 'data') : join(homedir(), '.orders-dashboard');
@@ -98,10 +101,13 @@ export class Configuration {
   }
   text() { return existsSync(this.path) ? readFileSync(this.path, 'utf8') : ''; }
   saveSection(section: string, values: Record<string, string>) {
+    this.saveText(replaceSection(this.text(), section, values));
+  }
+  private saveText(content: string) {
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const temporary = `${this.path}.${randomUUID()}.tmp`;
     try {
-      writeFileSync(temporary, replaceSection(this.text(), section, values), { flag: 'wx', mode: 0o600 });
+      writeFileSync(temporary, content, { flag: 'wx', mode: 0o600 });
       renameSync(temporary, this.path);
     } finally { rmSync(temporary, { force: true }); }
   }
@@ -111,14 +117,14 @@ export class Configuration {
   }
   snapshot(): Settings {
     const connection = this.connection();
-    return { SUPABASE_URL: this.environment.SUPABASE_URL, ORDERS_DATA_DIR: this.environment.ORDERS_DATA_DIR,
+    return { close_multiplier: this.closeMultiplier, SUPABASE_URL: this.environment.SUPABASE_URL, ORDERS_DATA_DIR: this.environment.ORDERS_DATA_DIR,
       ORDERS_ALLOWED_ORIGIN: this.environment.ORDERS_ALLOWED_ORIGIN, config_path: this.path, database_path: this.databasePath,
       restart_required: this.restartRequired, configured: { SUPABASE_ANON_KEY: !!connection.supabaseKey, API_KEY: !!connection.gateKey, API_SECRET: !!connection.gateSecret },
       credential_sources: Object.fromEntries(['API_KEY', 'API_SECRET'].map(name => [name, this.environment[name] ? '本地配置' : this.fallback[name] ? 'Infisical 备用凭证' : '未配置'])) };
   }
   update(payload: unknown): Settings {
     if (this.connectionUsers) throw new AppError('任务正在使用连接配置，请等待任务完成后保存', 409);
-    const schema = z.object(Object.fromEntries(names.map(name => [name, z.string().max(8192).optional()]))).extend({ clear: z.array(z.enum(['SUPABASE_ANON_KEY', 'API_KEY', 'API_SECRET'])).optional() }).strict();
+    const schema = z.object(Object.fromEntries(names.map(name => [name, z.string().max(8192).optional()]))).extend({ close_multiplier: z.string().max(160).optional(), clear: z.array(z.enum(['SUPABASE_ANON_KEY', 'API_KEY', 'API_SECRET'])).optional() }).strict();
     const parsed = schema.safeParse(payload);
     if (!parsed.success) throw new AppError('配置包含无效字段或类型');
     const next = { ...this.environment };
@@ -135,7 +141,10 @@ export class Configuration {
     for (const name of parsed.data.clear ?? []) next[name] = '';
     if (next.SUPABASE_URL) serviceUrl(next.SUPABASE_URL, true);
     if (next.ORDERS_ALLOWED_ORIGIN && new URL(next.ORDERS_ALLOWED_ORIGIN).origin !== next.ORDERS_ALLOWED_ORIGIN) throw new AppError('允许来源须为完整 Origin，不带路径');
-    this.saveSection('environment', next);
+    const closeMultiplier = parsed.data.close_multiplier === undefined ? this.closeMultiplier : closingMultiplier(parsed.data.close_multiplier);
+    const content = replaceSection(replaceSection(this.text(), 'environment', next), 'trading', { close_multiplier: closeMultiplier });
+    this.saveText(content);
+    this.closeMultiplier = closeMultiplier;
     this.environment = next;
     this.restartRequired = join(expand(next.ORDERS_DATA_DIR || this.defaultDataPath), 'data.db') !== this.databasePath;
     return this.snapshot();
@@ -146,4 +155,12 @@ export class Configuration {
     // Never migrate the old combined switch into permission to trade.
     return { enabled: sectionName === 'opening' ? section.enabled === 'true' : section.enabled !== 'false', cron: section.cron ?? '*/15 * * * *' };
   }
+}
+
+function closingMultiplier(value: string): string {
+  try {
+    const result = decimal(value.trim());
+    if (result.gt(0)) return value.trim();
+  } catch {}
+  throw new AppError('平仓乘数必须是大于零的有效十进制数');
 }

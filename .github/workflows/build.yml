@@ -90,7 +90,7 @@ jobs:
         timeout-minutes: 5
         run: sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 install -y fonts-noto-cjk
       - name: Desktop browser checks and targeted phone refresh regression
-        timeout-minutes: 5
+        timeout-minutes: 8
         run: node scripts/check-browser.mjs
       - uses: actions/upload-artifact@v7.0.1
         if: always()

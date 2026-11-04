@@ -24,6 +24,7 @@ export interface Execution {
 export interface EntryEvent { event_id: string; entry_time: number; contract: string; side: number; initial_margin?: string | null }
 export interface Schedule { enabled: boolean; cron: string; next_run?: string | null; result?: string; error?: string | null; last_run?: string | null; opening?: Schedule }
 export interface Settings {
+  close_multiplier: string;
   SUPABASE_URL: string; ORDERS_DATA_DIR: string; ORDERS_ALLOWED_ORIGIN: string;
   configured: Record<string, boolean>; credential_sources: Record<string, string>;
   config_path: string; database_path: string; restart_required: boolean;

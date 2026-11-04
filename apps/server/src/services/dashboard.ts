@@ -139,7 +139,7 @@ export class Dashboard {
         // Use the same validated live snapshot for display and close sizing;
         // closing still re-reads immediately before each close create.
         const positions = await syncPositions(gate, this.storage);
-        this.closeExecution = await closeOrders(gate, this.storage, authorization, positions, historyError === null);
+        this.closeExecution = await closeOrders(gate, this.storage, authorization, positions, historyError === null, this.config.closeMultiplier);
         const failures = this.closeExecution.filter(row => row.action === 'failed');
         if (failures.length) throw new AppError(failures.map(row => `${row.contract}：${row.error || '平仓维护失败'}`).join('；'), 502);
         if (historyError) throw new AppError('已按最新持仓核对平仓单，入仓历史将在下轮重试', 502);

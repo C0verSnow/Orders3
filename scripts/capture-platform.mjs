@@ -67,7 +67,7 @@ try {
         const cdp = await page.context().newCDPSession(page);
         await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
         const {root} = await cdp.send('DOM.getDocument');
-        const {nodeId} = await cdp.send('DOM.querySelector',{nodeId:root.nodeId,selector:'table th button'});
+        const {nodeId} = await cdp.send('DOM.querySelector',{nodeId:root.nodeId,selector:'table th button .button-label'});
         assert.ok(nodeId,'inspect the actual rendered table font');
         const {fonts} = await cdp.send('CSS.getPlatformFontsForNode',{nodeId});
         manifest.renderedFonts.push({count,width,language,theme,fonts});

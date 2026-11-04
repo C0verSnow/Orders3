@@ -176,6 +176,21 @@ export function FadeIn({
   );
 }
 
+export function Stagger({ children, revision, className = '' }: { children: ReactNode; revision: string; className?: string }) {
+  const reduced = useContext(ReducedMotion), element = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (reduced) return;
+    const items = [...element.current!.querySelectorAll<HTMLElement>(':scope > *, [data-stagger-item]')]
+      .filter(item => item.checkVisibility() && !item.parentElement?.closest('[data-stagger-item]') &&
+        ![...item.querySelectorAll<HTMLElement>('[data-stagger-item]')].some(child => child.checkVisibility()));
+    const animations = items.map((item, index) => item.animate([
+      { opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' },
+    ], { duration: 350, delay: Math.min(index, 6) * 90, easing, fill: 'backwards' }));
+    return () => animations.forEach(animation => animation.cancel());
+  }, [revision, reduced]);
+  return <div ref={element} data-ui="stagger" className={className}>{children}</div>;
+}
+
 type MotionItem = { id: string; version: string; content: ReactNode };
 export function MotionList({
   items,

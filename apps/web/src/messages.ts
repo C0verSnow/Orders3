@@ -1,5 +1,16 @@
 // UI translations only. API field names, source records and trading values stay unchanged.
 export const english: Record<string, string> = {
+  平仓参数: 'Closing Parameters',
+  平仓目标乘数: 'Closing target multiplier',
+  平仓乘数: 'Closing multiplier',
+  保存平仓参数: 'Save closing parameters',
+  '默认 3.1，必须大于零。保存后从下一轮持仓维护生效，不会立即下单；未激活的平仓单可能在下轮调整。': 'Default 3.1, greater than zero. Applies on the next maintenance cycle without placing an immediate order; pending close orders may be adjusted then.',
+  '平仓乘数必须是大于零的有效十进制数': 'Closing multiplier must be a valid decimal greater than zero',
+  '请检查此项的格式、范围和必填要求。': 'Check the format, allowed range and required value.',
+  人工核对依据: 'Exchange review evidence',
+  'Gate 订单号、请求关联或成交记录，至少 8 个字': 'Gate order ID, request reference or fill record, at least 8 characters',
+  '已在 Gate 核对真实结果，允许后续自动策略继续；只解除本地阻断，不重发请求。': 'I verified the result on Gate and allow automatic strategies to continue. This only clears the local block without resending the request.',
+
   外观设置: 'Appearance Settings',
   主题与界面偏好: 'Theme and interface preferences',
   '数据库连接、凭证与存储': 'Database connections, credentials and storage',

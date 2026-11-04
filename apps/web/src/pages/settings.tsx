@@ -1,11 +1,11 @@
 import { StableText } from '../components/stable-text';
 import { t, useLanguage, dateLocale } from '../i18n';
-import { Button, Input, Select, Panel } from '../components/ui';
+import { Button, Input, JellyToggle, SegmentedChoice, Panel } from '../components/ui';
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, Save, Clock3, Palette, ShieldCheck, ChevronRight, ArrowLeft } from 'lucide-react';
 import type { Settings, Schedule } from '../../../../packages/shared/types.ts';
-import { TwoToneTitle } from '../components/motion';
+import { Stagger, TwoToneTitle } from '../components/motion';
 import { api, post } from '../services/api';
 import type { Theme } from '../hooks/use-theme';
 import { circularReveal } from '../circular-reveal';
@@ -17,6 +17,7 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
     { id: 'appearance', title: '外观设置', description: '主题与界面偏好', icon: Palette },
     { id: 'connections', title: '连接与存储', description: '数据库连接、凭证与存储', icon: KeyRound },
     { id: 'prediction', title: '预测抓取', description: '定时抓取与执行间隔', icon: Clock3 },
+    { id: 'trading', title: '平仓参数', description: '平仓目标乘数', icon: ShieldCheck },
     { id: 'opening', title: '自动开仓', description: '自动入场与安全限制', icon: ShieldCheck },
   ];
   const settings = useQuery({
@@ -28,28 +29,26 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
     queryFn: () => api<Schedule>('/api/schedule'),
   });
   const client = useQueryClient();
-  const [settingsVersion, setSettingsVersion] = useState(0),
-    [scheduleVersion, setScheduleVersion] = useState(0),
-    [openingVersion, setOpeningVersion] = useState(0);
   const save = useMutation({
     mutationFn: (body: unknown) => post<Settings>('/api/settings', body),
     onSuccess: (data) => {
       client.setQueryData(['settings'], data);
-      setSettingsVersion((value) => value + 1);
     },
+  });
+  const closing = useMutation({
+    mutationFn: (body: unknown) => post<Settings>('/api/settings', body),
+    onSuccess: data => client.setQueryData(['settings'], data),
   });
   const timer = useMutation({
     mutationFn: (body: unknown) => post<Schedule>('/api/schedule', body),
     onSuccess: (data) => {
       client.setQueryData(['schedule'], data);
-      setScheduleVersion((value) => value + 1);
     },
   });
   const opening = useMutation({
     mutationFn: (body: unknown) => post<Schedule>('/api/schedule/opening', body),
     onSuccess: (data) => {
       client.setQueryData(['schedule'], data);
-      setOpeningVersion((value) => value + 1);
     },
   });
   if (settings.isPending || schedule.isPending) return <p role="status"><StableText text={t('正在读取配置…')} /></p>;
@@ -57,8 +56,9 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
     return <p role="alert">{t((settings.error || schedule.error)?.message)}</p>;
   return (
     <div data-ui="settings" className="settings-content">
+      <Stagger revision={section ?? 'overview'}>
       {section === null ? <div data-ui="settings-overview" className="grid gap-4">
-        {sections.map(({ id, title, description, icon: Icon }) => <Button key={id} data-settings-section={id} className="settings-card" onClick={() => setSection(id)}>
+        {sections.map(({ id, title, description, icon: Icon }) => <Button key={id} data-stagger-item="" data-settings-section={id} className="settings-card" onClick={() => setSection(id)}>
           <Icon size={22} aria-hidden="true" />
           <span className="grid min-w-0 flex-1 gap-1 text-left"><strong className="text-sm font-semibold"><StableText text={t(title)} /></strong><span className="text-xs text-zinc-500 dark:text-zinc-400"><StableText text={t(description)} /></span></span>
           <ChevronRight size={18} aria-hidden="true" />
@@ -67,21 +67,11 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
       <div className="grid items-start gap-6 [&_form]:grid [&_form]:gap-5 [&_form_label:not(:has(input[type=checkbox]))]:grid [&_form_label]:gap-2 [&_form_label]:text-xs [&_form_label]:font-medium [&_form_button]:justify-self-start [&_form_p]:text-xs [&_form_p[role=alert]]:text-red-600 [&_form_p[role=status]]:text-zinc-500 [&_section>p]:mb-5">
       <div hidden={section !== 'appearance'}><Panel data-ui="appearance-settings">
         <TwoToneTitle title={t('外观主题')} description={t('界面偏好')} />
-        <label className="mt-5 grid max-w-sm gap-2 text-xs font-medium">
-          <StableText text={t('主题模式')} />
-          <Select
-            data-ui="theme-select"
-            value={theme}
-            onChange={(event) => {
-              const next = event.currentTarget.value as Theme;
-              void circularReveal(event.currentTarget, () => setTheme(next));
-            }}
-          >
-            <option value="light">{t('浅色模式')}</option>
-            <option value="dark">{t('深色模式')}</option>
-            <option value="system">{t('跟随系统')}</option>
-          </Select>
-        </label>
+        <div className="setting-group mt-5">
+          <SegmentedChoice ui="theme-choice" label={t('主题模式')} value={theme}
+            options={[{ value: 'light', label: t('浅色模式') }, { value: 'system', label: t('跟随系统') }, { value: 'dark', label: t('深色模式') }]}
+            onChange={(value, element) => { void circularReveal(element, () => setTheme(value as Theme)); }} />
+        </div>
       </Panel></div>
       <div hidden={section !== 'connections'}><Panel>
         <div className="mb-4 flex flex-wrap items-center gap-2 [&>svg]:size-[18px] [&>svg]:text-zinc-500">
@@ -92,7 +82,6 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
           <StableText text={t('凭证仅在服务端保存。留空保留现有密钥，勾选清除后才会删除本地值。')} />
         </p>
         <form
-          key={settingsVersion}
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault();
             const form = event.currentTarget,
@@ -113,7 +102,7 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
               if (values.get(`clear_${name}`)) clear.push(name);
             }
             body.clear = clear;
-            save.mutate(body);
+            save.mutate(body, { onSuccess: () => form.reset() });
           }}
         >
           <label>
@@ -146,7 +135,7 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
                 />
               </label>
               <label className="flex flex-row items-center gap-2 text-xs font-normal">
-                <Input type="checkbox" name={`clear_${name}`} />
+                <JellyToggle name={`clear_${name}`} disabled={save.isPending} />
                 <StableText text={t('清除本地值')} />
               </label>
             </div>
@@ -186,13 +175,25 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
           {save.error && <p role="alert">{t(save.error.message)}</p>}
         </form>
       </Panel></div>
+      <div hidden={section !== 'trading'}><Panel>
+        <TwoToneTitle title={t('平仓参数')} description={t('平仓目标乘数')} />
+        <p className="mt-4 text-xs text-zinc-500">{t('默认 3.1，必须大于零。保存后从下一轮持仓维护生效，不会立即下单；未激活的平仓单可能在下轮调整。')}</p>
+        <form onSubmit={event => {
+          event.preventDefault();
+          closing.mutate({ close_multiplier: String(new FormData(event.currentTarget).get('close_multiplier')) });
+        }}>
+          <label><StableText text={t('平仓乘数')} /><Input name="close_multiplier" type="number" step="any" min="0" required defaultValue={settings.data.close_multiplier}
+            onChange={event => event.currentTarget.setCustomValidity(event.currentTarget.value !== '' && Number(event.currentTarget.value) <= 0 ? t('平仓乘数必须是大于零的有效十进制数') : '')} /></label>
+          <Button variant="primary" status={closing.isPending ? 'pending' : closing.isError ? 'error' : closing.isSuccess ? 'success' : 'idle'}>{t('保存平仓参数')}</Button>
+          {closing.error && <p role="alert">{t(closing.error.message)}</p>}
+        </form>
+      </Panel></div>
       <div hidden={section !== 'prediction'}><Panel>
         <div className="mb-4 flex flex-wrap items-center gap-2 [&>svg]:size-[18px] [&>svg]:text-zinc-500">
           <Clock3 size={18} />
           <TwoToneTitle title={t('预测抓取')} description={t('定时与周期')} />
         </div>
         <ScheduleForm
-          key={scheduleVersion}
           label={t('启用预测订单定时抓取')}
           value={schedule.data!}
           save={(body) => timer.mutate(body)}
@@ -211,7 +212,6 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
           )} />
         </p>
         <ScheduleForm
-          key={`opening-${openingVersion}`}
           label={t('启用自动开仓（涉及真实交易）')}
           value={schedule.data.opening!}
           save={(body) => opening.mutate(body)}
@@ -229,6 +229,7 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
         </div>
       </Panel></div>
       </div>
+      </Stagger>
     </div>
   );
 }
@@ -255,28 +256,20 @@ function ScheduleForm({
         save({ enabled, cron });
       }}
     >
-      <label className="flex flex-row items-center gap-2 text-xs font-normal">
-        <Input
-          type="checkbox"
+      <div className="setting-group">
+      <label className="setting-row">
+        <StableText text={label} />
+        <JellyToggle
+          disabled={pending}
           checked={enabled}
           onChange={(event) => setEnabled(event.target.checked)}
         />
-        <StableText text={label} />
       </label>
-      <label>
-        <StableText text={t('快捷周期')} />
-        <Select
-          onChange={(event) => {
-            if (event.target.value) setCron(event.target.value);
-          }}
-          value={['*/5 * * * *', '*/15 * * * *', '0 * * * *'].includes(cron) ? cron : ''}
-        >
-          <option value="">{t('自定义')}</option>
-          <option value="*/5 * * * *">{t('每 5 分钟')}</option>
-          <option value="*/15 * * * *">{t('每 15 分钟')}</option>
-          <option value="0 * * * *">{t('每小时')}</option>
-        </Select>
-      </label>
+      <SegmentedChoice label={t('快捷周期')} disabled={pending}
+        value={['*/5 * * * *', '*/15 * * * *', '0 * * * *'].includes(cron) ? cron : ''}
+        options={[{value: '', label: t('自定义')}, {value: '*/5 * * * *', label: t('每 5 分钟')}, {value: '*/15 * * * *', label: t('每 15 分钟')}, {value: '0 * * * *', label: t('每小时')}]}
+        onChange={value => setCron(value)} />
+      </div>
       <label>
         <StableText text={t('Cron 表达式')} />
         <Input
