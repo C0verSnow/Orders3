@@ -31,6 +31,7 @@ export async function checkSettings(browser, base, output) {
     for (const section of ['appearance','connections','prediction','trading','opening']) {
       await page.locator(`[data-settings-section=${section}]`).click();
       await page.locator('[data-ui=settings-back]').waitFor();
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${section} fits the viewport`);
       const visibleForms = page.locator('[data-ui=settings] form:visible');
       assert.equal(await visibleForms.count(), section === 'appearance' ? 0 : 1);
       if (section === 'appearance') {

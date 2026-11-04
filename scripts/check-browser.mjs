@@ -317,7 +317,7 @@ try {
     const formBefore = await reveal.locator('input[name="API_KEY"]').evaluate(el => { window.originalDraftInput = el; return true; });
     assert.ok(formBefore);
     const layout = async () => {
-      await reveal.locator('aside').evaluate(async el => {
+      await reveal.locator('body').evaluate(async el => {
         await Promise.allSettled(el.getAnimations({subtree:true})
           .filter(animation => animation.effect?.getComputedTiming().endTime !== Infinity)
           .map(animation => animation.finished));
