@@ -217,7 +217,7 @@ try {
   assert.equal(await appearance.locator('svg[data-ui="brand-logo"]').count(), 1);
   await appearance.getByRole('button', { name: '系统设置', exact: true }).click();
   await appearance.locator('[data-settings-section=appearance]').click();
-  await appearance.locator('[data-ui=theme-choice] input[value=system]').check();
+  await appearance.locator('[data-ui=theme-choice] input[value=system]').click();
   await appearance.waitForFunction(() => !document.documentElement.dataset.revealing);
   await appearance.emulateMedia({ colorScheme: 'dark' });
   await appearance.locator('html[data-theme="dark"]').waitFor();
@@ -230,7 +230,7 @@ try {
   assert.equal(await appearance.locator('[data-ui=theme-choice] input:checked').inputValue(), 'dark');
   await appearance.waitForFunction(() => !document.documentElement.dataset.revealing);
   for (const mode of ['light', 'dark', 'system']) {
-    await appearance.locator(`[data-ui=theme-choice] input[value=${mode}]`).check();
+    await appearance.locator(`[data-ui=theme-choice] input[value=${mode}]`).click();
     await appearance.waitForFunction(() => !document.documentElement.dataset.revealing);
     assert.equal(await appearance.evaluate(() => localStorage.getItem('orders-theme')), mode);
     await appearance.locator(`html[data-theme="${mode === 'system' ? 'light' : mode}"]`).waitFor();

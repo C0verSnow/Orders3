@@ -782,7 +782,7 @@ function Workspace({ themeState }: { themeState: ReturnType<typeof useTheme> }) 
                       resolve.mutate({ id: intent.id, evidence: String(values.get('evidence')).trim() });
                     }}>
                       <label className="grid gap-2"><StableText text={t('人工核对依据')} />
-                        <Input name="evidence" required minLength={8} maxLength={2000} disabled={resolve.isPending}
+                        <Input name="evidence" aria-label={t('人工核对依据')} required minLength={8} maxLength={2000} disabled={resolve.isPending}
                           placeholder={t('Gate 订单号、请求关联或成交记录，至少 8 个字')} />
                       </label>
                       <label className="flex items-center gap-3">
