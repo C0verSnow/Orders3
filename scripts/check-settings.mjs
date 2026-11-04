@@ -74,6 +74,11 @@ export async function checkSettings(browser, base, output) {
         release();
         await page.waitForFunction(() => [...document.querySelectorAll('[data-ui=settings] button[data-feedback=success]')].some(el => el.checkVisibility()));
         assert.equal(await button.getAttribute('data-feedback'), 'success');
+        await button.evaluate(async el => Promise.allSettled(el.getAnimations({subtree:true})
+          .filter(animation => animation.effect?.getComputedTiming().endTime !== Infinity)
+          .map(animation => animation.finished)));
+        assert.equal(await button.locator('.button-surface').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(21, 128, 61)');
+        assert.equal(await button.locator('.morph-check path, .morph-check polyline').first().evaluate(el => getComputedStyle(el).strokeDashoffset), '0px', 'success check is drawn even with reduced motion');
         assert.deepEqual(await dimensions(), initial);
         assert.equal(await page.getByText(/^(Schedule saved\.|Configuration saved,|定时配置已保存。|配置已保存，)/).count(), 0);
         const result = await page.evaluate(async endpoint => (await fetch(endpoint === '/api/schedule/opening' ? '/api/schedule' : endpoint)).json(), endpoint);
@@ -88,6 +93,7 @@ export async function checkSettings(browser, base, output) {
         await button.click();
         await page.waitForFunction(() => [...document.querySelectorAll('[data-ui=settings] button[data-feedback=error]')].some(el => el.checkVisibility()));
         assert.equal(await button.getAttribute('data-feedback'), 'error');
+        assert.equal(await button.locator('.button-surface').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(185, 28, 28)');
         assert.deepEqual(await dimensions(), initial);
         assert.ok(await page.locator('[data-ui=settings] p[role=alert]:visible').count());
         await page.unroute(`**${endpoint}`);
@@ -190,6 +196,11 @@ async function checkInteractions(browser, base, output) {
   const circle = await save.locator('.button-surface').boundingBox();
   assert.ok(Math.abs(circle.width - 36) < 1 && Math.abs(circle.height - 36) < 1);
   assert.ok(await save.locator('.morph-check').count());
+  await save.evaluate(async el => Promise.allSettled(el.getAnimations({subtree:true})
+    .filter(animation => animation.effect?.getComputedTiming().endTime !== Infinity)
+    .map(animation => animation.finished)));
+  assert.equal(await save.locator('.button-surface').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(21, 128, 61)');
+  assert.equal(await save.locator('.morph-check path, .morph-check polyline').first().evaluate(el => getComputedStyle(el).strokeDashoffset), '0px');
   await page.screenshot({ path: `${output}/issue-51-submit-morph.png` });
   await page.waitForFunction(() => document.querySelector('input[name=close_multiplier]').closest('form').querySelector('button').dataset.feedback === 'idle');
   assert.equal(writes, 1);

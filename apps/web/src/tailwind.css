@@ -53,9 +53,10 @@
 .button-feedback { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .action-button[data-feedback]:not([data-feedback="idle"]) { background: transparent !important; border-color: transparent !important; box-shadow: none; }
 .action-button[data-feedback]:not([data-feedback="idle"]) .button-label { opacity: 0; }
-.action-button[data-feedback]:not([data-feedback="idle"]) .button-surface { width: 36px; height: 36px; border-radius: 50%; background: #2563eb; }
+.action-button[data-feedback]:not([data-feedback="idle"]) .button-surface { width: 36px; height: 36px; border-radius: 50%; }
 .action-button[data-feedback]:not([data-feedback="idle"]) .button-feedback { color: white; }
 .action-button[data-feedback="pending"] .button-feedback { animation: morph-loader 300ms ease-in-out both; }
+.action-button[data-feedback="pending"] .button-surface { background: #2563eb; }
 .action-button[data-feedback="success"] .button-surface { background: #15803d; }
 .action-button[data-feedback="error"] .button-surface { background: #b91c1c; }
 .morph-check polyline, .morph-check path { stroke-dasharray: 30; stroke-dashoffset: 30; animation: morph-check 300ms ease-out forwards; }
@@ -90,7 +91,7 @@
 [data-theme="dark"] .segmented-choice { background: #27272a; }
 [data-theme="dark"] .segmented-choice input:checked + span { background: #52525b; color: white; }
 @media (max-width: 640px) { .settings-content form > label:not(:has(input[type=checkbox])) { grid-template-columns: 1fr; } .setting-row { flex-wrap: wrap; } }
-@media (prefers-reduced-motion: reduce) { .button-label, .button-surface, .jelly-track, .jelly-thumb { transition: none; } .morph-check *, .button-feedback { animation: none !important; stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .button-label, .button-surface, .jelly-track, .jelly-thumb { transition: none; } .morph-check path, .morph-check polyline, .button-feedback { animation: none !important; stroke-dashoffset: 0; } }
 
 .jelly-thumb[data-slide="on"] { animation: jelly-on 350ms cubic-bezier(.34,1.56,.64,1); }
 .jelly-thumb[data-slide="off"] { animation: jelly-off 350ms cubic-bezier(.34,1.56,.64,1); }
