@@ -16,8 +16,8 @@ export async function checkNavigation(browser, base, output) {
         await page.waitForFunction(() => !document.documentElement.hasAttribute('data-revealing'));
         const preferences = page.locator('header [data-ui="preferences"] button');
         await checkIdleButtons(preferences);
-        const nav = page.getByRole('navigation');
-        const buttons = nav.getByRole('button');
+        const nav = page.locator('aside nav');
+        const buttons = nav.locator('button');
         assert.equal(await buttons.count(), 7);
         const labels = await buttons.locator('.button-label').allTextContents();
         const open = page.getByRole('button', { name: language === 'zh' ? '打开导航' : 'Open navigation', exact: true });
