@@ -16,6 +16,7 @@ export function Preferences({
     <div className="flex shrink-0 items-center gap-2" data-ui="preferences">
       <Button
         variant="quiet"
+        status="idle"
         data-ui="theme-switch"
         aria-label={t('切换主题')}
         title={t('切换主题')}
@@ -29,6 +30,7 @@ export function Preferences({
       </Button>
       <Button
         variant="quiet"
+        status="idle"
         data-ui="language-switch"
         aria-label={t('切换语言')}
         title={language === 'zh' ? 'English' : '中文'}

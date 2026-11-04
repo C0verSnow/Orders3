@@ -3,6 +3,7 @@ import { chromium } from 'playwright';
 import { checkSettings } from './check-settings.mjs';
 import { checkTables } from './check-tables.mjs';
 import { checkRefresh } from './check-refresh.mjs';
+import { checkNavigation } from './check-navigation.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -28,6 +29,7 @@ try {
   assert.ok(ready);
   browser=await chromium.launch();mkdirSync('tests/artifacts',{recursive:true});
   await checkRefresh(browser, base, 'tests/artifacts');
+  await checkNavigation(browser, base, 'tests/artifacts');
   const direct = await browser.newPage();
   const sessionRequests = [];
   direct.on('request', request => { if (request.url().includes('/api/session')) sessionRequests.push(request.url()); });
@@ -277,6 +279,8 @@ try {
         window.revealClickBounds = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
       }, { capture: true, once: true }));
       await button.click();
+      assert.equal(await button.getAttribute('data-feedback'), 'idle', 'theme and language controls do not morph on click');
+      assert.equal(await button.getAttribute('aria-busy'), 'false');
       const bounds = await reveal.evaluate(() => window.revealClickBounds);
       await reveal.waitForFunction(() => document.getAnimations().some(a => a.animationName === 'circular-reveal'));
       const animation = await reveal.evaluate(() => {

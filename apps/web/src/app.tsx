@@ -363,6 +363,7 @@ function Workspace({ themeState }: { themeState: ReturnType<typeof useTheme> }) 
             <Button
               key={item.id}
               variant="quiet"
+              status="idle"
               className={`relative w-full justify-start! rounded-xl! px-3! py-3! hover:bg-transparent! dark:hover:bg-transparent! ${page === item.id ? 'font-semibold! text-blue-600 dark:text-blue-400 before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-full before:bg-blue-600 dark:before:bg-blue-400' : 'text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100'}`}
               aria-current={page === item.id ? 'page' : undefined}
               onClick={() => {

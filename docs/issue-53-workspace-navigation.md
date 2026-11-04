@@ -1,0 +1,33 @@
+# Issue #53：恢复 Workspace 导航、主题与语言按钮
+
+## 恢复的行为
+
+点击 Workspace 左侧七个页面入口，立即切换页面，图标和文字始终可见，不再变成蓝色加载圆环或绿色成功对勾。选中项的蓝色标记、悬停与键盘焦点的共享滑块、手机菜单关闭方式均沿用现有实现。
+
+按用户追加要求，右上角明暗主题按钮和中英文切换按钮也恢复原有图标和文字，点击时不再播放按钮的加载圆环或成功对勾。主题与语言切换原有的页面圆形展开、双向切换、浏览器记忆和未保存草稿保留。
+
+改动只在导航、主题与语言的 Button 调用处显式传入 `status="idle"`，使用共享按钮已有的受控状态。共享按钮、其他本地操作、保存、刷新、下载及交易逻辑均保持不变，没有新增依赖。
+
+## 原因与历史核对
+
+已读取 GitHub [issue #53 的正文与截图](https://github.com/C0verSnow/Orders3/issues/53)，并核对本仓库 Git 历史及 GitHub 上的[修改前共享按钮](https://github.com/C0verSnow/Orders3/blob/974c9e7/apps/web/src/components/ui.tsx)。导航自身在 #51 中没有改动；共享 Button 在没有传入 status 时新增自动加载和成功反馈，导致导航也隐藏了图标文字。
+
+本次为熟悉组件的局部恢复，直接使用项目已有接口，没有实现陌生功能，没有检索或借鉴其他开源项目，也没有复制外部代码。
+
+## 验证
+
+沿用已有 GitHub Actions 的 `scripts/check-browser.mjs`，调用新增的 `scripts/check-navigation.mjs`。检查真实生产界面和已有缓存服务，覆盖：
+
+- 1440px 桌面、390px 手机，中英界面、明暗主题。
+- 七个导航项的鼠标点击和键盘 Enter；当前页标记、页面标题与手机菜单关闭。
+- 点击后所有导航项持续 idle、无忙碌状态、文字可见且不变、没有加载或成功播报；等待后也不会出现延迟成功反馈。
+- 主题与语言切换后同样保持 idle、没有忙碌状态、图标文字可见，既有圆形展开检查在点击后立即确认没有按钮形变。
+- 上传八张 `issue-53-navigation-*.png`，供检查恢复后的外观。原有共享滑块、设置保存与刷新反馈检查继续运行。
+
+先提交回归，再修复。回归提交 `f2053c3` 在[远端 41785013923](https://github.com/C0verSnow/Orders3/actions/runs/41785013923/job/126425058534) 的 `node scripts/check-browser.mjs` 中复现：点击导航后实际为 `feedback=pending`、`aria-busy=true`、状态文字“正在处理…”，与预期持续 idle 不符。既有刷新回归在此之前已通过。修复后源码 `c0ac53aadc947cfd247f9363ef99e9252d457694` 的[完整远端 CI 41785642547](https://github.com/C0verSnow/Orders3/actions/runs/41785642547) 已全部通过：117 项业务测试、宿主脚本回归、静态与类型检查、React/Node 构建、运行检查、完整浏览器、Windows EXE 与 Linux AMD64/ARM64 DEB 实际安装启动、双架构 Docker、Windows/Docker 像素对比。
+
+本地仅做代码阅读与 `git diff --check`，未进行本地编译、构建、类型检查、测试或启动服务。
+
+已下载并查看 [browser-evidence 截图](https://github.com/C0verSnow/Orders3/actions/runs/41785642547/artifacts/13301655901)中的桌面英文浅色、手机中文深色导航，以及语言切换中途画面：导航图标文字保留，顶栏主题与语言按钮正常，页面圆形展开仍存在。[跨平台对比报告](https://github.com/C0verSnow/Orders3/actions/runs/41785642547/artifacts/13301038471)也已通过。
+
+[PR #54](https://github.com/C0verSnow/Orders3/pull/54) 交付等待 review；按 issue 正文要求关闭 #53。没有合并、发布或部署。最后收尾提交只补文档和任务记录，使用 `[skip ci]`，运行代码与上述已验证提交相同。
