@@ -1,7 +1,7 @@
 // Runs only in remote CI against an already built server. No exchange access.
 import assert from 'node:assert/strict';
 export async function checkSettings(browser, base, output) {
-  for (const width of [1440]) for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) {
+  for (const width of [1440, 390]) for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) {
     const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -16,34 +16,35 @@ export async function checkSettings(browser, base, output) {
     const overview = page.locator('[data-ui=settings-overview]');
     await overview.waitFor();
     const cards = overview.locator('[data-settings-section]');
-    assert.equal(await cards.count(), 4);
-    const titles = zh ? ['外观设置','连接与存储','预测抓取','自动开仓'] : ['Appearance Settings','Connections & Storage','Prediction Fetching','Automatic Entry'];
-    for (let i=0;i<4;i++) await cards.nth(i).getByText(titles[i],{exact:true}).waitFor();
+    assert.equal(await cards.count(), 5);
+    const titles = zh ? ['外观设置','连接与存储','预测抓取','平仓参数','自动开仓'] : ['Appearance Settings','Connections & Storage','Prediction Fetching','Closing Parameters','Automatic Entry'];
+    for (let i=0;i<5;i++) await cards.nth(i).getByText(titles[i],{exact:true}).waitFor();
     assert.equal(await page.locator('[data-ui=settings] input:visible, [data-ui=settings] select:visible').count(), 0);
     const sizes = await cards.evaluateAll(elements => elements.map(el => { const r = el.getBoundingClientRect(); return [r.x,r.width,r.height,r.y]; }));
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       assert.deepEqual(sizes[i].slice(0,3), sizes[0].slice(0,3));
       assert.equal(sizes[i][2], 96);
       if (i) assert.equal(sizes[i][3] - sizes[i-1][3] - 96, 16);
     }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await page.screenshot({path:`${output}/settings-overview-${width}-${language}-${theme}.png`,fullPage:true});
-    for (const section of ['appearance','connections','prediction','opening']) {
+    for (const section of ['appearance','connections','prediction','trading','opening']) {
       await page.locator(`[data-settings-section=${section}]`).click();
       await page.locator('[data-ui=settings-back]').waitFor();
       const visibleForms = page.locator('[data-ui=settings] form:visible');
       assert.equal(await visibleForms.count(), section === 'appearance' ? 0 : 1);
       if (section === 'appearance') {
         for (const mode of ['light','dark','system']) {
-          await page.locator('[data-ui=theme-select]').selectOption(mode);
+          await page.locator(`[data-ui=theme-choice] input[value=${mode}]`).check();
           assert.equal(await page.evaluate(() => localStorage.getItem('orders-theme')), mode);
         }
-        await page.locator('[data-ui=theme-select]').selectOption(theme);
+        await page.locator(`[data-ui=theme-choice] input[value=${theme}]`).check();
       } else {
-        const endpoint = section === 'connections' ? '/api/settings' : section === 'prediction' ? '/api/schedule' : '/api/schedule/opening';
+        const endpoint = ['connections','trading'].includes(section) ? '/api/settings' : section === 'prediction' ? '/api/schedule' : '/api/schedule/opening';
         const form = visibleForms;
         if (section === 'connections') await form.locator('input[name=ORDERS_DATA_DIR]').fill('');
-        else await form.locator('input:not([type=checkbox])').fill(section === 'prediction' ? '7 * * * *' : '3 * * * *');
+        else if (section === 'trading') await form.locator('input[name=close_multiplier]').fill('2.75');
+        else await form.locator('input:not([type=checkbox]):not([type=radio])').fill(section === 'prediction' ? '7 * * * *' : '3 * * * *');
         // Delay the genuine response, preserving production validation and persistence.
         let release, captured;
         const held = new Promise(resolve => { release = resolve; });
@@ -75,6 +76,7 @@ export async function checkSettings(browser, base, output) {
         assert.deepEqual(await dimensions(), initial);
         assert.equal(await page.getByText(/^(Schedule saved\.|Configuration saved,|定时配置已保存。|配置已保存，)/).count(), 0);
         const result = await page.evaluate(async endpoint => (await fetch(endpoint === '/api/schedule/opening' ? '/api/schedule' : endpoint)).json(), endpoint);
+        if (section === 'trading') assert.equal(result.close_multiplier, '2.75');
         if (section === 'prediction') assert.equal(result.cron, '7 * * * *');
         if (section === 'opening') { assert.equal(result.opening.cron, '3 * * * *'); assert.equal(result.opening.enabled, false); }
         await page.screenshot({path:`${output}/settings-${section}-${width}-${language}-${theme}-success.png`,fullPage:true});
@@ -136,4 +138,65 @@ export async function checkSettings(browser, base, output) {
     assert.deepEqual(errors,[]);
     await page.close();
   }
+  await checkInteractions(browser, base, output);
+
+}
+
+async function checkInteractions(browser, base, output) {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await page.addInitScript(() => { localStorage.setItem('orders-language', 'en'); localStorage.setItem('orders-theme', 'light'); });
+  await page.goto(base);
+  for (const name of ['Predicted orders', 'Trailing orders', 'Positions', 'Entry history', 'Activity', 'Settings', 'Overview']) {
+    await page.getByRole('button', { name, exact: true }).click();
+    assert.ok(await page.locator('[data-ui=stagger]').count(), `${name} has shared staggered entry`);
+  }
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.locator('[data-settings-section=prediction]').click();
+  const toggle = page.getByRole('switch', { name: 'Enable scheduled prediction fetching' });
+  const wasChecked = await toggle.isChecked();
+  await toggle.focus(); await page.keyboard.press('Space');
+  assert.equal(await toggle.isChecked(), !wasChecked);
+  const animation = await toggle.locator('..').locator('.jelly-thumb').evaluate(el => {
+    const animation = el.getAnimations()[0];
+    return animation && { duration: animation.effect.getTiming().duration, frames: animation.effect.getKeyframes().map(frame => frame.transform) };
+  });
+  assert.equal(animation.duration, 350);
+  assert.ok(animation.frames.some(frame => frame.includes('1.35')), 'thumb stretches during its slide');
+  await page.keyboard.press('Space');
+  assert.equal(await toggle.isChecked(), wasChecked);
+  const group = page.getByRole('group', { name: 'Quick interval' });
+  await group.getByRole('radio', { name: 'Every 5 minutes', exact: true }).check();
+  assert.equal(await page.getByLabel('Cron expression', { exact: true }).first().inputValue(), '*/5 * * * *');
+  await group.getByRole('radio', { name: 'Custom', exact: true }).check();
+  assert.equal(await page.getByLabel('Cron expression', { exact: true }).first().inputValue(), '');
+  await page.locator('[data-ui=settings-back]').click();
+  await page.locator('[data-settings-section=trading]').click();
+  const multiplier = page.locator('input[name=close_multiplier]');
+  let writes = 0;
+  page.on('request', request => { if (request.method() === 'POST') writes++; });
+  await multiplier.fill('0');
+  await page.getByRole('button', { name: 'Save closing parameters', exact: true }).click();
+  assert.equal(writes, 0, 'invalid fields block submission');
+  assert.equal(await multiplier.getAttribute('aria-invalid'), 'true');
+  assert.ok(await multiplier.getAttribute('aria-describedby'));
+  await multiplier.fill('2.5');
+  assert.equal(await multiplier.getAttribute('aria-invalid'), null, 'correcting the field clears its error');
+  const save = page.getByRole('button', { name: 'Save closing parameters', exact: true });
+  const began = Date.now();
+  await save.click();
+  await page.waitForFunction(() => document.querySelector('input[name=close_multiplier]').closest('form').querySelector('button').dataset.feedback === 'success');
+  assert.ok(Date.now() - began >= 1150, 'fast real responses still show the 1.2 second loading phase');
+  const circle = await save.locator('.button-surface').boundingBox();
+  assert.ok(Math.abs(circle.width - 36) < 1 && Math.abs(circle.height - 36) < 1);
+  assert.ok(await save.locator('.morph-check').count());
+  await page.screenshot({ path: `${output}/issue-51-submit-morph.png` });
+  await page.waitForFunction(() => document.querySelector('input[name=close_multiplier]').closest('form').querySelector('button').dataset.feedback === 'idle');
+  assert.equal(writes, 1);
+  await page.reload();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.locator('[data-settings-section=trading]').click();
+  assert.equal(await multiplier.inputValue(), '2.5', 'saved multiplier survives page reload');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  assert.equal(await save.locator('.button-surface').evaluate(el => getComputedStyle(el).transitionDuration), '0s');
+  await page.close();
 }

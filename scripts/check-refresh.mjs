@@ -91,14 +91,11 @@ export async function checkRefresh(browser, base, output) {
     await state(all, 'success');
     // Wait for the success color, then inspect the real return transition.
     await page.waitForTimeout(220);
-    const successColor = await all.evaluate(el => getComputedStyle(el).backgroundColor);
+    const successColor = await all.locator('.button-surface').evaluate(el => getComputedStyle(el).backgroundColor);
     await state(all, 'idle');
-    const returning = await all.evaluate(el => ({
-      color: getComputedStyle(el).backgroundColor,
-      transitioning: el.getAnimations().some(animation => animation.transitionProperty === 'background-color'),
-    }));
-    assert.ok(returning.transitioning, 'green-to-blue uses a real CSS transition');
-    await page.waitForTimeout(220);
+    const returning = await all.locator('.button-surface').evaluate(el => el.getAnimations().some(animation => ['width', 'border-radius'].includes(animation.transitionProperty)));
+    assert.ok(returning, 'circle returns to full width through a real CSS transition');
+    await page.waitForTimeout(350);
     assert.notEqual(await all.evaluate(el => getComputedStyle(el).backgroundColor), successColor);
     await all.click();
     await state(all, 'success');

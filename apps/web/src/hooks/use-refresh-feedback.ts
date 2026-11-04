@@ -25,6 +25,7 @@ export function useRefreshFeedback() {
     const generation = ++control.generation;
     clearTimeout(timer.current);
     setFeedback({ owner, status: 'pending' });
+    const started = Date.now();
     let status: Result = 'success';
     try {
       await operation();
@@ -32,12 +33,13 @@ export function useRefreshFeedback() {
       // The mutation retains the real error explanation in Workspace.
       status = 'error';
     }
+    if (status === 'success') await new Promise(resolve => setTimeout(resolve, Math.max(0, 1200 - (Date.now() - started))));
     if (!control.mounted || generation !== control.generation) return;
     control.pending = false;
     setFeedback({ owner, status });
     timer.current = setTimeout(() => {
       if (control.mounted && generation === control.generation) setFeedback(null);
-    }, status === 'success' ? 900 : 1800);
+    }, status === 'success' ? 1000 : 1800);
   };
 
   return {

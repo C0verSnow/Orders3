@@ -217,7 +217,7 @@ try {
   assert.equal(await appearance.locator('svg[data-ui="brand-logo"]').count(), 1);
   await appearance.getByRole('button', { name: '系统设置', exact: true }).click();
   await appearance.locator('[data-settings-section=appearance]').click();
-  await appearance.locator('[data-ui="theme-select"]').selectOption('system');
+  await appearance.locator('[data-ui=theme-choice] input[value=system]').check();
   await appearance.waitForFunction(() => !document.documentElement.dataset.revealing);
   await appearance.emulateMedia({ colorScheme: 'dark' });
   await appearance.locator('html[data-theme="dark"]').waitFor();
@@ -227,10 +227,10 @@ try {
   await appearance.emulateMedia({ colorScheme: 'light' });
   await appearance.locator('html[data-theme="dark"]').waitFor();
   assert.equal(await appearance.locator('html').getAttribute('data-theme'), 'dark');
-  assert.equal(await appearance.locator('[data-ui="theme-select"]').inputValue(), 'dark');
+  assert.equal(await appearance.locator('[data-ui=theme-choice] input:checked').inputValue(), 'dark');
   await appearance.waitForFunction(() => !document.documentElement.dataset.revealing);
   for (const mode of ['light', 'dark', 'system']) {
-    await appearance.locator('[data-ui="theme-select"]').selectOption(mode);
+    await appearance.locator(`[data-ui=theme-choice] input[value=${mode}]`).check();
     await appearance.waitForFunction(() => !document.documentElement.dataset.revealing);
     assert.equal(await appearance.evaluate(() => localStorage.getItem('orders-theme')), mode);
     await appearance.locator(`html[data-theme="${mode === 'system' ? 'light' : mode}"]`).waitFor();
@@ -330,7 +330,7 @@ try {
     await reveal.evaluate(() => window.scrollTo(0, 0));
     const chineseLayout = await layout();
     assert.equal(await reveal.locator('aside [data-ui="logout"]').count(), 0);
-    assert.equal(await reveal.locator('[data-ui="theme-select"]').inputValue(), 'light');
+    assert.equal(await reveal.locator('[data-ui=theme-choice] input:checked').inputValue(), 'light');
     const coloursBefore = await reveal.locator('#main').evaluate(el => ({ background: getComputedStyle(el).backgroundColor, colour: getComputedStyle(el).color }));
     await runReveal(reveal.locator('[data-ui="language-switch"]'), 'english');
     await reveal.getByRole('heading', { name: 'Connections & Storage', exact: true }).waitFor();

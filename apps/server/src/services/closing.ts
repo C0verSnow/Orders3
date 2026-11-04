@@ -9,7 +9,7 @@ import { AppError, safeError } from '../utils/errors.ts';
 type Authorization = Extract<TradingAuthorization, { kind: 'maintenance' }>;
 // Only the independent maintenance task can authorize these reduce-only writes.
 export async function closeOrders(gate: Gate, storage: Storage, authorization: Authorization,
-  positions: Awaited<ReturnType<Gate['positions']>>, historyComplete: boolean): Promise<Execution[]> {
+  positions: Awaited<ReturnType<Gate['positions']>>, historyComplete: boolean, closeMultiplier: string): Promise<Execution[]> {
   const rules = new Map<string, ContractRules>();
   const desired: { contract: string; amount: string; activation_price: string; entry_price: string }[] = [];
   const results: Execution[] = [];
@@ -28,7 +28,7 @@ export async function closeOrders(gate: Gate, storage: Storage, authorization: A
     }
     if (!rules.has(contract)) rules.set(contract, await gate.contract(contract));
     desired.push({ contract, amount: decimal(size).negated().toFixed(0), entry_price: text(row.entry_price),
-      activation_price: closePrice(text(row.entry_price), size, margin, rules.get(contract)!) });
+      activation_price: closePrice(text(row.entry_price), size, margin, rules.get(contract)!, closeMultiplier) });
   }
   // All prices and amounts are validated before any stop/create request.
   const trailing = await gate.trailing(); storage.saveTrailing(trailing);
