@@ -3,6 +3,7 @@ import { chromium } from 'playwright';
 import { checkSettings } from './check-settings.mjs';
 import { checkTables } from './check-tables.mjs';
 import { checkRefresh } from './check-refresh.mjs';
+import { checkNavigation } from './check-navigation.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -28,6 +29,7 @@ try {
   assert.ok(ready);
   browser=await chromium.launch();mkdirSync('tests/artifacts',{recursive:true});
   await checkRefresh(browser, base, 'tests/artifacts');
+  await checkNavigation(browser, base, 'tests/artifacts');
   const direct = await browser.newPage();
   const sessionRequests = [];
   direct.on('request', request => { if (request.url().includes('/api/session')) sessionRequests.push(request.url()); });
