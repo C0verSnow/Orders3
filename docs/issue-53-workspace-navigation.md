@@ -24,6 +24,10 @@
 - 主题与语言切换后同样保持 idle、没有忙碌状态、图标文字可见，既有圆形展开检查在点击后立即确认没有按钮形变。
 - 上传八张 `issue-53-navigation-*.png`，供检查恢复后的外观。原有共享滑块、设置保存与刷新反馈检查继续运行。
 
-先提交回归，再修复。回归提交 `f2053c3` 在[远端 41785013923](https://github.com/C0verSnow/Orders3/actions/runs/41785013923/job/126425058534) 的 `node scripts/check-browser.mjs` 中复现：点击导航后实际为 `feedback=pending`、`aria-busy=true`、状态文字“正在处理…”，与预期持续 idle 不符。既有刷新回归在此之前已通过。修复后的完整远端结果完成后补充在这里。
+先提交回归，再修复。回归提交 `f2053c3` 在[远端 41785013923](https://github.com/C0verSnow/Orders3/actions/runs/41785013923/job/126425058534) 的 `node scripts/check-browser.mjs` 中复现：点击导航后实际为 `feedback=pending`、`aria-busy=true`、状态文字“正在处理…”，与预期持续 idle 不符。既有刷新回归在此之前已通过。修复后源码 `c0ac53aadc947cfd247f9363ef99e9252d457694` 的[完整远端 CI 41785642547](https://github.com/C0verSnow/Orders3/actions/runs/41785642547) 已全部通过：117 项业务测试、宿主脚本回归、静态与类型检查、React/Node 构建、运行检查、完整浏览器、Windows EXE 与 Linux AMD64/ARM64 DEB 实际安装启动、双架构 Docker、Windows/Docker 像素对比。
 
 本地仅做代码阅读与 `git diff --check`，未进行本地编译、构建、类型检查、测试或启动服务。
+
+已下载并查看 [browser-evidence 截图](https://github.com/C0verSnow/Orders3/actions/runs/41785642547/artifacts/13301655901)中的桌面英文浅色、手机中文深色导航，以及语言切换中途画面：导航图标文字保留，顶栏主题与语言按钮正常，页面圆形展开仍存在。[跨平台对比报告](https://github.com/C0verSnow/Orders3/actions/runs/41785642547/artifacts/13301038471)也已通过。
+
+[PR #54](https://github.com/C0verSnow/Orders3/pull/54) 交付等待 review；按 issue 正文要求关闭 #53。没有合并、发布或部署。最后收尾提交只补文档和任务记录，使用 `[skip ci]`，运行代码与上述已验证提交相同。
