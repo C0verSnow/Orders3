@@ -45,4 +45,8 @@
 - scripts/check-settings.mjs：桌面与手机、中英、明暗；真实 API 保存、失败提示、按钮周期与圆形、键盘开关、分段选项、字段错误与刷新后的配置。
 - 原有完整测试、构建、浏览器、Windows/Linux 包、Docker 双架构和截图对比继续由远端 CI 执行。浏览器步骤上限由 5 分钟调整为 8 分钟，容纳新增手机与交互覆盖。
 
-远端执行结果待补充。PR 等待用户 review，不合并或部署生产。
+代码提交 `98a15469c4127ca109df97be4b2d917fe16224c6` 的[完整远端 CI 41781889027](https://github.com/C0verSnow/Orders3/actions/runs/41781889027) 已全部通过：117 项业务测试，静态、类型、构建、冒烟、完整浏览器、Windows EXE、Linux AMD64/ARM64 安装运行、Docker 双架构和 Windows/Docker 像素对比。
+
+浏览器额外验证真实成功绿、失败红，以及减少动态模式下仍能看见对勾；“重新读取状态”请求失败会显示失败。已取回并查看最终手机和桌面截图：[browser-evidence](https://github.com/C0verSnow/Orders3/actions/runs/41781889027/artifacts/13299951466) 中的 `issue-51-submit-morph.png` 和 `settings-trading-390-en-light-success.png`。像素对比报告见 [platform-visual-comparison](https://github.com/C0verSnow/Orders3/actions/runs/41781889027/artifacts/13299069995)。
+
+[PR #52](https://github.com/C0verSnow/Orders3/pull/52) 保持开放等待用户 review；已按正文要求关闭 issue #51。末尾提交仅补验证文档和任务记录，验证对应上述代码提交。未合并、未部署生产。
