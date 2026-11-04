@@ -222,5 +222,12 @@ async function checkInteractions(browser, base, output) {
   await submit.click();
   await page.waitForFunction(() => !document.querySelector('input[name=evidence]'));
   assert.equal(reviewWrites, 1);
+  await page.route('**/api/activity', route => route.fulfill({ status: 503, json: { error: 'reload status unavailable' } }));
+  await page.reload();
+  const reloadStatus = page.getByRole('button', { name: 'Reload status', exact: true });
+  await reloadStatus.click();
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(el => el.textContent.includes('Reload status') && el.dataset.feedback === 'error'));
+  assert.equal(await reloadStatus.getAttribute('data-feedback'), 'error', 'status reload cannot report success when a real query fails');
+  await page.getByText('reload status unavailable', { exact: true }).waitFor();
   await page.close();
 }

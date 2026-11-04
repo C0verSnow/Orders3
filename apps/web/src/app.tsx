@@ -254,6 +254,10 @@ function Workspace({ themeState }: { themeState: ReturnType<typeof useTheme> }) 
         void client.invalidateQueries({ queryKey: [key] });
     },
   });
+  const reread = useMutation({
+    mutationFn: () => client.invalidateQueries({}, { throwOnError: true }),
+    onError: (error) => setNotice(error.message),
+  });
   const manualOpening = useMutation({
     mutationFn: () => post('/api/opening/manual', { confirmed_trade_execution: true }),
     onError: (error) => setNotice(error.message),
@@ -486,9 +490,8 @@ function Workspace({ themeState }: { themeState: ReturnType<typeof useTheme> }) 
                 </p>
                 <Button
                   variant="text"
-                  onClick={() => {
-                    void client.invalidateQueries();
-                  }}
+                  status={reread.isPending ? 'pending' : reread.isError ? 'error' : reread.isSuccess ? 'success' : 'idle'}
+                  onClick={() => reread.mutate()}
                 >
                   {t('重新读取状态')}
                 </Button>
