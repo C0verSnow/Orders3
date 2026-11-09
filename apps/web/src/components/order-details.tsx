@@ -129,7 +129,7 @@ export function OrderDetails({
           </p>
           <h2>{contract ? String(contract).replace('_', ' / ') : t('记录详情')}</h2>
         </div>
-        <Button variant="quiet" aria-label={t('关闭详情')} onClick={onClose} autoFocus>
+        <Button status="idle" variant="quiet" aria-label={t('关闭详情')} onClick={onClose} autoFocus>
           <X size={20} />
         </Button>
       </header>
@@ -153,7 +153,7 @@ export function OrderDetails({
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 bg-zinc-50 px-5 py-4 text-[10px] text-zinc-500 md:px-7 dark:border-zinc-700 dark:bg-zinc-950">
         <span>{t('交易状态以 Gate 实际记录为准')}</span>
-        <Button onClick={onClose}>{t('关闭详情')}</Button>
+        <Button status="idle" onClick={onClose}>{t('关闭详情')}</Button>
       </footer>
     </>
   );

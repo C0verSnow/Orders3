@@ -2,7 +2,7 @@
 
 React + TypeScript 交易工作台，Node.js + TypeScript 负责真实 Supabase / Gate 业务、SQLite、签名、定时任务和凭证管理。当前运行与构建不依赖 C++、Qt、WebEngine 或 QWebChannel。
 
-前端使用 React 19、TypeScript、Vite、Tailwind CSS 4 和 TanStack Query/Table。界面使用 Tailwind 工具类，共用 Button/Input/Select/Panel/Badge 组件；共享动效、设置卡片及渐隐样式集中在 tailwind.css。样式入口还包含深色模式、字体/断点及浏览器圆形揭示规则。数字与列表过渡使用浏览器 Web Animations API，支持系统减少动态效果设置，不改变交易数据与后端逻辑。
+前端使用 React 19、TypeScript、Vite、Tailwind CSS 4 和 TanStack Query/Table。界面使用 Tailwind 工具类，共用 Button/Input/Panel/Badge 组件；共享动效、设置卡片及渐隐样式集中在 tailwind.css。样式入口还包含深色模式、字体/断点及浏览器圆形揭示规则。数字与列表过渡使用浏览器 Web Animations API，支持系统减少动态效果设置，不改变交易数据与后端逻辑。
 
 **仓库约定：不进行本地编译验证。** 代理修改时只做代码阅读、静态分析和差异检查；构建、类型检查、测试和发布包启动验证交给已有远端 Actions。未执行的检查不算通过。
 
@@ -34,6 +34,8 @@ docker logs orders-dashboard
 直接进入工作台，无需登录令牌。已删除令牌输入、URL 令牌传递、会话 Cookie 和 `/api/session`；旧 `ORDERS_ACCESS_TOKEN` 不再生效。所有能连接服务的人都能访问工作台和业务 API；保留 Host/Origin 校验及写操作来源要求。默认仅监听回环地址，远程访问应由部署方在反向代理限制访问。
 
 默认宿主机只监听 `127.0.0.1`，端口 0 自动分配；容器默认 `0.0.0.0:8090`。`--cached` 只跳过启动抓取，已启用的预测抓取、自动开仓、每分钟持仓同步及每 10 分钟独立入仓/平仓维护仍运行。`--list` 仅读取 Gate 列表，不下单。`--fetch-only` 抓取并保存预测订单，随后清理失配的待触发开仓单，不创建新单。桌面发行包默认内嵌窗口，也接受 `--desktop`；窗口关闭会停止其唯一后台服务。`--no-browser` 使用无窗口服务，`--browser` 保留显式系统浏览器模式。源码 / Docker 只运行服务，不包含 Electron。
+
+- [恢复表格分页交互与冗余清理](docs/table-pagination-cleanup.md)
 
 ## 配置与旧数据迁移
 

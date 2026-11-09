@@ -31,9 +31,8 @@ export function DataTable<T extends object>({
     [sorting, setSorting] = useState<SortingState>([]),
     [selected, setSelected] = useState<T | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
-  const data = useMemo(() => rows, [rows]);
   const table = useReactTable({
-    data,
+    data: rows,
     columns,
     state: { globalFilter: filter, sorting },
     onGlobalFilterChange: setFilter,
@@ -78,6 +77,7 @@ export function DataTable<T extends object>({
             ))}
             <td>
               <Button
+                status="idle"
                 variant="text"
                 className="relative z-30"
                 onClick={() => setSelected(row.original)}
@@ -127,6 +127,7 @@ export function DataTable<T extends object>({
                     }
                   >
                     <Button
+                      status="idle"
                       className="min-h-8! border-0! bg-transparent! px-0! text-[11px]! font-medium! text-zinc-500!"
                       onClick={header.column.getToggleSortingHandler()}
                     >
@@ -168,6 +169,7 @@ export function DataTable<T extends object>({
         </span>
         <div>
           <Button
+            status="idle"
             aria-label={t('上一页')}
             disabled={!table.getCanPreviousPage()}
             onClick={() => table.previousPage()}
@@ -175,6 +177,7 @@ export function DataTable<T extends object>({
             <ChevronLeft size={16} />
           </Button>
           <Button
+            status="idle"
             aria-label={t('下一页')}
             disabled={!table.getCanNextPage()}
             onClick={() => table.nextPage()}
