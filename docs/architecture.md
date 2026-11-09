@@ -2,7 +2,7 @@
 
 `apps/web` 为 React / TypeScript / Vite 应用。TanStack Query 管理服务端快照和失败重读，Table 提供筛选/排序/分页，Lucide 提供图标。Tailwind v4 与 CSS Variables 管理双主题。只需要按钮反馈和导航移动，选择 CSS transform/opacity、系统 reduced-motion，无须再引入 Motion 运行依赖。
 
-`apps/server` 为 Node 24 / TypeScript / Fastify。API 层调用 Dashboard；交易、历史同步、调度、配置、凭证和存储分别独立。网络全部异步，交易任务串行，SQLite 同步事务不跨 await。源抓取可与 Gate 网络读取并行，进入交易时等待共享 Gate 锁；Gate 忙时跳过周期检查。进程持有 proper-lockfile 数据目录租约；桌面和独立进程发现活动锁时拒绝启动，容器允许等待约五分钟以安全接管异常退出的遗留锁，不强删活动锁。每十分钟独立任务尝试同步成交与固定保证金，再用同一最新持仓快照维护只减仓平仓单；历史读取失败时只允许复用已有固定值维护，缺少固定值的持仓单独暂停，数据库和持仓错误仍阻断交易，见 [issue #49](issue-49-position-close.md)；每分钟及手动持仓刷新仍只读。
+`apps/server` 为 Node 24 / TypeScript / Fastify。API 层调用 Dashboard；交易、历史同步、调度、配置、凭证和存储分别独立。网络全部异步，交易任务串行，SQLite 同步事务不跨 await。源抓取可与 Gate 网络读取并行，保存成功后预留共享 Gate 锁、等待当前 Gate 任务完成，再仅撤销失配的状态 1 开仓单；Gate 忙时跳过周期检查。进程持有 proper-lockfile 数据目录租约；桌面和独立进程发现活动锁时拒绝启动，容器允许等待约五分钟以安全接管异常退出的遗留锁，不强删活动锁。每十分钟独立任务尝试同步成交与固定保证金，再用同一最新持仓快照维护只减仓平仓单；历史读取失败时只允许复用已有固定值维护，缺少固定值的持仓单独暂停，数据库和持仓错误仍阻断交易，见 [issue #49](issue-49-position-close.md)；每分钟及手动持仓刷新仍只读。
 
 `packages/shared` 提供前后端类型；`packages/decimal` 提供 Decimal 精度和 Gate 约束边界。lossless-json 将远端数字字面量解析为原文，时间/状态显式检查安全整数。源 ID、成交 ID、金额与数量不经过二进制浮点运算。
 
@@ -13,7 +13,7 @@
 | 路径 | 行为 |
 | --- | --- |
 | GET /health | 无敏感信息的就绪检查 |
-| GET /api/data；POST /api/refresh | 来源缓存；只读抓取并保存来源 |
+| GET /api/data；POST /api/refresh | 来源缓存；抓取保存来源并清理失配的待触发开仓单 |
 | GET /api/orders；POST /api/orders/refresh | 跟踪单/持仓缓存；只读同步持仓与订单 |
 | GET /api/activity | 最近 64 个真实请求/任务事件；600 ms 页面轮询 |
 | GET/POST /api/settings | 脱敏设置、保存设置并后台刷新 Infisical |

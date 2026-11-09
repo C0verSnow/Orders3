@@ -4,7 +4,7 @@
 
 `fetchTrailingOrders(config)` 读取一次 Gate 列表；服务模式下 Scheduler 每 60 秒独立调用持仓与平仓更新流程，不受来源 Cron 启用开关影响，具体见 [自动平仓追踪单](close-position-orders.md)。一次请求尚未结束或正在自动交易时不叠加请求，下次计时继续。`--list` 仍为单次读取；退出时取消网络请求并等待工作线程。
 
-手动、定时和启动时的来源抓取成功保存后，都调用 `createTrailingOrders(config)`。无参数版本读取 `Config::load()`；使用页面最新配置的业务入口传入 config。函数读取 `orders` 和 `orderslist`，按以下顺序执行：
+当前 TypeScript 实现中，手动、定时、启动和 `--fetch-only` 来源抓取成功保存后，都以 `source-cleanup` 模式复用 `openOrders()`：只撤销未匹配的状态 1 开仓单，不创建新单，不读取创建所需的成交历史。新单仍由独立开仓计划或经确认的手动开仓创建，空预测不再阻断清理。匹配使用原始数量和按真实规则对齐的激活价；参数变更会撤销失配旧单，替代单等开仓计划。以下为历史流程基线。原 `createTrailingOrders(config)`：无参数版本读取 `Config::load()`；使用页面最新配置的业务入口传入 config。函数读取 `orders` 和 `orderslist`，按以下顺序执行：
 
 1. 校验整批参数。`371 Contracts` 转为字符串 `"371"`，`-371 contracts` 转为 `"-371"`；数量必须是非零整数张。`4071.29 USDT` 去单位并保留价格精度。时间戳为毫秒。
 2. 与 `reduce_only=false` 且状态为 1 或 2 的有效开仓单逐笔匹配。合约、方向、数量、激活价格相同则保留，返回 `skipped`。方向由数量正负表示，价格按精确十进制值比较，每个旧单最多匹配一笔来源单。

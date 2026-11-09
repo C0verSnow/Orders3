@@ -13,7 +13,7 @@ import { closeOrders } from './closing.ts';
 import { syncPositions } from './positions.ts';
 import { AppError, safeError } from '../utils/errors.ts';
 
-const taskNames = { sources: '来源刷新', orders: '订单同步', opening: '开仓', maintenance: '持仓维护', 'manual-review': '人工核对' } as const;
+const taskNames = { sources: '来源刷新', orders: '订单同步', opening: '开仓', maintenance: '持仓维护', 'source-cleanup': '预测清理', 'manual-review': '人工核对' } as const;
 type DashboardTask = keyof typeof taskNames;
 interface RunningTask { task: DashboardTask; started: number }
 
@@ -21,7 +21,7 @@ export class Dashboard {
   private sourceTask?: RunningTask;
   private gateTask?: RunningTask;
   get sourcesBusy() { return !!this.sourceTask; }
-  get gateBusy() { return !!this.gateTask; }
+  get gateBusy() { return !!this.gateTask || this.phase === 'reconciling'; }
   gateWork: Promise<unknown> = Promise.resolve();
   phase = 'idle';
   sourceError: string | null = null;
@@ -84,10 +84,21 @@ export class Dashboard {
           items[index].order_price_round = rule.order_price_round;
         }
         this.storage.saveSources(items);
+        this.phase = 'reconciling';
+        // Source reads may overlap Gate work; reserve its slot before waiting.
+        await this.gateWork;
+        const cleanup = this.runTask('source-cleanup', async () => {
+          this.execution = await openOrders(new Gate(http, config, 'source-cleanup'), this.storage, { kind: 'source-cleanup' });
+          const failure = this.execution.find(row => row.action === 'failed');
+          if (failure) throw new AppError(failure.error || '旧开仓单清理失败', 502);
+        });
+        this.gateWork = cleanup.catch(() => {});
+        await cleanup;
         this.phase = 'completed';
       });
     } catch (error) {
-      this.phase = 'failed'; this.sourceError = `抓取失败，保留上次数据：${safeError(error)}`;
+      const message = this.phase === 'reconciling' ? '预测已更新，但旧开仓单清理失败' : '抓取失败，保留上次数据';
+      this.phase = 'failed'; this.sourceError = `${message}：${safeError(error)}`;
       throw new AppError(this.sourceError, 502);
     }
   }

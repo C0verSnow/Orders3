@@ -79,7 +79,7 @@ async function main() {
     const ready = credentials.refresh();
     void ready.then(async () => {
       if (stopped || values.cached) return;
-      // Startup jobs only synchronize data; opening waits for its independent schedule.
+      // Startup prediction refresh may cancel stale entries; new entries wait for their own schedule.
       await Promise.allSettled([dashboard.refreshOrders(), ...(scheduler.value.enabled ? [dashboard.refreshSources()] : [])]);
     });
     if (!values['no-browser'] && (values.browser || (!container && process.env.ORDERS_NO_BROWSER !== '1'))) {

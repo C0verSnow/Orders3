@@ -2,6 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture, response, source, list } from './helpers.ts';
+import { setImmediate } from 'node:timers/promises';
+import { writeExchange } from '../../apps/server/src/services/trading.ts';
 import { Scheduler } from '../../apps/server/src/scheduler/index.ts';
 
 const old = { id: '1212571', contract: 'SPX500_USDT', amount: '16', activation_price: '7223.75', reduce_only: false, original_status: 1 };
@@ -69,4 +71,61 @@ test('price#18 scheduled opening with empty predictions still removes stale orde
   assert.deepEqual(posts, ['/api/v4/futures/usdt/autoorder/v1/trail/stop']);
   assert.equal(f.storage.trailing().find(row => row.id === old.id)?.original_status, 5);
   assert.equal(f.storage.trailing().find(row => row.id === protection.id)?.original_status, 1);
+});
+
+test('price#18 failed source fetch preserves prior predictions and sends no Gate requests', async t => {
+  let gateReads = 0;
+  const f = fixture(t, async url => {
+    if (url.hostname === 'supabase.invalid') return response({}, 503);
+    gateReads++; throw new Error('must not reconcile failed input');
+  });
+  f.storage.saveSources([source]);
+  await assert.rejects(f.dashboard.refreshSources(), /抓取失败，保留上次数据/);
+  assert.equal(f.storage.sources().orders.length, 1);
+  assert.equal(gateReads, 0);
+});
+
+test('price#18 ambiguous cancellation keeps new predictions, reports cleanup failure and never retries the write', async t => {
+  let posts = 0;
+  const f = fixture(t, async (url, init) => {
+    if (url.hostname === 'supabase.invalid') return response([]);
+    if (init.method === 'POST') { posts++; throw new Error('response lost'); }
+    return response(list(url.searchParams.get('page_num') === '1' ? [old] : []));
+  });
+  f.storage.saveSources([source]);
+  await assert.rejects(f.dashboard.refreshSources(), /预测已更新.*清理失败/);
+  assert.equal(f.storage.sources().orders.length, 0);
+  assert.equal(f.storage.intents()[0].state, 'unknown');
+  assert.equal(f.dashboard.sources().execution[0].action, 'failed');
+  assert.equal(f.dashboard.sourcesBusy || f.dashboard.gateBusy, false);
+  await assert.rejects(f.dashboard.refreshSources(), /结果未知/);
+  assert.equal(posts, 1);
+});
+
+test('price#18 source cleanup waits for existing Gate work and reserves the Gate slot', async t => {
+  let release!: (value: Response) => void, first = true, posts = 0;
+  const f = fixture(t, async (url, init) => {
+    if (url.hostname === 'supabase.invalid') return response([]);
+    if (init.method === 'POST') { posts++; return response({ code: 0, data: {} }); }
+    if (first) { first = false; return new Promise<Response>(done => { release = done; }); }
+    return response(list(url.searchParams.get('page_num') === '1' ? [old] : []));
+  });
+  const read = f.dashboard.refreshOrders(false);
+  const refresh = f.dashboard.refreshSources();
+  try {
+    for (let i = 0; i < 10; i++) await setImmediate();
+    assert.equal(f.dashboard.sources().phase, 'reconciling');
+    assert.equal(posts, 0);
+    await assert.rejects(f.dashboard.refreshOrders(false), /正在运行/);
+    await assert.rejects(f.dashboard.executeOpening({ kind: 'manual' }), /本次开仓跳过/);
+  } finally { release(response(list([]))); await Promise.all([read, refresh]); }
+  assert.equal(posts, 1);
+  assert.equal(f.dashboard.sourcesBusy || f.dashboard.gateBusy, false);
+});
+
+test('price#18 source cleanup authorization cannot create an order or persist a create intent', async t => {
+  let posts = 0;
+  const f = fixture(t, async () => { posts++; return response({ code: 0 }); });
+  await assert.rejects(writeExchange(f.gate, f.storage, 'create', '{}', () => {}, { kind: 'source-cleanup' }), /只允许撤销/);
+  assert.equal(posts, 0); assert.equal(f.storage.intents().length, 0);
 });

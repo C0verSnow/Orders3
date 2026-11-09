@@ -98,7 +98,7 @@ export class Scheduler {
         this.dashboard.storage.finishRun(id, error ? 'failed' : 'completed', error);
       }
     }
-    // Source refresh and opening are independent. If both are due, finish the read first.
+    // Finish source refresh and stale-entry cleanup before a coinciding opening slot.
     for (const task of ['schedule', 'opening'] as const) {
       const state = this.tasks[task];
       if (this.stopped || state.busy || !state.value.enabled || now.getTime() < state.next.getTime()) continue;

@@ -198,12 +198,20 @@ export const english: Record<string, string> = {
   保存程序配置: 'Save configuration',
   '正在保存…': 'Saving…',
   预测抓取: 'Prediction Fetching',
+  '预测刷新成功后会撤销不再匹配的待触发开仓单；不会创建新单，平仓保护单和已激活单保留。':
+    'Successful prediction refreshes cancel unmatched pending entry orders. They do not create orders; close protection and activated orders are retained.',
+  'source-cleanup': 'Prediction cleanup',
+  reconciling: 'Reconciling',
+  预测清理: 'Prediction cleanup',
+  '预测已更新，但旧开仓单清理失败：{0}': 'Predictions updated, but stale entry cleanup failed: {0}',
+  旧开仓单清理失败: 'Stale entry cleanup failed',
+  预测清理只允许撤销旧开仓单: 'Prediction cleanup can only cancel stale entry orders',
   定时与周期: 'Schedule and interval',
   启用预测订单定时抓取: 'Enable scheduled prediction fetching',
   自动开仓: 'Automatic Entry',
   独立授权与周期: 'Independent permission and schedule',
   '默认关闭。启用后仅在计划时间使用已保存的有效预测订单交易；启动、刷新和预测抓取不会开仓。请先完成一次预测抓取。':
-    'Off by default. When enabled, trades use saved valid predictions only at scheduled times. Startup, refresh and prediction fetching do not place trades. Fetch predictions first.',
+    'Off by default. When enabled, trades use saved valid predictions only at scheduled times. Startup, refresh and prediction fetching do not create entry orders. Fetch predictions first.',
   '启用自动开仓（涉及真实交易）': 'Enable automatic entry (real trades)',
   独立的持仓同步: 'Independent position sync',
   'Gate 持仓与订单每 60秒只读同步一次，不受来源定时开关影响；不会创建、修改或撤销保护单。停用来源定时不会中断正在运行的任务。':
