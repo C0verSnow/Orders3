@@ -114,9 +114,9 @@ test('full source refresh accepts sub-cent prices and clears a previous precisio
         return response([]);
       });
       // A real Gate conflict still pauses the whole batch, with the saved raw value intact.
-      await f.dashboard.refreshSources();
+      await assert.rejects(f.dashboard.refreshSources(), /预测已更新.*精度冲突/);
       await assert.rejects(f.dashboard.executeOpening({ kind: 'manual' }), /精度冲突/);
-      assert.equal(f.dashboard.sources().phase, 'completed');
+      assert.equal(f.dashboard.sources().phase, 'failed');
       assert.equal(posts.length, 0); assert.equal(f.storage.intents().length, 0);
       assert.equal(f.storage.rows('orders', 'record_position')[0].raw_activation_price, raw);
       // Once Gate accepts the Supabase step, display rounding cannot keep trading paused.
@@ -172,9 +172,9 @@ test('invalid or missing Supabase order_price_round never falls back to price_ro
       if (url.pathname.endsWith('/list')) return response(list([]));
       return response([]);
     });
-    await f.dashboard.refreshSources();
+    await assert.rejects(f.dashboard.refreshSources(), /预测已更新.*清理失败/);
     await assert.rejects(f.dashboard.executeOpening({ kind: 'manual' }));
-    assert.equal(f.dashboard.sources().phase, 'completed');
+    assert.equal(f.dashboard.sources().phase, 'failed');
     assert.equal(posts, 0); assert.equal(f.storage.intents().length, 0);
   }
 });

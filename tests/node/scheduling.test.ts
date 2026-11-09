@@ -56,7 +56,7 @@ test('invalid opening configuration leaves reads available and opening disabled'
   await f.dashboard.refreshSources(); await scheduler.tick(); assert.equal(posts, 0);
   assert.throws(() => scheduler.update({ enabled: true, cron: 'invalid' }, 'opening'));
 });
-test('interrupted runs remain unknown and cannot be claimed after recovery; empty automatic input never stops orders', async t => {
+test('interrupted runs remain unknown and cannot be claimed after recovery; empty automatic input reconciles without creating', async t => {
   let posts = 0; const f = setup(t, () => posts++);
   const id = f.storage.claimRun('opening', start)!;
   const scheduler = new Scheduler(f.config, f.dashboard);
@@ -65,7 +65,7 @@ test('interrupted runs remain unknown and cannot be claimed after recovery; empt
   scheduler.update({ enabled: false, cron: '* * * * *' });
   scheduler.update({ enabled: true, cron: '* * * * *' }, 'opening');
   t.mock.timers.setTime(start + 60000); await scheduler.tick();
-  assert.equal(scheduler.snapshot().opening?.result, 'failed'); assert.equal(posts, 0);
+  assert.equal(scheduler.snapshot().opening?.result, 'completed'); assert.equal(posts, 0);
 });
 test('turning off opening during live reads revokes permission immediately before POST', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: start });

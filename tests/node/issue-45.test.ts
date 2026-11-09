@@ -78,9 +78,10 @@ test('many individually timely pages share a five-minute task budget', async t =
 });
 
 test('opening reports both occupying tasks and elapsed time, and does not queue or submit', async t => {
-  let finishSources!: (value: Response) => void, finishOrders!: (value: Response) => void, posts = 0;
+  let finishSources!: (value: Response) => void, finishOrders!: (value: Response) => void, posts = 0, gateReads = 0;
   const f = fixture(t, (url, init) => {
     if (init.method === 'POST') posts++;
+    if (url.hostname !== 'supabase.invalid' && gateReads++ > 0) return Promise.resolve(response(list([])));
     return new Promise<Response>(done => { if (url.hostname === 'supabase.invalid') finishSources = done; else finishOrders = done; });
   });
   const sources = f.dashboard.refreshSources(), orders = f.dashboard.refreshOrders(false);

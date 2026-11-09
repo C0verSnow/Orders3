@@ -7,10 +7,10 @@ import { object, text } from '../exchange/http.ts';
 import { syncEntries } from './entry-history.ts';
 import { AppError, safeError } from '../utils/errors.ts';
 
-export type TradingAuthorization = { kind: 'manual' } | { kind: 'maintenance'; runId: string; assertAllowed: () => void } | { kind: 'scheduled'; runId: string; assertAllowed: () => void };
+export type TradingAuthorization = { kind: 'source-cleanup' } | { kind: 'manual' } | { kind: 'maintenance'; runId: string; assertAllowed: () => void } | { kind: 'scheduled'; runId: string; assertAllowed: () => void };
 function checkAuthorization(storage: Storage, authorization?: TradingAuthorization) {
   if (!authorization) throw new AppError('缺少开仓授权', 403);
-  if (authorization.kind === 'manual') return;
+  if (authorization.kind === 'manual' || authorization.kind === 'source-cleanup') return;
   if (!['scheduled', 'maintenance'].includes(authorization.kind) || storage.run(authorization.runId)?.task !== (authorization.kind === 'maintenance' ? 'maintenance' : 'opening') || storage.run(authorization.runId)?.state !== 'running') throw new AppError('自动开仓执行记录无效', 403);
   authorization.assertAllowed();
 }
@@ -32,6 +32,7 @@ export function matchOrders(desired: Desired[], trailing: TrailOrder[], reduceOn
 }
 export async function writeExchange(gate: Gate, storage: Storage, operation: 'stop' | 'create', body: string, onSuccess: (data: Record<string, unknown>) => void, authorization: TradingAuthorization) {
   checkAuthorization(storage, authorization);
+  if (authorization.kind === 'source-cleanup' && operation !== 'stop') throw new AppError('预测清理只允许撤销旧开仓单', 403);
   if (authorization.kind === 'maintenance' && operation === 'create' && JSON.parse(body).reduce_only !== true) throw new AppError('平仓维护只允许只减仓委托', 403);
   if (storage.intents().length) throw new AppError('存在结果未知的交易，已禁止自动重试。请先核对 Gate 并在运行状态中处理', 409);
   const requestId = `t-${randomUUID().replaceAll('-', '').slice(0, 28)}`;
@@ -75,8 +76,9 @@ async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trail
   const { retained, candidates, results } = matchOrders(desired, trailing, false);
   const stops = trailing.map((row, index) => ({ row, index })).filter(({ row, index }) => !retained.has(index) && !row.reduce_only && row.original_status === 1);
   for (const { row } of stops) if (!/^[1-9]\d*$/.test(row.id) || BigInt(row.id) > 9223372036854775807n) throw new AppError('旧订单 ID 无效');
-  if (candidates.length) await syncEntries(gate, storage);
-  if ((stops.length || candidates.length) && storage.intents().length) throw new AppError('存在结果未知的交易，请先核对 Gate，自动交易已暂停', 409);
+  const cleanupOnly = authorization.kind === 'source-cleanup';
+  if (!cleanupOnly && candidates.length) await syncEntries(gate, storage);
+  if ((stops.length || (!cleanupOnly && candidates.length)) && storage.intents().length) throw new AppError('存在结果未知的交易，请先核对 Gate，自动交易已暂停', 409);
   for (const { row, index } of stops) {
     try {
       await writeExchange(gate, storage, 'stop', `{"id":${row.id}}`, () => {
@@ -86,6 +88,7 @@ async function reconcile(gate: Gate, storage: Storage, desired: Desired[], trail
       results.push({ action: 'stopped', contract: row.contract, id: row.id });
     } catch (error) { results.push({ action: 'failed', operation: 'stop', contract: row.contract, id: row.id, error: safeError(error) }); return results; }
   }
+  if (cleanupOnly) return results;
   for (const entry of candidates) {
     try {
       await syncEntries(gate, storage);
@@ -120,6 +123,5 @@ export async function openOrders(gate: Gate, storage: Storage, authorization?: T
   }
   // Reconcile from live exchange data, so a stale cache cannot cause duplicate submissions.
   const trailing = await gate.trailing(); storage.saveTrailing(trailing);
-  if (authorization?.kind === 'scheduled' && !sources.length) throw new AppError('预测订单为空，自动开仓已停止');
   return reconcile(gate, storage, desired, trailing, rules, steps, authorization!);
 }

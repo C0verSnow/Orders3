@@ -200,6 +200,9 @@ export function SettingsPage({ theme, setTheme }: { theme: Theme; setTheme: (val
           pending={timer.isPending}
           status={timer.isPending ? 'pending' : timer.isError ? 'error' : timer.isSuccess ? 'success' : 'idle'}
         />
+        <p className="mt-4 text-xs leading-relaxed text-zinc-500">
+          {t('预测刷新成功后会撤销不再匹配的待触发开仓单；不会创建新单，平仓保护单和已激活单保留。')}
+        </p>
         {timer.error && <p role="alert">{t(timer.error.message)}</p>}
       </Panel></div>
       <div hidden={section !== 'opening'}><Panel>
