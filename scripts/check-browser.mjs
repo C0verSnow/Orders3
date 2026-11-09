@@ -141,6 +141,9 @@ try {
   await motion.getByRole('dialog').waitFor(); await motion.keyboard.press('Escape');
   await motion.getByRole('button', { name: '下一页', exact: true }).click();
   await motion.getByRole('cell', { name: 'UI04 / USDT', exact: true }).waitFor();
+  await motion.screenshot({ path: 'tests/artifacts/pagination-button-feedback.png', fullPage: true });
+  assert.equal(await motion.getByRole('button', { name: '下一页', exact: true }).getAttribute('data-feedback'), 'idle', 'pagination keeps the arrow instead of morphing to loading or success');
+  assert.equal(await motion.getByRole('button', { name: '下一页', exact: true }).getAttribute('aria-busy'), 'false');
   assert.equal(await motion.locator('[data-ui="row-exit"]').count(), 0, 'old page does not add extra rows');
   assert.equal(await motion.getByRole('cell', { name: 'UI00 / USDT', exact: true }).count(), 0);
   const beforeFilter = await viewport.boundingBox();
