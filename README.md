@@ -35,6 +35,8 @@ docker logs orders-dashboard
 
 默认宿主机只监听 `127.0.0.1`，端口 0 自动分配；容器默认 `0.0.0.0:8090`。`--cached` 只跳过启动抓取，已启用的预测抓取、自动开仓、每分钟持仓同步及每 10 分钟独立入仓/平仓维护仍运行。`--list` 仅读取 Gate 列表，不下单。`--fetch-only` 只抓取并保存预测订单，不执行开仓。桌面发行包默认内嵌窗口，也接受 `--desktop`；窗口关闭会停止其唯一后台服务。`--no-browser` 使用无窗口服务，`--browser` 保留显式系统浏览器模式。源码 / Docker 只运行服务，不包含 Electron。
 
+- [恢复表格分页交互与冗余清理](docs/table-pagination-cleanup.md)
+
 ## 配置与旧数据迁移
 
 请先备份旧 `data.db` 和 `config`，停止旧服务，再启动新程序；新旧程序不得同时操作同一数据目录或账户。新服务每个数据目录只允许一个进程，进程锁同时保护日志预算和交易串行化。旧程序不认识此锁，必须手动停止。
@@ -144,5 +146,3 @@ Issue #43 的部署地址、独立入仓历史及平仓维护交付和远端验�
 
 - [Issue #51：控件交互、平仓乘数及验证](docs/issue-51-interactions.md)
 - [Issue #53：恢复 Workspace 导航、主题与语言按钮及验证](docs/issue-53-workspace-navigation.md)
-
-- [恢复表格分页交互与冗余清理](docs/table-pagination-cleanup.md)

@@ -25,4 +25,4 @@ Git 历史 `63e184a` 之前，共享 Button 未传入 status 的点击不自动�
 
 先提交回归 `a030162`，远端 [42626893350](https://github.com/C0verSnow/Orders3/actions/runs/42626893350) 的浏览器检查已按预期失败，点击下一页后 `data-feedback` 实际为 pending，预期为 idle，确认捕获到用户反馈的异常。浏览器直接操作真实应用及临时 SQLite，要求点击后 `data-feedback=idle`、`aria-busy=false`，箭头和文字仍可见；补充连续下一页、键盘与上一页、延迟后无成功反馈，以及四张表 0/1/2/3/4/5/8/9/10 条记录、首尾页、筛选、排序和详情回归。现有桌面/手机专项、中英/主题、跨平台截图检查保留。
 
-修复后的远端结果待补充。PR 等待 review，不合并、不发布、不部署。
+修复源码 `c1976f79a35e1832c8001c032e0c1177970a4cff` 的[完整远端 42627460546](https://github.com/C0verSnow/Orders3/actions/runs/42627460546)全部通过：117 项业务测试、静态与类型检查、构建及运行、桌面/手机专项浏览器、Windows x64 与 Linux AMD64/ARM64 安装启动、双架构 Docker、Windows EXE 与 Linux Docker 像素对比。浏览器回归确认即时及 1300ms 后均为 idle，连续下一页、键盘 Enter 与上一页正常；四张表的边界、筛选、排序和详情全部通过。已取回并查看前后截图，修复后左右箭头正常显示。最后只整理文档和带时间戳的记录，业务源码不再变动。PR 等待 review，不合并、不发布、不部署。
