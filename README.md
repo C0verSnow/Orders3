@@ -2,7 +2,7 @@
 
 React + TypeScript 交易工作台，Node.js + TypeScript 负责真实 Supabase / Gate 业务、SQLite、签名、定时任务和凭证管理。当前运行与构建不依赖 C++、Qt、WebEngine 或 QWebChannel。
 
-前端使用 React 19、TypeScript、Vite、Tailwind CSS 4 和 TanStack Query/Table。界面使用 Tailwind 工具类，共用 Button/Input/Select/Panel/Badge 组件；共享动效、设置卡片及渐隐样式集中在 tailwind.css。样式入口还包含深色模式、字体/断点及浏览器圆形揭示规则。数字与列表过渡使用浏览器 Web Animations API，支持系统减少动态效果设置，不改变交易数据与后端逻辑。
+前端使用 React 19、TypeScript、Vite、Tailwind CSS 4 和 TanStack Query/Table。界面使用 Tailwind 工具类，共用 Button/Input/Panel/Badge 组件；共享动效、设置卡片及渐隐样式集中在 tailwind.css。样式入口还包含深色模式、字体/断点及浏览器圆形揭示规则。数字与列表过渡使用浏览器 Web Animations API，支持系统减少动态效果设置，不改变交易数据与后端逻辑。
 
 **仓库约定：不进行本地编译验证。** 代理修改时只做代码阅读、静态分析和差异检查；构建、类型检查、测试和发布包启动验证交给已有远端 Actions。未执行的检查不算通过。
 
@@ -144,3 +144,5 @@ Issue #43 的部署地址、独立入仓历史及平仓维护交付和远端验�
 
 - [Issue #51：控件交互、平仓乘数及验证](docs/issue-51-interactions.md)
 - [Issue #53：恢复 Workspace 导航、主题与语言按钮及验证](docs/issue-53-workspace-navigation.md)
+
+- [恢复表格分页交互与冗余清理](docs/table-pagination-cleanup.md)

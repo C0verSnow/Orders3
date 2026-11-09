@@ -5,7 +5,6 @@ import { StableText } from './stable-text';
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
-  SelectHTMLAttributes,
   HTMLAttributes,
 } from 'react';
 
@@ -125,9 +124,6 @@ export function SegmentedChoice({ label, value, options, onChange, disabled = fa
       </label>)}
     </span>
   </fieldset>;
-}
-export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={`${field} ${className}`} {...props} />;
 }
 export function Panel({ className = '', ...props }: HTMLAttributes<HTMLElement>) {
   return (

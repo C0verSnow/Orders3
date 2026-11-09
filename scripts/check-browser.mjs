@@ -144,6 +144,14 @@ try {
   await motion.screenshot({ path: 'tests/artifacts/pagination-button-feedback.png', fullPage: true });
   assert.equal(await motion.getByRole('button', { name: '下一页', exact: true }).getAttribute('data-feedback'), 'idle', 'pagination keeps the arrow instead of morphing to loading or success');
   assert.equal(await motion.getByRole('button', { name: '下一页', exact: true }).getAttribute('aria-busy'), 'false');
+  await motion.waitForTimeout(1300);
+  assert.equal(await motion.getByRole('button', { name: '下一页', exact: true }).getAttribute('data-feedback'), 'idle', 'pagination never shows delayed success feedback');
+  await motion.getByRole('button', { name: '下一页', exact: true }).focus();
+  await motion.keyboard.press('Enter');
+  await motion.getByRole('cell', { name: 'UI08 / USDT', exact: true }).waitFor();
+  await motion.getByRole('button', { name: '上一页', exact: true }).click();
+  await motion.getByRole('cell', { name: 'UI04 / USDT', exact: true }).waitFor();
+  assert.equal(await motion.getByRole('button', { name: '上一页', exact: true }).getAttribute('data-feedback'), 'idle');
   assert.equal(await motion.locator('[data-ui="row-exit"]').count(), 0, 'old page does not add extra rows');
   assert.equal(await motion.getByRole('cell', { name: 'UI00 / USDT', exact: true }).count(), 0);
   const beforeFilter = await viewport.boundingBox();

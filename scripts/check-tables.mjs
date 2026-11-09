@@ -39,18 +39,40 @@ export async function checkTables(browser, base, store, output) {
           const cells = await table.locator('tbody [data-ui=row] td:first-child').allTextContents();
           for (const cell of cells) { assert.ok(!seen.has(cell),'no repeated records across pages'); seen.add(cell); }
           assert.equal((await viewport.boundingBox()).height,height);
-          if (index < Math.ceil(count/4)-1) await page.getByRole('button',{name:'下一页',exact:true}).click();
+          if (index < Math.ceil(count/4)-1) {
+            const next = page.getByRole('button',{name:'下一页',exact:true});
+            await next.click();
+            await checkIdle(next);
+          }
         }
         assert.equal(seen.size,count);
+        const previous = page.getByRole('button',{name:'上一页',exact:true});
+        for (let index = Math.ceil(count/4)-2; index >= 0; index--) {
+          await previous.focus(); await page.keyboard.press('Enter');
+          await checkIdle(previous);
+          assert.equal(await table.locator('tbody [data-ui=row]').count(),4);
+        }
+        assert.equal(await previous.isDisabled(),true);
+        for (let index = 1; index < Math.ceil(count/4); index++) {
+          const next = page.getByRole('button',{name:'下一页',exact:true});
+          await next.click(); await checkIdle(next);
+        }
         if (count > 4) {
           await page.getByRole('searchbox',{name:`搜索${name}`,exact:true}).fill('PAGE00');
           await table.getByRole('cell',{name:'PAGE00 / USDT',exact:true}).waitFor();
           assert.equal(await table.locator('tbody [data-ui=row]').count(),1,'filter resets a now-invalid last page');
           await page.getByRole('searchbox',{name:`搜索${name}`,exact:true}).fill('');
-          await table.getByRole('columnheader').first().getByRole('button').click();
+          const sort = table.getByRole('columnheader').first().getByRole('button');
+          await sort.click(); await checkIdle(sort);
           assert.equal(await table.locator('tbody [data-ui=row]').count(),4);
-          await table.locator('tbody [data-ui=row]').first().getByRole('button').click();
-          await page.getByRole('dialog').waitFor(); await page.keyboard.press('Escape');
+          const details = table.locator('tbody [data-ui=row]').first().getByRole('button');
+          await details.click(); await checkIdle(details);
+          const dialog = page.getByRole('dialog');
+          await dialog.waitFor();
+          const close = dialog.getByRole('button',{name:'关闭详情',exact:true}).last();
+          await close.click(); await dialog.waitFor({state:'hidden'});
+          await details.click(); await dialog.waitFor();
+          await page.keyboard.press('Escape');
         }
         if (name === '预测订单') {
           assert.equal(await page.getByRole('button',{name:/刷新预测订单/}).count(),0);
@@ -62,4 +84,13 @@ export async function checkTables(browser, base, store, output) {
     await page.close();
   }
   console.log('Four tables passed 0/1/2/3/4/5/8/9/10 boundaries at 1440px and 390px, stable heights, search, sorting and details');
+}
+
+async function checkIdle(button) {
+  assert.deepEqual(await button.evaluate(element => ({
+    state: element.dataset.feedback,
+    busy: element.getAttribute('aria-busy'),
+    label: getComputedStyle(element.querySelector('.button-label')).opacity,
+    message: element.querySelector('[role="status"]').textContent,
+  })), { state: 'idle', busy: 'false', label: '1', message: '' }, 'local table controls preserve their arrow or label');
 }
